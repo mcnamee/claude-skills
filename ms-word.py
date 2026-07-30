@@ -40,7 +40,10 @@ WHAT IT CAN DO
       them - all at once, or individually by change id.
     - Read/search the FINAL view while changes are pending (like Word's
       "No Markup"): pending insertions are visible, pending deletions hidden.
-    - Append paragraphs, headings and tables; insert paragraphs anywhere.
+    - Append paragraphs, headings and tables; insert paragraphs anywhere,
+      using NATIVE Word styles (List Bullet / List Number / Heading N), with
+      msword_list_styles to discover what a document or template defines and
+      an auto-correction when text is typed as a fake "- " bullet.
     - Edit existing tables: set a cell by (table, row, col), add a row (optionally
       cloning a styled example row's formatting), and delete a row - enough to
       fill out a template's example table (e.g. one row per agenda item).
@@ -63,6 +66,16 @@ TRACKED CHANGES - SCOPE AND VERIFICATION
     (w:moveFrom/w:moveTo - a move appears as delete + insert instead),
     tracked formatting-only changes (w:rPrChange/w:pPrChange), tracked
     table row/cell revisions, and comment threads.
+
+    Edits over PENDING revisions are supported: the editing engine addresses
+    characters by the FINAL VIEW (what msword_get_content shows and what Word
+    shows under "No Markup"), so a paragraph that already carries tracked
+    changes - including one revised in an earlier session by someone else - can
+    be edited again and the new markup lands in the right place. Deleting text
+    that is itself a pending insertion follows Word: your own is withdrawn,
+    another author's becomes a nested <w:ins><w:del>. An edit boundary that
+    falls inside a run carrying an image or field is REFUSED (reported in a
+    `skipped` list) rather than mangled.
 
     Verified before delivery: correct <w:ins>/<w:del>/<w:delText> and
     paragraph-mark structure with unique ids + author + date; word-level
@@ -307,6 +320,7 @@ try:
     from docx.table import Table, _Cell
     from docx.text.paragraph import Paragraph
     from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.enum.style import WD_STYLE_TYPE
     from docx.opc.exceptions import PackageNotFoundError
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
@@ -1248,6 +1262,17 @@ def _is_mark_revision(el):
             and parent.getparent().tag == qn("w:pPr"))
 
 
+def _pending_authors(el):
+    """Distinct authors of the pending revisions in `el`, for error messages -
+    'my own edit' and 'Jane's edit' call for very different decisions."""
+    seen = []
+    for rev in el.iter(qn("w:ins"), qn("w:del")):
+        who = rev.get(qn("w:author"))
+        if who and who not in seen:
+            seen.append(who)
+    return sorted(seen)
+
+
 def _prune_empty_revisions(root):
     """
     Drop content <w:ins>/<w:del> elements that no longer contain any run.
@@ -1688,6 +1713,249 @@ def _list_prefix(style_name):
     return None
 
 
+def _list_level_from_name(style_name):
+    """1 for 'List Bullet', 2 for 'List Bullet 2', ... ; 1 when unsuffixed."""
+    m = re.search(r"\s(\d+)$", (style_name or "").strip())
+    return int(m.group(1)) if m else 1
+
+
+# =============================================================================
+# PARAGRAPH STYLES
+#
+# Word carries structure in paragraph STYLES, not in typed characters. A
+# hand-typed "- item" looks like a bullet but is a plain paragraph: Word's
+# navigation pane, any table of contents, restyling from the template and this
+# server's own Markdown/RAG export all key off the style, so the structure is
+# simply lost. These helpers let the model discover what a document actually
+# defines, resolve a name forgivingly instead of guessing, and get corrected
+# when it types a marker anyway.
+# =============================================================================
+
+# Consulted only after a real style name fails, so it can never shadow a
+# template's own style of the same name.
+_STYLE_ALIASES = {
+    "bullet": "List Bullet", "bullets": "List Bullet",
+    "bullet list": "List Bullet", "bulleted list": "List Bullet",
+    "bullet point": "List Bullet", "bullet points": "List Bullet",
+    "unordered list": "List Bullet", "ul": "List Bullet",
+    "list bullet 1": "List Bullet",
+    "number list": "List Number", "numbered list": "List Number",
+    "ordered list": "List Number", "ol": "List Number",
+    "list number 1": "List Number",
+    "body": "Normal", "body copy": "Normal", "paragraph": "Normal",
+    "default": "Normal", "plain": "Normal",
+    "blockquote": "Quote", "block quote": "Quote",
+    "h1": "Heading 1", "h2": "Heading 2", "h3": "Heading 3",
+    "h4": "Heading 4", "h5": "Heading 5", "h6": "Heading 6",
+    "grid": "Table Grid", "bordered": "Table Grid",
+}
+
+
+def _iter_styles(doc, style_type=None):
+    """Styles defined in this document, optionally of one WD_STYLE_TYPE."""
+    for style in doc.styles:
+        try:
+            if style_type is not None and style.type != style_type:
+                continue
+            if style.name:
+                yield style
+        except Exception:
+            continue  # a malformed style must never break discovery
+
+
+def _resolve_style_name(doc, name, style_type=None):
+    """
+    Resolve a caller-supplied style name to the exact name defined in THIS
+    document, or raise a ToolError naming the closest matches.
+
+    Order: exact -> case/space-insensitive -> style_id form ('ListBullet') ->
+    intent alias ('bullets'). Guessing used to be punished with a bare
+    "Unknown paragraph style" and no way to recover; the error now points at
+    msword_list_styles and lists the nearest real names.
+    """
+    if not isinstance(name, str) or not name.strip():
+        raise ToolError("style must be a non-empty string")
+    wanted = name.strip()
+    styles = list(_iter_styles(doc, style_type))
+    names = [s.name for s in styles]
+    for n in names:                                    # 1. exact
+        if n == wanted:
+            return n
+    low = wanted.lower()
+    for n in names:                                    # 2. case-insensitive
+        if n.lower() == low:
+            return n
+    squashed = low.replace(" ", "")
+    for n in names:                                    # 3. style-id form
+        if n.lower().replace(" ", "") == squashed:
+            return n
+    alias = _STYLE_ALIASES.get(low)                    # 4. intent alias
+    if alias:
+        for n in names:
+            if n.lower() == alias.lower():
+                return n
+    close = difflib.get_close_matches(wanted, names, n=3, cutoff=0.5)
+    if not close:
+        close = sorted(names, key=lambda n: -_score_name(
+            _normalise_name(wanted), _normalise_name(n))[1])[:3]
+    raise ToolError(
+        "Unknown style '{}' - this document does not define it. Closest "
+        "matches: {}. Call msword_list_styles for the styles this document "
+        "does define (names are case-sensitive).".format(
+            wanted, ", ".join("'{}'".format(c) for c in close) or "(none)"))
+
+
+def _style_role(style):
+    """('heading'|'bullet_list'|'numbered_list'|'body'|'other', level|None)."""
+    name = style.name
+    lvl = _heading_level(name)
+    if lvl is not None:
+        return "heading", lvl
+    prefix = _list_prefix(name)
+    if prefix == "- ":
+        return "bullet_list", _list_level_from_name(name)
+    if prefix == "1. ":
+        return "numbered_list", _list_level_from_name(name)
+    if name == "Normal":
+        return "body", None
+    return "other", None
+
+
+def _exported_as(role, level):
+    """What the Markdown/KB export turns a style into - shown to the model so
+    it can see that hand-typed markers lose their structure."""
+    if role == "heading":
+        return "{} heading (level {})".format("#" * min(level or 1, 6), level)
+    if role == "bullet_list":
+        return ("  " * ((level or 1) - 1)) + "- list item" + (
+            " (nested level {})".format(level) if (level or 1) > 1 else "")
+    if role == "numbered_list":
+        return ("  " * ((level or 1) - 1)) + "1. list item"
+    return "plain paragraph (no list or heading structure)"
+
+
+def _best_list_style(doc, kind):
+    """
+    Name of the best paragraph style in THIS document for 'bullet'/'number',
+    or None. Prefers the canonical name, then the lowest-numbered variant, so
+    a template that only defines 'List Bullet 2' still works.
+    """
+    exact = "List Bullet" if kind == "bullet" else "List Number"
+    want = "- " if kind == "bullet" else "1. "
+    candidates = []
+    for style in _iter_styles(doc, WD_STYLE_TYPE.PARAGRAPH):
+        if style.name == exact:
+            return style.name
+        if _list_prefix(style.name) == want:
+            candidates.append(style.name)
+    if candidates:
+        return sorted(candidates, key=_list_level_from_name)[0]
+    return None
+
+
+# --- Fake-list-marker detection ----------------------------------------------
+# A marker only counts when followed by whitespace AND real content, so
+# "-5 degrees", "--", "---" and a bare "-" are never touched.
+_FAKE_BULLET_RE = re.compile(
+    r"^[ \t]*([-*+•‣◦▪·])[ \t]+(?=\S)")
+# Digits only (1-3), optional opening bracket. Letters and roman numerals are
+# deliberately excluded - "A. B. Smith" and "i. e." are far too common.
+_FAKE_NUMBER_RE = re.compile(r"^[ \t]*\(?([0-9]{1,3})[.)][ \t]+(?=\S)")
+# Warn-only: en/em dash attributions ("- Winston Churchill"), letters, romans.
+_AMBIGUOUS_MARKER_RE = re.compile(
+    r"^[ \t]*(?:[–—][ \t]+(?=\S)"
+    r"|\(?(?:[A-Za-z]|[ivxIVX]{1,5})[.)][ \t]+(?=\S))")
+
+
+def _detect_fake_list_marker(text):
+    """
+    (kind, stripped_text, marker) or None, where kind is
+    'bullet' | 'number' | 'ambiguous' | 'multiline'.
+    """
+    if not isinstance(text, str) or not text.strip():
+        return None
+    lines = text.splitlines()
+    if len(lines) > 1:
+        listy = sum(1 for ln in lines
+                    if _FAKE_BULLET_RE.match(ln) or _FAKE_NUMBER_RE.match(ln))
+        if listy >= 2:
+            return ("multiline", text, None)
+    m = _FAKE_BULLET_RE.match(text)
+    if m:
+        return ("bullet", text[m.end():], m.group(1))
+    m = _FAKE_NUMBER_RE.match(text)
+    if m:
+        return ("number", text[m.end():], m.group(1))
+    if _AMBIGUOUS_MARKER_RE.match(text):
+        return ("ambiguous", text, text.strip()[:1])
+    return None
+
+
+def _list_marker_guard(doc, text, style, literal_text, mode):
+    """
+    Catch paragraph text typed as a fake list item.
+
+    mode 'create'  - a new paragraph: strip the marker and apply the document's
+                     list style, reporting what was done.
+    mode 'observe' - never mutate (an existing paragraph being redlined, or a
+                     table cell): warn only. A style change cannot be recorded
+                     as a tracked revision, so silently restyling during a
+                     redline would slip an unreviewable change into the file.
+
+    Returns (text, style, info|None). Raises ToolError for a multi-item block.
+    """
+    if literal_text or not isinstance(text, str):
+        return text, style, None
+    hit = _detect_fake_list_marker(text)
+    if hit is None:
+        return text, style, None
+    kind, stripped, marker = hit
+    if kind == "multiline":
+        raise ToolError(
+            "'text' looks like a multi-item list, but this tool adds ONE "
+            "paragraph (the lines would become line breaks inside a single "
+            "paragraph, not real list items). Call this tool once per item "
+            "with the marker left out and style 'List Bullet' - e.g. "
+            "text='First item', style='List Bullet'. Pass literal_text=true "
+            "to write the text verbatim into one paragraph.")
+    if kind == "ambiguous":
+        return text, style, {"warning": (
+            "The text starts with '{}', which may be a typed list marker. It "
+            "was written verbatim. If you meant a list item, re-send the text "
+            "without the marker and with style 'List Bullet' or "
+            "'List Number'.".format(marker))}
+    target = _best_list_style(doc, kind)
+    pretty = "'{} '".format(marker) if kind == "bullet" else "'{}. '".format(marker)
+    if mode == "observe":
+        return text, style, {"warning": (
+            "The text starts with a typed list marker ({}). It was left as-is "
+            "because a paragraph STYLE change cannot be recorded as a Word "
+            "tracked change. Accept/reject the pending changes, then use "
+            "msword_set_paragraph_format with style "
+            "'{}'.".format(pretty, target or "List Bullet"))}
+    if target is None:
+        return text, style, {"warning": (
+            "The text starts with a typed list marker ({}) but this document "
+            "defines no {} list style, so the text was written exactly as "
+            "supplied. Call msword_list_styles to see what it does "
+            "define.".format(pretty, kind))}
+    if style is not None and _list_prefix(str(style)) is None \
+            and _heading_level(str(style)) is None:
+        # An explicit non-list style was requested (e.g. 'Heading 2'): respect
+        # it and only strip the marker if it is a list style.
+        return text, style, None
+    return stripped, (style or target), {
+        "list_marker_fixed": True,
+        "original_text": text,
+        "warning": (
+            "The text started with a typed list marker ({}). The marker was "
+            "removed and the paragraph was given the Word style '{}', so it is "
+            "a real Word list item and exports to the knowledge base as a "
+            "list. Pass literal_text=true if the leading marker was "
+            "intentional.".format(pretty, style or target)),
+    }
+
+
 def _md_escape_cell(text):
     """Make cell text safe for a single Markdown table cell (one line)."""
     text = text.replace("\\", "\\\\").replace("|", "\\|")
@@ -1877,6 +2145,99 @@ def tool_open(args):
             log("knowledge-base save failed: {}".format(e))
             result["knowledge_base_error"] = str(e)
     return result
+
+
+MAX_STYLES_RETURNED = 80
+
+
+def tool_list_styles(args):
+    """
+    List the styles THIS document defines, so the model can apply real Word
+    styles instead of typing markup. A corporate template often names its own
+    list/heading styles, which are otherwise invisible - and an unknown style
+    name is an error, so guessing was previously a dead end.
+    """
+    session = _get_session(args)
+    doc = session["doc"]
+    kind = (args.get("kind") or "paragraph").strip().lower()
+    if kind not in ("paragraph", "table", "character", "all"):
+        raise ToolError(
+            "kind must be one of: paragraph, table, character, all")
+    query = (args.get("query") or "").strip().lower()
+
+    type_map = {
+        WD_STYLE_TYPE.PARAGRAPH: "paragraph",
+        WD_STYLE_TYPE.CHARACTER: "character",
+        WD_STYLE_TYPE.TABLE: "table",
+        WD_STYLE_TYPE.LIST: "numbering",
+    }
+    counts = {}
+    entries = []
+    for style in _iter_styles(doc):
+        stype = type_map.get(style.type, "unknown")
+        counts[stype] = counts.get(stype, 0) + 1
+        if kind != "all" and stype != kind:
+            continue
+        if query and query not in style.name.lower():
+            continue
+        entry = {"name": style.name, "type": stype}
+        try:
+            entry["builtin"] = bool(style.builtin)
+        except Exception:
+            pass
+        if stype == "paragraph":
+            role, level = _style_role(style)
+            entry["role"] = role
+            if level is not None:
+                entry["level"] = level
+            entry["exported_as"] = _exported_as(role, level)
+        entries.append(entry)
+
+    rank = {"body": 0, "heading": 1, "bullet_list": 2, "numbered_list": 3}
+    entries.sort(key=lambda e: (
+        rank.get(e.get("role"), 4 if e["type"] == "paragraph" else 5),
+        e.get("level") or 0, e["name"].lower()))
+    if kind == "table":
+        entries.sort(key=lambda e: (e["name"] != "Table Grid",
+                                    e["name"] != "Normal Table",
+                                    e["name"].lower()))
+    total = len(entries)
+    truncated = total > MAX_STYLES_RETURNED
+    if truncated:
+        entries = entries[:MAX_STYLES_RETURNED]
+
+    # Every recommendation is validated against THIS document, so a template
+    # with its own list style is what the model is pointed at.
+    defined = {s.name for s in _iter_styles(doc)}
+    rec = {}
+    for key, name in (("body", "Normal"), ("quote", "Quote"),
+                      ("table", "Table Grid")):
+        if name in defined:
+            rec[key] = name
+    bullet = _best_list_style(doc, "bullet")
+    number = _best_list_style(doc, "number")
+    if bullet:
+        rec["bullet_list"] = bullet
+    if number:
+        rec["numbered_list"] = number
+    if "List Bullet 2" in defined:
+        rec["nested_bullet"] = "List Bullet 2"
+    rec["headings"] = [n for n in ("Title", "Heading 1", "Heading 2",
+                                   "Heading 3") if n in defined]
+
+    return {
+        "kind": kind,
+        "counts": counts,
+        "total_matched": total,
+        "truncated": truncated,
+        "recommended": rec,
+        "styles": entries,
+        "note": ("Pass a 'name' EXACTLY as shown to the 'style' argument of "
+                 "msword_add_paragraph / msword_insert_paragraph / "
+                 "msword_set_paragraph_format, or to msword_add_table for a "
+                 "table style. Names are case-sensitive. A name missing from "
+                 "this list is not defined in this document."),
+    }
 
 
 def tool_list_documents(args):
@@ -2180,16 +2541,42 @@ def tool_set_paragraph_text(args):
         raise ToolError("'text' must be a string")
     paragraph = doc.paragraphs[para_index]
     track = bool(args.get("track_changes", False))
+    # An existing paragraph: never restyle it here. Untracked we may strip a
+    # typed marker and apply a list style; tracked we only warn, because a
+    # style change cannot be recorded as a Word revision.
+    new_text, marker_style, marker_info = _list_marker_guard(
+        doc, new_text, None, bool(args.get("literal_text", False)),
+        "observe" if track else "create")
+    if marker_style and not track:
+        paragraph.style = _resolve_style_name(
+            doc, marker_style, WD_STYLE_TYPE.PARAGRAPH)
 
     if not track:
-        # Silent rewrite: drop all content children (runs, hyperlinks, any
-        # pending revisions), keep the paragraph properties/style.
+        # An untracked rewrite drops every content child, which would silently
+        # discard pending revisions - possibly a REVIEWER's, not just ours -
+        # with no record. Refuse instead, and name the way out.
+        if _has_pending_revisions(paragraph._p):
+            authors = _pending_authors(paragraph._p)
+            raise ToolError(
+                "Refused: paragraph {} contains pending tracked change(s){}. "
+                "An untracked rewrite would delete them with no record. "
+                "Nothing was changed. Accept or reject them first "
+                "(msword_list_changes, then msword_accept_changes / "
+                "msword_reject_changes), or pass track_changes=true to record "
+                "this rewrite as a revision.".format(
+                    para_index,
+                    " by " + ", ".join(authors) if authors else ""))
+        # Silent rewrite: drop all content children (runs, hyperlinks), keeping
+        # the paragraph properties/style.
         for child in list(paragraph._p):
             if child.tag != qn("w:pPr"):
                 paragraph._p.remove(child)
         if new_text:
             paragraph.add_run(new_text)
-        return {"para_index": para_index, "tracked": False, "text": new_text}
+        result = {"para_index": para_index, "tracked": False, "text": new_text}
+        if marker_info:
+            result.update(marker_info)
+        return result
 
     had_pending = _has_pending_revisions(paragraph._p)
     # Diff against the FINAL VIEW - the text the caller was shown and is
@@ -2213,6 +2600,8 @@ def tool_set_paragraph_text(args):
         result["had_pending_changes"] = True
     if report["skipped"]:
         result["skipped"] = report["skipped"]
+    if marker_info:
+        result.update(marker_info)
     return result
 
 
@@ -2230,22 +2619,38 @@ def tool_insert_paragraph(args):
     if position not in ("before", "after"):
         raise ToolError("position must be 'before' or 'after'")
     para_index = args.get("para_index")
+    text, style, info = _list_marker_guard(
+        doc, text, style, bool(args.get("literal_text", False)), "create")
+    if style:
+        style = _resolve_style_name(doc, style, WD_STYLE_TYPE.PARAGRAPH)
 
-    try:
-        if para_index is None:
-            new_p = doc.add_paragraph(text, style=style)
-        else:
-            para_index = int(para_index)
-            if not 0 <= para_index < len(doc.paragraphs):
-                raise ToolError(
-                    "para_index out of range (0..{}).".format(len(doc.paragraphs) - 1)
-                )
-            ref = doc.paragraphs[para_index]
-            new_p = ref.insert_paragraph_before(text, style)
-            if position == "after":
-                ref._p.addnext(new_p._p)  # relocate: after the anchor instead
-    except KeyError:
-        raise ToolError("Unknown paragraph style: '{}'".format(style))
+    inherited = False
+    if para_index is None:
+        new_p = doc.add_paragraph(text, style=style)
+    else:
+        para_index = int(para_index)
+        if not 0 <= para_index < len(doc.paragraphs):
+            raise ToolError(
+                "para_index out of range (0..{}).".format(len(doc.paragraphs) - 1)
+            )
+        ref = doc.paragraphs[para_index]
+        if style is None:
+            # Follow Word's Enter-key rule instead of silently defaulting to
+            # Normal: inserting after a 'List Bullet' item gives another bullet,
+            # after a 'Heading 1' gives Normal. Previously a paragraph inserted
+            # into a list came out as body text.
+            try:
+                nxt = ref.style.next_paragraph_style
+                if nxt is not None and nxt.name != ref.style.name:
+                    style = nxt.name if position == "after" else ref.style.name
+                else:
+                    style = ref.style.name
+                inherited = True
+            except Exception:
+                style = None
+        new_p = ref.insert_paragraph_before(text, style)
+        if position == "after":
+            ref._p.addnext(new_p._p)  # relocate: after the anchor instead
 
     track = bool(args.get("track_changes", False))
     author = args.get("author") or AUTHOR
@@ -2259,7 +2664,12 @@ def tool_insert_paragraph(args):
     new_index = next(
         i for i, p in enumerate(doc.paragraphs) if p._p is new_p._p
     )
-    result = {"para_index": new_index, "text": text, "tracked": track}
+    result = {"para_index": new_index, "text": text, "tracked": track,
+              "style": style or "Normal"}
+    if inherited:
+        result["style_inherited_from_anchor"] = True
+    if info:
+        result.update(info)
     if track:
         result["author"] = author
         result["date"] = date
@@ -2316,14 +2726,18 @@ def tool_add_paragraph(args):
     doc = session["doc"]
     text = args.get("text", "")
     style = args.get("style")
-    try:
-        if style:
-            doc.add_paragraph(text, style=style)
-        else:
-            doc.add_paragraph(text)
-    except KeyError:
-        raise ToolError("Unknown paragraph style: '{}'".format(style))
-    return {"para_index": len(doc.paragraphs) - 1, "text": text}
+    text, style, info = _list_marker_guard(
+        doc, text, style, bool(args.get("literal_text", False)), "create")
+    if style:
+        style = _resolve_style_name(doc, style, WD_STYLE_TYPE.PARAGRAPH)
+        doc.add_paragraph(text, style=style)
+    else:
+        doc.add_paragraph(text)
+    result = {"para_index": len(doc.paragraphs) - 1, "text": text,
+              "style": style or "Normal"}
+    if info:
+        result.update(info)
+    return result
 
 
 def tool_add_heading(args):
@@ -2362,18 +2776,27 @@ def tool_add_table(args):
             raise ToolError("rows and cols must both be >= 1")
 
     table = doc.add_table(rows=rows, cols=cols)
+    # An unstyled Word table is borderless, which is almost never what was
+    # wanted. Default to Table Grid when the document defines it; pass
+    # style="Normal Table" explicitly for a borderless one.
+    defaulted = False
+    if not style and "Table Grid" in {s.name for s in _iter_styles(doc)}:
+        style = "Table Grid"
+        defaulted = True
     if style:
-        try:
-            table.style = style
-        except KeyError:
-            raise ToolError("Unknown table style: '{}'".format(style))
+        style = _resolve_style_name(doc, style, WD_STYLE_TYPE.TABLE)
+        table.style = style
     if data is not None:
         for r_i, row in enumerate(data):
             for c_i in range(cols):
                 value = row[c_i] if c_i < len(row) else ""
                 table.rows[r_i].cells[c_i].text = "" if value is None else str(value)
 
-    return {"table_index": len(doc.tables) - 1, "rows": rows, "cols": cols}
+    result = {"table_index": len(doc.tables) - 1, "rows": rows, "cols": cols,
+              "style": style}
+    if defaulted:
+        result["style_defaulted"] = True
+    return result
 
 
 def tool_get_tables(args):
@@ -2560,11 +2983,9 @@ def tool_set_paragraph_format(args):
         applied["alignment"] = key
 
     if "style" in args and args["style"] is not None:
-        try:
-            paragraph.style = args["style"]
-        except KeyError:
-            raise ToolError("Unknown paragraph style: '{}'".format(args["style"]))
-        applied["style"] = args["style"]
+        resolved = _resolve_style_name(doc, args["style"], WD_STYLE_TYPE.PARAGRAPH)
+        paragraph.style = resolved
+        applied["style"] = resolved
 
     if not applied:
         raise ToolError(
@@ -2673,6 +3094,19 @@ def tool_reject_all_changes(args):
 # =============================================================================
 # TOOL REGISTRY  (name -> (handler, JSON-Schema inputSchema, description))
 # =============================================================================
+# Shared style guidance, so the wording cannot drift between tools.
+_STYLE_HELP = (
+    "Word paragraph style NAME, spelled as msword_list_styles reports it. Use "
+    "'List Bullet' for a bulleted item and 'List Number' for a numbered item - "
+    "one call per item, and do NOT type '- ', '* ', • or '1. ' into 'text'. "
+    "Also usually available: 'Normal' (body text), 'Quote', 'Intense Quote', "
+    "'Title', 'Heading 1'..'Heading 9', and 'List Bullet 2'/'List Bullet 3' / "
+    "'List Number 2'/'List Number 3' for nested list levels. A template may "
+    "define its own styles - call msword_list_styles to see them. An unknown "
+    "name is rejected with the closest matching names listed."
+)
+
+
 TOOLS = [
     {
         "name": "msword_open",
@@ -2695,6 +3129,20 @@ TOOLS = [
             "properties": {
                 "query": {"type": "string", "description": "Optional case-insensitive filename substring filter, e.g. 'policy'."},
             },
+        },
+    },
+    {
+        "name": "msword_list_styles",
+        "description": "List the paragraph/table/character STYLES this document actually defines, so you can apply real Word styles instead of typing markup by hand. Each entry gives the exact 'name' to pass as a 'style' argument, whether it is built-in or a custom template style, its 'role' (body / heading / bullet_list / numbered_list) and 'exported_as' - what the Markdown knowledge-base export turns it into. The 'recommended' block names the best style in THIS document for body text, bulleted lists, numbered lists, headings and tables - use those when the user just says 'bullet points'. Call this BEFORE styling a document you did not create (a corporate template often defines its own list/heading styles), and whenever a style name has been rejected. kind defaults to 'paragraph'.",
+        "handler": tool_list_styles,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string"},
+                "kind": {"type": "string", "enum": ["paragraph", "table", "character", "all"], "default": "paragraph"},
+                "query": {"type": "string", "description": "Optional case-insensitive substring filter on the style name."},
+            },
+            "required": ["session_id"],
         },
     },
     {
@@ -2824,14 +3272,15 @@ TOOLS = [
     },
     {
         "name": "msword_add_paragraph",
-        "description": "Append a paragraph to the end of the document. Optional paragraph style name.",
+        "description": "Append ONE paragraph to the end of the document, with an optional Word paragraph style. Use real Word styles, never hand-typed markup: a bulleted item is style 'List Bullet' with the marker left OUT of 'text' (call once per item), a numbered item is 'List Number', body text is 'Normal' (the default). Text that starts with a typed marker ('- ', '* ', '1. ') is auto-corrected - the marker is stripped and the matching list style applied - and the result says so in a 'warning'; pass literal_text=true when the text genuinely must start that way (e.g. '- 5 degrees'). This matters beyond appearance: the Markdown/knowledge-base export is driven entirely by paragraph STYLE, so a hand-typed '- ' is exported as a plain paragraph and the list structure is lost. Call msword_list_styles to see what this document defines.",
         "handler": tool_add_paragraph,
         "inputSchema": {
             "type": "object",
             "properties": {
                 "session_id": {"type": "string"},
-                "text": {"type": "string", "default": ""},
-                "style": {"type": "string", "description": "Optional style, e.g. 'Normal', 'Quote'."},
+                "text": {"type": "string", "default": "", "description": "The paragraph's text. For a list item, the item text ONLY - no '- ', '* ' or '1. ' prefix, and no embedded newlines (add one paragraph per item)."},
+                "style": {"type": "string", "description": _STYLE_HELP},
+                "literal_text": {"type": "boolean", "default": False, "description": "Set true only when 'text' must keep a leading '-', '*' or '1.' verbatim (e.g. '- 5 degrees'). Disables the list-marker auto-correction."},
             },
             "required": ["session_id"],
         },
@@ -3947,6 +4396,93 @@ def run_check():
         assert "INSIDE-BOX" not in _final_para_text(tp._p), \
             "text-box content leaked into the paragraph's final view"
         print("[check] edits over pending revisions: PASS")
+
+        # --- Native styles: discovery, fake-bullet guard, real list export ---
+        spath = os.path.join(tmpdir, "styles.docx")
+        docx.Document().save(spath)
+        s = tool_open({"path": spath})["session_id"]
+
+        st = tool_list_styles({"session_id": s})
+        snames = {e["name"] for e in st["styles"]}
+        assert {"Normal", "Heading 1", "List Bullet", "List Number",
+                "Quote"} <= snames, "style discovery missing built-ins"
+        byname = {e["name"]: e for e in st["styles"]}
+        assert byname["List Bullet"]["role"] == "bullet_list"
+        assert byname["Heading 2"]["role"] == "heading" and \
+            byname["Heading 2"]["level"] == 2
+        # 'List Paragraph' has no numbering: it must NOT be claimed as a list,
+        # or every indented note in a corporate document becomes a bullet.
+        assert byname["List Paragraph"]["role"] != "bullet_list"
+        assert st["recommended"]["bullet_list"] == "List Bullet"
+        assert st["recommended"]["table"] == "Table Grid"
+        assert "Heading 7" in snames, "hidden built-in styles must not be filtered"
+
+        # The guard: a typed marker is corrected, and reported.
+        r = tool_add_paragraph({"session_id": s, "text": "- First item"})
+        assert r["text"] == "First item" and r["style"] == "List Bullet" \
+            and r.get("list_marker_fixed") is True, r
+        r = tool_add_paragraph({"session_id": s, "text": "1. One"})
+        assert r["text"] == "One" and r["style"] == "List Number", r
+        # ...and text that only LOOKS like a marker is left exactly alone.
+        for literal in ("-5 degrees C", "---", "1.5 million", "e.g. this",
+                        "No. 5 is fine", "A. B. Smith wrote it"):
+            r = tool_add_paragraph({"session_id": s, "text": literal})
+            assert r["text"] == literal and "list_marker_fixed" not in r, \
+                "mangled legitimate text: {!r}".format(literal)
+        r = tool_add_paragraph({"session_id": s, "text": "— Winston Churchill"})
+        assert "list_marker_fixed" not in r and "warning" in r, \
+            "em-dash attribution should warn, not rewrite"
+        r = tool_add_paragraph({"session_id": s, "text": "- 5 degrees",
+                                "literal_text": True})
+        assert r["text"] == "- 5 degrees" and "list_marker_fixed" not in r
+        try:
+            tool_add_paragraph({"session_id": s, "text": "- a\n- b\n- c"})
+            raise AssertionError("expected a multi-item list refusal")
+        except ToolError as e:
+            assert "once per item" in str(e)
+
+        # Style names resolve forgivingly, and a bad one is actionable.
+        assert tool_add_paragraph({"session_id": s, "text": "x",
+                                   "style": "bullets"})["style"] == "List Bullet"
+        assert tool_add_paragraph({"session_id": s, "text": "y",
+                                   "style": "list bullet"})["style"] == "List Bullet"
+        try:
+            tool_add_paragraph({"session_id": s, "text": "z", "style": "Bullet Listttt"})
+            raise AssertionError("expected an unknown-style error")
+        except ToolError as e:
+            assert "List Bullet" in str(e) and "msword_list_styles" in str(e), \
+                "unknown-style error is not actionable: {}".format(e)
+
+        # A table gets visible borders by default; opting out still works.
+        t = tool_add_table({"session_id": s, "rows": 2, "cols": 2})
+        assert t["style"] == "Table Grid" and t.get("style_defaulted") is True
+        t = tool_add_table({"session_id": s, "rows": 2, "cols": 2,
+                            "style": "Normal Table"})
+        assert t["style"] == "Normal Table" and "style_defaulted" not in t
+
+        # insert_paragraph follows Word's Enter-key rule instead of Normal.
+        bullet_idx = next(i for i, p in enumerate(SESSIONS[s]["doc"].paragraphs)
+                          if p.style.name == "List Bullet")
+        ins = tool_insert_paragraph({"session_id": s, "para_index": bullet_idx,
+                                     "position": "after", "text": "Bravo"})
+        assert ins["style"] == "List Bullet" and \
+            ins.get("style_inherited_from_anchor") is True, ins
+
+        # The payoff: real styles export as a real Markdown list (tight-joined),
+        # which is what makes the RAG mirror keep the structure.
+        lpath = os.path.join(tmpdir, "lists.docx")
+        ld = docx.Document()
+        ld.add_paragraph("Alpha", style="List Bullet")
+        ld.add_paragraph("Bravo", style="List Bullet")
+        ld.add_paragraph("- Charlie")          # hand-typed: NOT a list
+        ld.save(lpath)
+        md = _render_markdown(docx.Document(lpath))
+        assert "- Alpha\n- Bravo" in md, \
+            "styled bullets did not export as a tight Markdown list:\n{}".format(md)
+        assert "\n\n- Charlie" in md or md.endswith("- Charlie"), \
+            "hand-typed marker unexpectedly joined the list"
+        tool_close({"session_id": s})
+        print("[check] native styles / list guard: PASS")
     except Exception as e:
         ok = False
         print("[check] round-trip: FAIL -> {}".format(e))

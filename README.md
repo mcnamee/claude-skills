@@ -19,7 +19,7 @@ for the bump rules.
 | `jira.py` | 1.1.0 | _none_ | standard library only (read-only, Jira Data Center v2 REST API) |
 | `knowledge-base.py` | 2.0.0 | `pip install chromadb` | true RAG: local ChromaDB vector index + your embeddings API (HTTP is stdlib `urllib`, no `requests`) |
 | `ms-excel.py` | 2.1.0 | _none_ | standard library only (parses .xlsx as a zip of XML) |
-| `ms-word.py` | 2.3.0 | `pip install python-docx` | also pulls in `lxml` (compiled) and `typing_extensions` |
+| `ms-word.py` | 3.0.0 | `pip install python-docx` | also pulls in `lxml` (compiled) and `typing_extensions` |
 | `ms-outlook.py` | 2.0.0 | `pip install pywin32` | Windows only (COM automation of classic Outlook) |
 | `pdf-to-md.py` | 4.0.0 | `pip install pymupdf pymupdf4llm` | OCR of scanned PDFs additionally requires Tesseract installed on the machine (not a pip package) |
 
@@ -401,6 +401,23 @@ rather than guessing. Use **`msword_list_documents`** (optionally with a
 `query` substring) to list the `.docx` files under the root — name, relative
 path, size and modified time — when you're unsure of the exact name.
 
+**Native Word styles.** Structure lives in paragraph *styles*, not typed
+characters, so the tools steer towards real ones: `msword_list_styles` reports
+every style a document actually defines (with each one's role and what the
+Markdown export turns it into, plus a `recommended` block naming the right
+style for *this* template), style names resolve forgivingly (case-insensitive,
+`ListBullet`, or an alias like `bullets`) and an unknown name comes back with
+the closest real matches instead of a dead end. Text typed as a fake list item
+(`"- First point"`) is auto-corrected to a real `List Bullet` paragraph and the
+correction is reported in a `warning` — pass `literal_text: true` for text that
+must keep a leading marker (`- 5 degrees`), and note a multi-item block in one
+call is refused (add one paragraph per item). `msword_insert_paragraph` with no
+`style` now follows Word's Enter-key rule instead of defaulting to Normal, and
+`msword_add_table` defaults to `Table Grid` so tables have visible borders.
+This matters beyond appearance: the knowledge-base export below is **entirely
+style-driven**, so a hand-typed hyphen is mirrored as a plain paragraph and the
+list structure is lost.
+
 **Building a RAG knowledge base.** Point `--kb-dir` at the same folder your
 `knowledge-base.py` server indexes. Each time a `.docx` is opened, a Markdown
 copy is dropped there — headings become `#`/`##`, `List Bullet`/`List Number`
@@ -697,6 +714,9 @@ one or more of the tools the server exposes.
 20. "Reject just the change that deleted the warranty sentence." → `msword_list_changes` + `msword_reject_changes` with that change id
 21. "Accept all the tracked changes in this document now that legal has signed off." → `msword_accept_all_changes`
 22. "Reject all the tracked changes and revert this document to its original wording." → `msword_reject_all_changes`
+24. "What styles does this template actually have — I want the corporate bullet style, not a generic one." → `msword_list_styles` (exact names, which are built-in vs from the template, and which the Markdown export treats as lists/headings)
+25. "Add these five points as proper Word bullet points, not hyphens." → `msword_add_paragraph` once per point with `style: "List Bullet"` (typing "- " is auto-corrected and flagged in a `warning`)
+26. "Turn that hand-typed hyphen list into real Word bullets." → `msword_get_content` (`mode: "structured"`) + `msword_set_paragraph_text` + `msword_set_paragraph_format` with `style: "List Bullet"`
 
 ### pdf-to-md.py
 

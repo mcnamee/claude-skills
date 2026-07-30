@@ -1,6 +1,6 @@
 ---
 name: ms-word
-description: Read, edit and create Word .docx files via the msword MCP server, including Word tracked changes, editing tables (set cells, add/delete rows), and creating documents from a template — including filling out an example template (placeholders + example tables). Use when the user asks to open/summarise/search a Word document, edit or redline one with tracked changes, accept/reject revisions, fill in or edit tables, or draft a new .docx (optionally from a template).
+description: Read, edit and create Word .docx files via the msword MCP server, including Word tracked changes, native Word styles (real bullet/numbered lists and headings), editing tables (set cells, add/delete rows), and creating documents from a template — including filling out an example template (placeholders + example tables). Use when the user asks to open/summarise/search a Word document, edit or redline one with tracked changes, accept/reject revisions, add bullet points or headings, fill in or edit tables, or draft a new .docx (optionally from a template).
 ---
 
 # Word (via the `msword-py` MCP server)
@@ -22,6 +22,40 @@ verify with `python ms-word.py --check`.
    `msword_add_heading` / `msword_add_paragraph` / `msword_add_table`.
 5. Persist with `msword_save` (omit `path` to save in place).
 
+## Hard rule: use native Word styles, never typed markup
+
+Word documents carry structure in paragraph **styles**, not in characters.
+Type the text only, and let the style supply the bullet, the number and the
+heading.
+
+- **Never** type `- `, `* `, `• ` or `1. ` at the start of a paragraph's
+  `text`. Pass `style: "List Bullet"` or `style: "List Number"` instead,
+  **one call per item** (no newlines inside one paragraph).
+- Headings are `msword_add_heading` (`level` 0 = Title, 1–9 = Heading 1–9),
+  never bold body text. Nested list levels are `List Bullet 2`/`3`,
+  `List Number 2`/`3`. Other built-ins: `Normal`, `Quote`, `Intense Quote`.
+- **Discover before you style** a document you did not create:
+  `msword_list_styles` lists every style the document actually defines, flags
+  which are bullets/numbers/headings, and its `recommended` block names the
+  right style for *this* template — which may be something like
+  `DSCO Bullet`, not `List Bullet`. Call it whenever a style name is rejected;
+  the error lists the nearest real names.
+- The server catches typed markers — it strips the `- ` and applies the list
+  style, and says so in the result's `warning`. Don't rely on it: it can't fix
+  a document with no list style, it never restyles inside table cells or during
+  tracked changes, and a multi-item block in one call is refused. Pass
+  `literal_text: true` for text that really must start with a marker
+  (`- 5 degrees`).
+- `msword_insert_paragraph` with no `style` now follows Word's Enter-key rule
+  (after a `List Bullet` item you get another one); pass `style` to override.
+- Tables get `Table Grid` (visible borders) by default; pass
+  `style: "Normal Table"` for a borderless one.
+- **Why it matters beyond looks:** the Markdown/knowledge-base export is driven
+  entirely by style, so a hand-typed `- item` is mirrored into the RAG index as
+  an ordinary paragraph and the list structure is lost — along with Word's
+  navigation pane, any table of contents, and the ability to restyle from the
+  template.
+
 ## Tracked changes (redlining)
 
 - Pass `track_changes=true` on the editing tools to record edits as real
@@ -31,7 +65,15 @@ verify with `python ms-word.py --check`.
 - Review flow: `msword_list_changes` → `msword_accept_changes` /
   `msword_reject_changes` (by id), or `msword_accept_all_changes` /
   `msword_reject_all_changes`.
-- While changes are pending, content/search show the final "No Markup" view.
+- While changes are pending, content/search show the final "No Markup" view —
+  and editing tools now work against that same view, so you can redline a
+  paragraph that already has pending changes (including re-editing your own
+  earlier insertion) and get the revision you asked for.
+- An **untracked** `msword_set_paragraph_text` on a paragraph that has pending
+  changes is refused, because it would silently destroy them — possibly a
+  reviewer's. Accept/reject first, or pass `track_changes=true`.
+- Style changes are never tracked revisions (Word formatting-only revisions
+  aren't supported), so restyle before redlining, not during.
 
 ## Creating documents
 
