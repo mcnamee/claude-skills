@@ -590,10 +590,32 @@ def _all_editable_paragraphs(doc):
     plus paragraphs inside every table cell (recursively for nested tables).
     Order is not guaranteed to be strict document order, which is fine because
     replace only needs to visit each paragraph once.
+
+    Each underlying <w:p> is yielded exactly ONCE. python-docx's `row.cells`
+    returns one entry per GRID COLUMN, so a merged cell comes back several
+    times (horizontally AND vertically merged); without this guard the same
+    paragraph was edited once per spanned column, which multiplied replacements
+    (one merged cell could turn "team" into "team members members members...").
     """
+    # Maps id(element) -> the element itself. Holding the element is REQUIRED:
+    # CPython recycles id() once an object is garbage collected, so a bare set
+    # of ids would mis-deduplicate as lxml proxies are freed mid-iteration.
+    seen_p = {}
+    seen_tc = {}
+
+    def _fresh(store, el):
+        key = id(el)
+        if key in store:
+            return False
+        store[key] = el
+        return True
+
     def _cell_paragraphs(cell):
+        if not _fresh(seen_tc, cell._tc):
+            return          # merged cell already walked via another grid column
         for p in cell.paragraphs:
-            yield p
+            if _fresh(seen_p, p._p):
+                yield p
         for tbl in cell.tables:  # nested tables
             for row in tbl.rows:
                 for c in row.cells:
@@ -601,12 +623,50 @@ def _all_editable_paragraphs(doc):
                         yield p
 
     for p in doc.paragraphs:
-        yield p
+        if _fresh(seen_p, p._p):
+            yield p
     for tbl in doc.tables:
         for row in tbl.rows:
             for cell in row.cells:
                 for p in _cell_paragraphs(cell):
                     yield p
+
+
+def _apply_one_plain_replacement(paragraph, idx, find_len, replace):
+    """
+    Replace the `find_len` characters at absolute offset `idx` (over the
+    paragraph's concatenated top-level run text) with `replace`.
+
+    Only runs that actually OVERLAP the match are rewritten; every other run is
+    left completely untouched. That matters because assigning `run.text`
+    rebuilds the run's content, which silently discards anything that is not
+    text - images (w:drawing), footnote/comment references, field characters,
+    symbols. The old code assigned to every run in the paragraph and destroyed
+    them; skipping non-overlapping runs is what preserves them.
+    """
+    runs = paragraph.runs
+    if not runs:
+        return
+    end = idx + find_len
+    acc = 0
+    for run in runs:
+        rtext = run.text
+        rstart = acc
+        rend = rstart + len(rtext)
+        acc = rend
+        if not (rstart < end and rend > idx):
+            continue  # untouched run: its element and contents survive intact
+        # Kept slice to the LEFT of the match within this run.
+        left = rtext[: max(0, min(rend, idx) - rstart)] if rstart < idx else ""
+        # Kept slice to the RIGHT of the match within this run.
+        right = rtext[max(0, end - rstart):] if rend > end else ""
+        if rstart <= idx < rend:
+            # This run contains the match start -> insertion happens here, so
+            # the replacement inherits this run's formatting (the documented
+            # trade-off for cross-run matches).
+            run.text = left + replace + right
+        else:
+            run.text = left + right
 
 
 def _replace_in_paragraph(paragraph, find, replace, remaining):
@@ -617,48 +677,31 @@ def _replace_in_paragraph(paragraph, find, replace, remaining):
     `remaining` caps how many replacements are still allowed (None = no cap).
     Returns the number of replacements made in this paragraph.
 
-    Method: on each pass, concatenate all run texts, locate the first match in
-    the combined text, then rewrite each run so the matched characters are
-    removed from the runs they fell in and the replacement text is inserted
-    into the run where the match STARTS. That start run's formatting is what
-    the replacement inherits (the documented trade-off for cross-run matches).
+    Matches are located ONCE against the paragraph's current text and then
+    applied RIGHT-TO-LEFT, mirroring _tracked_replace_in_paragraph. This is
+    what makes a replacement that contains its own search text safe: the old
+    implementation re-read the paragraph on every pass and re-scanned its own
+    output, so find="team" / replace="team members" matched forever (with the
+    documented default of no `count`, the server hung) or multiplied the word.
+    Applying right-to-left keeps every earlier offset valid, because an edit at
+    a later offset never moves the characters before it.
     """
-    made = 0
+    if not find:
+        return 0
+    full = "".join(r.text for r in paragraph.runs)
+    matches = []
+    start = 0
     while True:
-        if remaining is not None and made >= remaining:
+        if remaining is not None and len(matches) >= remaining:
             break
-        runs = paragraph.runs
-        if not runs:
-            break
-        texts = [r.text for r in runs]
-        full = "".join(texts)
-        idx = full.find(find)
+        idx = full.find(find, start)
         if idx == -1:
             break
-        end = idx + len(find)
-
-        # Absolute start offset of each run within the combined text.
-        starts = []
-        acc = 0
-        for t in texts:
-            starts.append(acc)
-            acc += len(t)
-
-        for i, run in enumerate(runs):
-            rstart = starts[i]
-            rtext = texts[i]
-            rend = rstart + len(rtext)
-            # Kept slice to the LEFT of the match within this run.
-            left = rtext[: max(0, min(rend, idx) - rstart)] if rstart < idx else ""
-            # Kept slice to the RIGHT of the match within this run.
-            right = rtext[max(0, end - rstart):] if rend > end else ""
-            if rstart <= idx < rend:
-                # This run contains the match start -> insertion happens here.
-                run.text = left + replace + right
-            else:
-                run.text = left + right
-        made += 1
-    return made
+        matches.append(idx)
+        start = idx + len(find)   # non-overlapping, and never re-scans output
+    for idx in reversed(matches):
+        _apply_one_plain_replacement(paragraph, idx, len(find), replace)
+    return len(matches)
 
 
 # -----------------------------------------------------------------------------
@@ -856,6 +899,11 @@ def _para_mark_rpr(p_el):
     return rPr
 
 
+# Order CT_ParaRPr requires for the revision markers that may appear on a
+# paragraph mark, ahead of the ordinary run properties.
+_PARA_MARK_ORDER = ("w:ins", "w:del", "w:moveFrom", "w:moveTo")
+
+
 def _mark_paragraph_mark(p_el, kind, rev_id, author, date):
     """
     Mark the paragraph mark (the pilcrow) as a tracked insertion or deletion:
@@ -863,10 +911,30 @@ def _mark_paragraph_mark(p_el, kind, rev_id, author, date):
     whole-paragraph insert/delete, and it is what makes accept/reject remove
     or restore the paragraph itself rather than just its text.
     `kind` is "w:ins" or "w:del".
+
+    IDEMPOTENT: CT_ParaRPr permits at most one w:ins and one w:del, in that
+    order. Marking a paragraph twice previously produced two <w:del> markers in
+    one <w:rPr> - invalid OOXML that made accept-all crash part-way through and
+    left the document half-processed. If the requested marker already exists it
+    is returned unchanged; otherwise it is inserted at its schema position.
     """
+    rPr = _para_mark_rpr(p_el)
+    existing = rPr.find(qn(kind))
+    if existing is not None:
+        return existing                    # already marked this way
     marker = OxmlElement(kind)
     _set_rev_attrs(marker, rev_id, author, date)
-    _para_mark_rpr(p_el).insert(0, marker)  # ins/del come first in CT_ParaRPr
+    i = _PARA_MARK_ORDER.index(kind) if kind in _PARA_MARK_ORDER else 0
+    # Place before the first marker that must follow this one...
+    for later in _PARA_MARK_ORDER[i + 1:]:
+        sib = rPr.find(qn(later))
+        if sib is not None:
+            sib.addprevious(marker)
+            return marker
+    # ...otherwise after any markers that must precede it, before w:rStyle etc.
+    pos = sum(1 for earlier in _PARA_MARK_ORDER[:i]
+              if rPr.find(qn(earlier)) is not None)
+    rPr.insert(pos, marker)
     return marker
 
 
@@ -1016,6 +1084,27 @@ def _is_mark_revision(el):
             and parent.getparent().tag == qn("w:pPr"))
 
 
+def _prune_empty_revisions(root):
+    """
+    Drop content <w:ins>/<w:del> elements that no longer contain any run.
+
+    Accepting or rejecting one half of a nested revision (or retracting an
+    insertion) can leave an empty shell behind, which still counted towards
+    pending_changes and appeared in msword_list_changes as a change with no
+    text. Paragraph-mark markers are deliberately kept: an empty <w:ins>/<w:del>
+    inside w:pPr/w:rPr is exactly what marks the pilcrow.
+    Processed innermost-first so emptying an inner shell can empty its parent.
+    """
+    r_tag = qn("w:r")
+    for el in reversed(list(root.iter(qn("w:ins"), qn("w:del")))):
+        if _is_mark_revision(el):
+            continue
+        if el.getparent() is None:
+            continue
+        if el.find(".//" + r_tag) is None:
+            el.getparent().remove(el)
+
+
 def _ancestor_paragraph(el):
     """The w:p element containing `el`, or None."""
     p_tag = qn("w:p")
@@ -1063,6 +1152,12 @@ def _merge_paragraph_with_next(p_el):
     one. Falls back gracefully when there is no following paragraph.
     """
     pPr_tag, p_tag = qn("w:pPr"), qn("w:p")
+    if p_el.getparent() is None:
+        # Already merged/removed by an earlier revision in this same pass.
+        # Without this guard a second paragraph-mark marker re-entered the
+        # merge on a detached element and raised TypeError mid-way through
+        # accept-all, leaving the document half-processed.
+        return "detached"
     nxt = p_el.getnext()
     if nxt is not None and nxt.tag == p_tag:
         idx = 1 if (len(nxt) and nxt[0].tag == pPr_tag) else 0
@@ -1149,8 +1244,15 @@ def _apply_revisions(doc, accept, ids=None):
         (marks if _is_mark_revision(el) else content).append(el)
     counts = {"insertion": 0, "deletion": 0}
     apply_fn = _accept_revision if accept else _reject_revision
+    root = doc.element
     for el in content + marks:
+        # An earlier revision in this pass may have detached this element (a
+        # paragraph merge takes its whole subtree with it). Applying a revision
+        # that is no longer in the tree is meaningless and used to crash.
+        if el.getparent() is None or el.getroottree().getroot() is not root:
+            continue
         counts[apply_fn(el)] += 1
+    _prune_empty_revisions(root)
     missing = sorted(wanted - found) if wanted is not None else []
     return counts, missing
 
