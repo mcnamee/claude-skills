@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r"""
-ms-word.py (v2.3.0) - A single-file MCP (Model Context Protocol) stdio server
+ms-word.py (v3.0.0) - A single-file MCP (Model Context Protocol) stdio server
 that gives an AI agent read/search/edit/generate access to Word .docx files.
 
 It follows a simple open -> edit -> save workflow (msword_open ... msword_save),
@@ -187,7 +187,7 @@ failed transfer" rule):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "2.3.0"
+__version__ = "3.0.0"
 
 # =============================================================================
 # CONFIGURATION  (all user-editable settings live here, nothing scattered below)
@@ -251,6 +251,14 @@ FUZZY_AMBIGUITY_DELTA = 0.05
 # launch with:  --author "Matt"  in Continue's args: block. The date on each
 # change is always the current date, computed at edit time.
 TRACKED_CHANGE_AUTHOR = "AI Assistant (Continue)"
+
+# When a tracked edit deletes text that is itself a PENDING INSERTION BY THE
+# SAME AUTHOR, withdraw that insertion outright (Word's behaviour when you
+# delete your own not-yet-accepted text) instead of nesting a <w:del> inside
+# the <w:ins>. Both shapes produce the identical document under accept-all and
+# reject-all; this only changes what the review pane shows. Set False if you
+# would rather keep a fully explicit audit trail of every withdrawn suggestion.
+SELF_RETRACT_OWN_INSERTIONS = True
 # =============================================================================
 
 import sys
@@ -971,73 +979,225 @@ def _replace_element(old_el, new_els):
     parent.remove(old_el)
 
 
+class _CannotEdit(Exception):
+    """Raised when an edit boundary falls somewhere that cannot be split."""
+
+
+def _split_run(r_el, k):
+    """
+    Split `r_el` after the first `k` characters of its text-equivalent, in its
+    OWN parent (so a run inside <w:ins> yields two runs inside that same
+    <w:ins>). The left half keeps the original element - preserving identity,
+    rPr and rsid attributes - and the right half is returned.
+    """
+    if not _is_splittable_run(r_el):
+        raise _CannotEdit(
+            "an edit boundary falls inside a run carrying an image, field or "
+            "reference, which cannot be divided")
+    right = OxmlElement("w:r")
+    rpr = r_el.find(qn("w:rPr"))
+    if rpr is not None:
+        right.append(copy.deepcopy(rpr))
+    seen = 0
+    moving = []
+    for child in list(r_el):
+        if child.tag == qn("w:rPr"):
+            continue
+        piece = _run_text_equiv_child(child)
+        n = len(piece)
+        if seen >= k:
+            moving.append(child)                     # wholly after the cut
+        elif seen + n > k:                           # straddles the cut
+            cut = k - seen
+            if child.tag in (qn("w:t"), qn("w:delText")):
+                # OxmlElement wants a prefixed name ("w:t"), not a Clark tag.
+                tail = OxmlElement(
+                    "w:t" if child.tag == qn("w:t") else "w:delText")
+                tail.set(_XML_SPACE, "preserve")
+                tail.text = (child.text or "")[cut:]
+                child.text = (child.text or "")[:cut]
+                child.set(_XML_SPACE, "preserve")
+                moving.append(tail)
+            else:
+                moving.append(child)                 # atomic (tab/br): goes right
+        seen += n
+    for child in moving:
+        if child.getparent() is r_el:
+            r_el.remove(child)
+        right.append(child)
+    r_el.addnext(right)
+    return right
+
+
+def _run_text_equiv_child(child):
+    """The characters one direct child of a <w:r> contributes."""
+    tag = child.tag
+    if tag == qn("w:t") or tag == qn("w:delText"):
+        return child.text or ""
+    if tag == qn("w:tab") or tag == qn("w:ptab"):
+        return "\t"
+    if tag == qn("w:br") or tag == qn("w:cr"):
+        return "\n"
+    if tag == qn("w:noBreakHyphen"):
+        return "-"
+    return ""
+
+
+def _atomise(p_el, cuts):
+    """
+    Split runs so that no offset in `cuts` falls strictly INSIDE a segment.
+    Afterwards every deletion boundary and insertion anchor coincides exactly
+    with a segment boundary, so deletion becomes a whole-segment operation and
+    no partial-run logic is needed anywhere else. Returns a fresh segment map.
+    """
+    for cut in sorted(cuts, reverse=True):
+        for seg in reversed(_final_view_segments(p_el)):
+            if seg.visible and seg.start < cut < seg.end:
+                _split_run(seg.r, cut - seg.start)
+                break
+    return _final_view_segments(p_el)
+
+
+def _retract_or_strike(seg, author, date, next_id):
+    """
+    Record `seg`'s run as deleted. If the run is itself a PENDING INSERTION by
+    the same author, the insertion is withdrawn outright (Word's behaviour when
+    you delete your own un-accepted text) instead of nesting a <w:del> inside
+    the <w:ins>. Otherwise the run is wrapped in <w:del> in place - which, for
+    another author's pending insertion, produces the canonical nested
+    <w:ins><w:del><w:r><w:delText> that Word writes.
+    Both shapes yield the identical document under accept-all and reject-all.
+    """
+    ins = seg.innermost_ins()
+    if ins is not None and SELF_RETRACT_OWN_INSERTIONS and \
+            ins.get(qn("w:author")) == author:
+        parent = seg.r.getparent()
+        if parent is not None:
+            parent.remove(seg.r)
+        return "retracted"
+    _wrap_run_in_del(seg.r, next_id(), author, date)
+    return "struck"
+
+
+def _splice_insertion(seg, side, text, author, date, next_id):
+    """
+    Insert `text` as a tracked insertion immediately before/after `seg`'s run.
+
+    Never nests <w:ins> inside <w:ins>: when the anchor already sits inside a
+    pending insertion by the SAME author and date, the text simply joins that
+    insertion as a plain run; otherwise a sibling <w:ins> is placed next to the
+    anchor. Hyperlinks keep appended text outside the link.
+    """
+    rpr = seg.r.find(qn("w:rPr"))
+    anchor = seg.r
+    ins = seg.innermost_ins()
+    if ins is not None and ins.get(qn("w:author")) == author and \
+            ins.get(qn("w:date")) == date:
+        # Growing our own pending insertion: a plain run inside it.
+        new_el = _normal_run_el(rpr, text)
+    else:
+        new_el = _ins_el(rpr, text, next_id(), author, date)
+        if ins is not None:
+            anchor = ins          # sibling of the whole <w:ins>, never inside
+        elif seg.parent is not None and seg.parent.tag == qn("w:hyperlink") \
+                and side == "after" and seg.r.getnext() is None:
+            anchor = seg.parent   # appended text must not join the hyperlink
+    if side == "before":
+        anchor.addprevious(new_el)
+    else:
+        anchor.addnext(new_el)
+
+
 def _apply_tracked_edit(paragraph, del_spans, insertions, author, date, next_id):
     """
-    Rewrite a paragraph's top-level runs so that the characters covered by
-    `del_spans` (absolute offsets over the concatenated top-level run text)
-    become tracked deletions, and each `insertions[pos]` becomes a tracked
-    insertion anchored before the character at `pos` (pos == total length
-    appends at the end). Characters outside `del_spans` are re-emitted as
-    plain runs carrying their ORIGINAL run formatting; runs that need no
-    change at all are left completely untouched.
+    Record a tracked edit on `paragraph`.
+
+    `del_spans`  - [(start, end)] character offsets into the paragraph's FINAL
+                   VIEW (_final_para_text) - i.e. the text the model was shown.
+    `insertions` - {final_view_offset: text}, anchored immediately BEFORE the
+                   character at that offset; offset == len(final view) appends.
+
+    Offsets are FINAL-VIEW offsets, not top-level-run offsets. That is the
+    whole point: the previous implementation addressed characters by
+    paragraph.runs, which cannot see text inside a pending <w:ins>, so a second
+    edit to an already-revised paragraph mis-placed its markup (words appeared
+    twice, revisions ran into each other). Anchors are resolved to live
+    ELEMENTS from the segment map, so new markup always lands on the correct
+    side of existing revisions.
+
+    Returns {"deleted": n, "inserted": n, "skipped": [reason, ...]}.
     """
-    runs = paragraph.runs
-    if not runs:
-        # Pure insertion into an empty paragraph.
+    p_el = paragraph._p
+    report = {"deleted": 0, "inserted": 0, "skipped": []}
+    segs = _final_view_segments(p_el)
+    total = segs[-1].end if segs else 0
+
+    # Normalise: clip, drop empties, merge overlapping spans.
+    spans = []
+    for s, e in sorted((max(0, min(s, total)), max(0, min(e, total)))
+                       for s, e in del_spans):
+        if e <= s:
+            continue
+        if spans and s <= spans[-1][1]:
+            spans[-1] = (spans[-1][0], max(spans[-1][1], e))
+        else:
+            spans.append((s, e))
+
+    if not segs:
+        # Genuinely empty paragraph: a pure append is the only meaningful edit.
         for pos in sorted(insertions):
-            paragraph._p.append(
-                _ins_el(None, insertions[pos], next_id(), author, date))
-        return
-    texts = [r.text for r in runs]
-    starts = []
-    acc = 0
-    for t in texts:
-        starts.append(acc)
-        acc += len(t)
+            p_el.append(_ins_el(None, insertions[pos], next_id(), author, date))
+            report["inserted"] += len(insertions[pos])
+        return report
 
-    def _deleted(p):
-        return any(s <= p < e for s, e in del_spans)
+    cuts = {c for s, e in spans for c in (s, e)} | set(insertions)
+    cuts = {c for c in cuts if 0 < c < total}
+    try:
+        segs = _atomise(p_el, cuts)
+    except _CannotEdit as exc:
+        report["skipped"].append(str(exc))
+        return report
 
-    last = len(runs) - 1
-    for i, run in enumerate(runs):
-        rs = starts[i]
-        text = texts[i]
-        re_ = rs + len(text)
-        # Insertion anchors this run is responsible for: those falling inside
-        # it, plus (last run only) any anchored at/after the very end of text.
-        my_ins = {p: insertions[p] for p in insertions
-                  if rs <= p < re_ or (i == last and p >= re_)}
-        overlaps = any(s < re_ and e > rs for s, e in del_spans)
-        if not overlaps and not my_ins:
-            continue  # untouched run: original element and formatting survive
-        # Split points: run edges, deletion-span edges, insertion anchors.
-        bounds = {rs, re_}
-        for s, e in del_spans:
-            if rs < s < re_:
-                bounds.add(s)
-            if rs < e < re_:
-                bounds.add(e)
-        for p in my_ins:
-            if rs < p < re_:
-                bounds.add(p)
-        pts = sorted(bounds)
+    def _anchor_for(offset):
+        """(segment, side) owning final-view position `offset`."""
+        for seg in segs:
+            if seg.visible and seg.start == offset:
+                return seg, "before"
+        visible = [s for s in segs if s.visible]
+        if not visible:
+            return None, None
+        return visible[-1], "after"
 
-        r_el = run._r
-        rpr = r_el.find(qn("w:rPr"))  # deep-copied inside the builders
-        new_els = []
-        for a, b in zip(pts, pts[1:]):
-            if a in my_ins:
-                new_els.append(_ins_el(rpr, my_ins.pop(a), next_id(), author, date))
-            seg = text[a - rs: b - rs]
-            if not seg:
-                continue
-            if _deleted(a):
-                new_els.append(_del_el(rpr, seg, next_id(), author, date))
-            else:
-                new_els.append(_normal_run_el(rpr, seg))
-        for p in sorted(my_ins):  # anchors at/after the end of the last run
-            new_els.append(_ins_el(rpr, my_ins[p], next_id(), author, date))
-        _replace_element(r_el, new_els)
+    # Insertions FIRST: a same-author retraction removes runs, which would
+    # invalidate an anchor. Doing them first keeps every anchor live, and the
+    # deletion pass below iterates the pre-computed map so it can never strike
+    # text this same call just inserted.
+    for offset in sorted(insertions):
+        text = insertions[offset]
+        if not text:
+            continue
+        seg, side = _anchor_for(offset)
+        if seg is None:
+            p_el.append(_ins_el(None, text, next_id(), author, date))
+        else:
+            _splice_insertion(seg, side, text, author, date, next_id)
+        report["inserted"] += len(text)
+
+    for seg in segs:
+        if seg.kind not in ("plain", "ins"):
+            if seg.kind in ("moveFrom", "moveTo") and \
+                    any(s < seg.end and e > seg.start for s, e in spans):
+                report["skipped"].append(
+                    "tracked moves are not supported; a move region was left "
+                    "unchanged")
+            continue
+        if not any(s <= seg.start and seg.end <= e for s, e in spans):
+            continue
+        _retract_or_strike(seg, author, date, next_id)
+        report["deleted"] += len(seg.text)
+
+    _prune_empty_revisions(p_el)
+    return report
 
 
 def _tracked_replace_in_paragraph(paragraph, find, replace, remaining, author, date, next_id):
@@ -1050,7 +1210,11 @@ def _tracked_replace_in_paragraph(paragraph, find, replace, remaining, author, d
     """
     if find == replace:
         return 0  # nothing would change; do not record empty revisions
-    full = "".join(r.text for r in paragraph.runs)
+    # Match against the FINAL VIEW - the same text msword_get_content and
+    # msword_search show. Matching top-level runs instead meant text inside a
+    # pending insertion was visible to the model but invisible here, so the
+    # replace silently reported 0 replacements (or matched at wrong offsets).
+    full = _final_para_text(paragraph._p)
     matches = []
     start = 0
     while True:
@@ -1258,30 +1422,161 @@ def _apply_revisions(doc, accept, ids=None):
 
 
 # -----------------------------------------------------------------------------
-# FINAL-VIEW TEXT RENDERING
+# FINAL-VIEW SEGMENT MAP  (the single definition of "what the document says")
 #
-# python-docx's paragraph.text only sees TOP-LEVEL runs, so any text sitting
-# inside a pending <w:ins> is invisible to it (and pending deletions are
-# invisible too, because deleted text lives in <w:delText>). Reading a document
-# through that lens after tracked edits would make content appear to vanish.
-# These helpers render what Word's "No Markup" view shows: the document as it
-# would look with every pending change ACCEPTED - insertions included,
-# deletions omitted.
+# python-docx's paragraph.text/paragraph.runs only see TOP-LEVEL runs, so any
+# text sitting inside a pending <w:ins> is invisible to them (and pending
+# deletions are invisible too, because deleted text lives in <w:delText>).
+#
+# Historically only the READ side compensated for that, while every WRITE path
+# used paragraph.runs. The two disagreed about what the paragraph said, so an
+# edit to an already-revised paragraph computed offsets against a text that
+# neither the model nor Word ever saw - producing duplicated words, silently
+# dropped edits, and new revisions spliced on the wrong side of existing ones.
+#
+# _final_view_segments is now the ONE place that decides which characters exist
+# and where. Reads render from it, and writes locate their edits through it, so
+# the two cannot drift apart again.
 # -----------------------------------------------------------------------------
-def _final_para_text(p_el):
-    """Paragraph text in the final (all-changes-accepted) view."""
+
+# Containers whose children are walked in search of runs. These wrap runs
+# without themselves contributing characters.
+_RUN_DESCEND = frozenset(qn(t) for t in (
+    "w:hyperlink", "w:ins", "w:del", "w:moveFrom", "w:moveTo",
+    "w:smartTag", "w:customXml", "w:dir", "w:bdo", "w:fldSimple",
+))
+# Traversal is DEFAULT DENY: anything not listed above (and not w:r/w:sdt) is
+# skipped rather than descended into. That is deliberate and load-bearing -
+# w:drawing/w:pict/w:object/w:txbxContent hang a text box's OWN paragraphs
+# below the run, and counting those characters would make this paragraph's
+# offsets point into a different paragraph. Nested w:p/w:tbl, math (m:oMath)
+# and mc:AlternateContent fallbacks are excluded for the same reason, and an
+# unknown/vendor element cannot inject phantom offsets.
+# Revision containers that HIDE their content from the final view.
+_DELETING_REVS = frozenset(qn(t) for t in ("w:del", "w:moveFrom"))
+
+
+def _run_text_equiv(r_el):
+    """
+    The characters a single <w:r> contributes, by DIRECT children only.
+
+    Reads both w:t and w:delText, so a run never loses characters here;
+    whether those characters are VISIBLE is decided separately, by ancestry.
+    Never uses iter(): a w:drawing child may contain a whole text box.
+    """
     parts = []
-    t_tag, tab_tag, br_tag = qn("w:t"), qn("w:tab"), qn("w:br")
-    for r in p_el.iter(qn("w:r")):
-        for child in r:
-            if child.tag == t_tag:
-                parts.append(child.text or "")
-            elif child.tag == tab_tag:
-                parts.append("\t")
-            elif child.tag == br_tag:
-                parts.append("\n")
-            # w:delText is skipped: pending deletion, gone once accepted.
+    for child in r_el:
+        tag = child.tag
+        if tag == qn("w:t") or tag == qn("w:delText"):
+            parts.append(child.text or "")
+        elif tag == qn("w:tab") or tag == qn("w:ptab"):
+            parts.append("\t")
+        elif tag == qn("w:br") or tag == qn("w:cr"):
+            parts.append("\n")
+        elif tag == qn("w:noBreakHyphen"):
+            parts.append("-")
+        # Everything else (w:softHyphen, w:sym, w:drawing, w:fldChar,
+        # w:instrText, w:*Reference, w:lastRenderedPageBreak) contributes no
+        # final-view characters.
     return "".join(parts)
+
+
+_SPLITTABLE_CHILDREN = frozenset(qn(t) for t in (
+    "w:rPr", "w:t", "w:delText", "w:tab", "w:ptab", "w:br", "w:cr",
+    "w:noBreakHyphen", "w:softHyphen", "w:lastRenderedPageBreak",
+))
+
+
+def _is_splittable_run(r_el):
+    """
+    True if the run can be divided at a character boundary. A run carrying a
+    drawing, field character or footnote reference keeps correct offsets but
+    must not be cut in half, so an edit whose boundary falls strictly inside it
+    is refused rather than silently mangled.
+    """
+    return all(child.tag in _SPLITTABLE_CHILDREN for child in r_el)
+
+
+class _Seg(object):
+    """One text-bearing <w:r>, located in its paragraph's final view."""
+
+    __slots__ = ("r", "parent", "revs", "kind", "start", "end", "text")
+
+    def __init__(self, r, parent, revs, kind, start, text):
+        self.r = r                  # the <w:r> element (identity = edit anchor)
+        self.parent = parent        # its immediate container
+        self.revs = revs            # revision ancestors, outermost -> innermost
+        self.kind = kind            # plain | ins | del | moveTo | moveFrom
+        self.start = start          # final-view offsets; start == end when the
+        self.end = start + (len(text) if kind in ("plain", "ins", "moveTo") else 0)
+        self.text = text            # segment is invisible (deleted/moved-from)
+
+    @property
+    def visible(self):
+        return self.end > self.start
+
+    def innermost_ins(self):
+        """The nearest enclosing <w:ins>, or None."""
+        for el in reversed(self.revs):
+            if el.tag == qn("w:ins"):
+                return el
+        return None
+
+
+def _final_view_segments(p_el):
+    """
+    Ordered segments for one paragraph, in document order, with final-view
+    character offsets. Invisible (deleted) runs are included with a zero-width
+    span so their element position is still addressable.
+    """
+    segs = []
+    pos = [0]
+    r_tag, sdt_tag, sdt_content = qn("w:r"), qn("w:sdt"), qn("w:sdtContent")
+
+    def walk(el, revs):
+        for child in el:
+            tag = child.tag
+            if tag == r_tag:
+                text = _run_text_equiv(child)
+                if not text:
+                    continue          # no characters: nothing to address
+                kind = "plain"
+                for rev in revs:
+                    if rev.tag in _DELETING_REVS:
+                        kind = "del" if rev.tag == qn("w:del") else "moveFrom"
+                        break
+                else:
+                    for rev in revs:
+                        if rev.tag == qn("w:ins"):
+                            kind = "ins"
+                        elif rev.tag == qn("w:moveTo"):
+                            kind = "moveTo"
+                seg = _Seg(child, el, tuple(revs), kind, pos[0], text)
+                pos[0] = seg.end
+                segs.append(seg)
+            elif tag == sdt_tag:
+                content = child.find(sdt_content)
+                if content is not None:
+                    walk(content, revs)
+            elif tag in _RUN_DESCEND:
+                nested = revs + [child] if child.tag in (
+                    qn("w:ins"), qn("w:del"), qn("w:moveFrom"), qn("w:moveTo")
+                ) else revs
+                walk(child, nested)
+            # Anything else (including _NO_DESCEND) is skipped: default deny, so
+            # an unknown or nested-content element cannot inject phantom offsets.
+
+    walk(p_el, [])
+    return segs
+
+
+def _final_para_text(p_el):
+    """
+    Paragraph text in the final (all-changes-accepted) view - what Word shows
+    under "No Markup", and what msword_get_content/msword_search report.
+    Derived from the segment map so reads and writes can never disagree.
+    """
+    return "".join(s.text for s in _final_view_segments(p_el) if s.visible)
 
 
 def _final_cell_text(cell):
@@ -1896,24 +2191,28 @@ def tool_set_paragraph_text(args):
             paragraph.add_run(new_text)
         return {"para_index": para_index, "tracked": False, "text": new_text}
 
-    warning = None
-    if _has_pending_revisions(paragraph._p):
-        warning = ("Paragraph already contains pending tracked changes; the "
-                   "diff was computed against its unrevised text only. "
-                   "Accept/reject existing changes first for a clean result.")
-    old_text = "".join(r.text for r in paragraph.runs)
+    had_pending = _has_pending_revisions(paragraph._p)
+    # Diff against the FINAL VIEW - the text the caller was shown and is
+    # replacing. Diffing top-level runs instead meant that on an already-revised
+    # paragraph the "old" text was a hybrid that neither the model nor Word ever
+    # saw, so words the caller supplied were re-inserted alongside the pending
+    # insertion that already contained them ("One 2 three" became "One2 2 three").
+    old_text = _final_para_text(paragraph._p)
     if old_text == new_text:
         return {"para_index": para_index, "tracked": True, "changed": False}
     author = args.get("author") or AUTHOR
     date = _today_iso()
     next_id = _make_rev_id_allocator(doc)
     del_spans, insertions = _word_diff(old_text, new_text)
-    _apply_tracked_edit(paragraph, del_spans, insertions, author, date, next_id)
+    report = _apply_tracked_edit(paragraph, del_spans, insertions, author, date,
+                                 next_id)
     result = {"para_index": para_index, "tracked": True, "changed": True,
               "author": author, "date": date,
               "deleted_spans": len(del_spans), "inserted_spans": len(insertions)}
-    if warning:
-        result["warning"] = warning
+    if had_pending:
+        result["had_pending_changes"] = True
+    if report["skipped"]:
+        result["skipped"] = report["skipped"]
     return result
 
 
@@ -1981,15 +2280,22 @@ def tool_delete_paragraph(args):
             "para_index out of range (0..{}).".format(len(doc.paragraphs) - 1)
         )
     paragraph = doc.paragraphs[para_index]
-    preview = paragraph.text
+    # Report what the caller can actually see, not paragraph.text (which is
+    # blind to pending insertions and reported "" for an inserted paragraph).
+    preview = _final_para_text(paragraph._p)
     track = bool(args.get("track_changes", False))
 
     if track:
         author = args.get("author") or AUTHOR
         date = _today_iso()
         next_id = _make_rev_id_allocator(doc)
-        for r_el in [r._r for r in paragraph.runs]:
-            _wrap_run_in_del(r_el, next_id(), author, date)
+        # Strike every VISIBLE run, including runs inside a pending <w:ins>.
+        # Wrapping only top-level runs left inserted text unmarked, so
+        # accepting the "deleted" paragraph left that text behind as an orphan.
+        for seg in _final_view_segments(paragraph._p):
+            if seg.kind in ("plain", "ins"):
+                _retract_or_strike(seg, author, date, next_id)
+        _prune_empty_revisions(paragraph._p)
         _mark_para_boundary(paragraph._p, "w:del", next_id(), author, date)
         return {"para_index": para_index, "tracked": True, "author": author,
                 "date": date, "text": preview}
@@ -3466,6 +3772,181 @@ def run_check():
         assert resp["result"]["isError"] is False, resp
         tool_close({"session_id": ssid})
         print("[check] jsonrpc-dispatch (table tools): PASS")
+
+        # --- Editing a paragraph that ALREADY has pending tracked changes ----
+        # Every case here was silently corrupt before the write path was made
+        # final-view aware; each asserts the exact accepted text.
+        def _one_para(name, text):
+            pth = os.path.join(tmpdir, name)
+            dd = docx.Document()
+            dd.add_paragraph(text)
+            dd.save(pth)
+            return tool_open({"path": pth})["session_id"]
+
+        # (a) the find string spans a pending insertion: previously a SILENT
+        #     no-op (search found it, replace reported 0 replacements).
+        s = _one_para("rev_a.docx", "The quick brown fox.")
+        tool_replace_text({"session_id": s, "find": "brown", "replace": "red",
+                           "track_changes": True})
+        assert "quick red" in tool_get_content(
+            {"session_id": s, "mode": "text"})["content"], "final view wrong"
+        r = tool_replace_text({"session_id": s, "find": "quick red",
+                               "replace": "fast crimson", "track_changes": True})
+        assert r["replacements"] == 1, \
+            "replace could not see text inside a pending insertion"
+        tool_accept_all_changes({"session_id": s})
+        assert tool_get_content({"session_id": s, "mode": "text"})["content"].strip() \
+            == "The fast crimson fox.", "accepted text wrong"
+        tool_close({"session_id": s})
+
+        # (b) set_paragraph_text over pending changes: previously duplicated a
+        #     word ("One 2 three four five" -> "One2 2 three four five").
+        s = _one_para("rev_b.docx", "One two three four")
+        tool_replace_text({"session_id": s, "find": "two", "replace": "2",
+                           "track_changes": True})
+        res = tool_set_paragraph_text({"session_id": s, "para_index": 0,
+                                       "text": "One 2 three four five",
+                                       "track_changes": True})
+        assert res.get("had_pending_changes") is True
+        assert "warning" not in res, "stale-diff warning should be gone"
+        tool_accept_all_changes({"session_id": s})
+        assert tool_get_content({"session_id": s, "mode": "text"})["content"].strip() \
+            == "One 2 three four five", "duplicated/lost words on rewrite"
+        tool_close({"session_id": s})
+
+        # (c) two successive tracked edits: markup must land on the correct
+        #     side of the existing revision (previously "alphaBETA X gamma").
+        s = _one_para("rev_c.docx", "alpha beta gamma")
+        tool_replace_text({"session_id": s, "find": "beta", "replace": "BETA",
+                           "track_changes": True})
+        tool_replace_text({"session_id": s, "find": "alpha", "replace": "ALPHA",
+                           "track_changes": True})
+        cpath = os.path.join(tmpdir, "rev_c2.docx")
+        tool_save({"session_id": s, "path": cpath})
+        tool_close({"session_id": s})
+        s2 = tool_open({"path": cpath})["session_id"]
+        tool_accept_all_changes({"session_id": s2})
+        assert tool_get_content({"session_id": s2, "mode": "text"})["content"].strip() \
+            == "ALPHA BETA gamma", "successive edits accepted wrongly"
+        tool_close({"session_id": s2})
+        s3 = tool_open({"path": cpath})["session_id"]
+        tool_reject_all_changes({"session_id": s3})
+        assert tool_get_content({"session_id": s3, "mode": "text"})["content"].strip() \
+            == "alpha beta gamma", "successive edits rejected wrongly"
+        tool_close({"session_id": s3})
+
+        # (d) re-editing our OWN pending insertion, and no nested w:ins.
+        s = _one_para("rev_d.docx", "alpha beta gamma")
+        tool_replace_text({"session_id": s, "find": "beta", "replace": "BETA",
+                           "track_changes": True})
+        tool_replace_text({"session_id": s, "find": "BETA", "replace": "BRAVO",
+                           "track_changes": True})
+        dd = SESSIONS[s]["doc"]
+        for ins in dd.element.iter(qn("w:ins")):
+            for inner in ins.iter(qn("w:ins")):
+                assert inner is ins, "nested <w:ins> inside <w:ins>"
+        assert tool_get_content({"session_id": s, "mode": "text"})["content"].strip() \
+            == "alpha BRAVO gamma"
+        tool_reject_all_changes({"session_id": s})
+        assert tool_get_content({"session_id": s, "mode": "text"})["content"].strip() \
+            == "alpha beta gamma", "reject did not restore the original"
+        tool_close({"session_id": s})
+
+        # (e) tracked-deleting a paragraph that holds a pending insertion:
+        #     accepting previously left the inserted text behind as an orphan.
+        opath = os.path.join(tmpdir, "rev_e.docx")
+        dd = docx.Document()
+        for t in ("One", "The report is DRAFT here.", "Three"):
+            dd.add_paragraph(t)
+        dd.save(opath)
+        s = tool_open({"path": opath})["session_id"]
+        tool_replace_text({"session_id": s, "find": "DRAFT", "replace": "FINAL",
+                           "track_changes": True})
+        dres = tool_delete_paragraph({"session_id": s, "para_index": 1,
+                                      "track_changes": True})
+        assert "FINAL" in dres["text"], \
+            "delete preview did not show the pending insertion"
+        tool_accept_all_changes({"session_id": s})
+        left = [p.text for p in SESSIONS[s]["doc"].paragraphs]
+        assert left == ["One", "Three"], \
+            "orphan text left after accepting a deleted paragraph: {}".format(left)
+        tool_close({"session_id": s})
+
+        # (f) a replacement that CONTAINS its search text must terminate (this
+        #     used to hang the server forever) and must not multiply the word.
+        s = _one_para("rev_f.docx", "the team is here")
+        r = tool_replace_text({"session_id": s, "find": "team",
+                               "replace": "team members"})
+        assert r["replacements"] == 1
+        assert tool_get_content({"session_id": s, "mode": "text"})["content"].strip() \
+            == "the team members is here", "self-containing replace looped"
+        tool_close({"session_id": s})
+
+        # (g) a merged table cell is edited ONCE, not once per grid column.
+        mpath = os.path.join(tmpdir, "rev_g.docx")
+        dd = docx.Document()
+        mt = dd.add_table(rows=2, cols=3)
+        mt.rows[0].cells[0].merge(mt.rows[0].cells[2])
+        for c in {id(c._tc): c for row in mt.rows for c in row.cells}.values():
+            c.text = "team"
+        dd.save(mpath)
+        s = tool_open({"path": mpath})["session_id"]
+        tool_replace_text({"session_id": s, "find": "team", "replace": "members"})
+        merged = SESSIONS[s]["doc"].tables[0].rows[0].cells[0].text
+        assert merged == "members", "merged cell edited repeatedly: {}".format(merged)
+        tool_close({"session_id": s})
+
+        # (h) an inline image survives an untracked replace in its paragraph.
+        ipath = os.path.join(tmpdir, "rev_h.docx")
+        dd = docx.Document()
+        ip = dd.add_paragraph()
+        ip.add_run("The report is DRAFT ")
+        ip.add_run()._r.append(OxmlElement("w:drawing"))
+        dd.save(ipath)
+        s = tool_open({"path": ipath})["session_id"]
+        tool_replace_text({"session_id": s, "find": "DRAFT", "replace": "FINAL"})
+        n_draw = len(SESSIONS[s]["doc"].paragraphs[0]._p.findall(
+            ".//" + qn("w:drawing")))
+        assert n_draw == 1, "inline image destroyed by replace"
+        tool_close({"session_id": s})
+
+        # (i) deleting two paragraphs in one session must not emit duplicate
+        #     paragraph-mark markers, and accept-all must not crash.
+        dpath = os.path.join(tmpdir, "rev_i.docx")
+        dd = docx.Document()
+        for t in ("One", "Two", "Three"):
+            dd.add_paragraph(t)
+        dd.save(dpath)
+        s = tool_open({"path": dpath})["session_id"]
+        tool_delete_paragraph({"session_id": s, "para_index": 2, "track_changes": True})
+        tool_delete_paragraph({"session_id": s, "para_index": 1, "track_changes": True})
+        for para in SESSIONS[s]["doc"].paragraphs:
+            pPr = para._p.find(qn("w:pPr"))
+            rPr = pPr.find(qn("w:rPr")) if pPr is not None else None
+            if rPr is not None:
+                assert len(rPr.findall(qn("w:del"))) <= 1, "duplicate w:del marker"
+                assert len(rPr.findall(qn("w:ins"))) <= 1, "duplicate w:ins marker"
+        tool_accept_all_changes({"session_id": s})   # used to raise TypeError
+        assert "Two" not in _render_linear_text(SESSIONS[s]["doc"])
+        tool_close({"session_id": s})
+
+        # (j) text boxes and deleted tabs must not leak into the final view.
+        tb = docx.Document()
+        tp = tb.add_paragraph("outer")
+        dr = OxmlElement("w:drawing")
+        txc = OxmlElement("w:txbxContent")
+        inner_p = OxmlElement("w:p")
+        inner_r = OxmlElement("w:r")
+        inner_t = OxmlElement("w:t")
+        inner_t.text = "INSIDE-BOX"
+        inner_r.append(inner_t)
+        inner_p.append(inner_r)
+        txc.append(inner_p)
+        dr.append(txc)
+        tp.add_run()._r.append(dr)
+        assert "INSIDE-BOX" not in _final_para_text(tp._p), \
+            "text-box content leaked into the paragraph's final view"
+        print("[check] edits over pending revisions: PASS")
     except Exception as e:
         ok = False
         print("[check] round-trip: FAIL -> {}".format(e))
