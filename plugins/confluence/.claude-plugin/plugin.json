@@ -1,0 +1,50 @@
+{
+  "name": "confluence",
+  "displayName": "Confluence (read-only)",
+  "version": "1.3.0",
+  "description": "Search and read Confluence pages, optionally mirroring them to Markdown for a local RAG knowledge base.",
+  "author": {
+    "name": "mcnamee"
+  },
+  "repository": "https://github.com/mcnamee/mcp-servers",
+  "license": "MIT",
+  "keywords": [
+    "confluence",
+    "wiki",
+    "documentation"
+  ],
+  "userConfig": {
+    "base_url": {
+      "type": "string",
+      "title": "Confluence base URL",
+      "description": "e.g. https://confluence.internal.example.com - no trailing slash. REQUIRED.",
+      "required": true
+    },
+    "kb_dir": {
+      "type": "directory",
+      "title": "Knowledge-base folder",
+      "description": "Optional. Every page read is also saved as Markdown here."
+    },
+    "python": {
+      "type": "string",
+      "title": "Python interpreter",
+      "description": "Absolute path to the python.exe that has this server's pip dependencies installed (e.g. C:\\Python311\\python.exe). Use plain 'python' only if the right interpreter is first on PATH - a mismatch here is the most common cause of 'dependency missing' errors.",
+      "required": true
+    }
+  },
+  "mcpServers": {
+    "confluence": {
+      "type": "stdio",
+      "command": "${user_config.python}",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/confluence.py"
+      ],
+      "env": {
+        "PYTHONUTF8": "1",
+        "CONFLUENCE_BASE_URL": "${user_config.base_url}",
+        "CONFLUENCE_KB_DIR": "${user_config.kb_dir}",
+        "CONFLUENCE_TOKEN": "${CONFLUENCE_TOKEN}"
+      }
+    }
+  }
+}

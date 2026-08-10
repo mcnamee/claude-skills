@@ -1,0 +1,58 @@
+{
+  "name": "knowledge-base",
+  "displayName": "Knowledge base (RAG)",
+  "version": "2.0.0",
+  "description": "True RAG over your own Markdown docs: a local ChromaDB vector index plus your embeddings API. Requires chromadb.",
+  "author": {
+    "name": "mcnamee"
+  },
+  "repository": "https://github.com/mcnamee/mcp-servers",
+  "license": "MIT",
+  "keywords": [
+    "rag",
+    "knowledge-base",
+    "search",
+    "embeddings"
+  ],
+  "userConfig": {
+    "docs_dir": {
+      "type": "directory",
+      "title": "Documents folder",
+      "description": "Folder of .md/.markdown/.txt documents to index. REQUIRED.",
+      "required": true
+    },
+    "embed_url": {
+      "type": "string",
+      "title": "Embeddings endpoint URL",
+      "description": "Full URL of your embeddings API. REQUIRED.",
+      "required": true
+    },
+    "embed_model": {
+      "type": "string",
+      "title": "Embeddings model",
+      "description": "Optional. Model name sent in embed requests; omit if the endpoint fixes one."
+    },
+    "python": {
+      "type": "string",
+      "title": "Python interpreter",
+      "description": "Absolute path to the python.exe that has this server's pip dependencies installed (e.g. C:\\Python311\\python.exe). Use plain 'python' only if the right interpreter is first on PATH - a mismatch here is the most common cause of 'dependency missing' errors.",
+      "required": true
+    }
+  },
+  "mcpServers": {
+    "knowledge-base": {
+      "type": "stdio",
+      "command": "${user_config.python}",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/knowledge-base.py"
+      ],
+      "env": {
+        "PYTHONUTF8": "1",
+        "KB_DOCS_DIR": "${user_config.docs_dir}",
+        "KB_EMBED_URL": "${user_config.embed_url}",
+        "KB_EMBED_MODEL": "${user_config.embed_model}",
+        "KB_EMBED_API_KEY": "${KB_EMBED_API_KEY}"
+      }
+    }
+  }
+}

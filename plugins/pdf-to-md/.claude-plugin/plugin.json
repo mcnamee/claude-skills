@@ -1,0 +1,50 @@
+{
+  "name": "pdf-to-md",
+  "displayName": "PDF to Markdown",
+  "version": "4.0.0",
+  "description": "Convert PDFs to Markdown with tables preserved, for feeding a local knowledge base. Requires pymupdf.",
+  "author": {
+    "name": "mcnamee"
+  },
+  "repository": "https://github.com/mcnamee/mcp-servers",
+  "license": "MIT",
+  "keywords": [
+    "pdf",
+    "markdown",
+    "convert"
+  ],
+  "userConfig": {
+    "docs_dir": {
+      "type": "directory",
+      "title": "PDF folder",
+      "description": "Folder of source PDFs. REQUIRED.",
+      "required": true
+    },
+    "output_dir": {
+      "type": "directory",
+      "title": "Output folder",
+      "description": "Where the generated Markdown is written. REQUIRED.",
+      "required": true
+    },
+    "python": {
+      "type": "string",
+      "title": "Python interpreter",
+      "description": "Absolute path to the python.exe that has this server's pip dependencies installed (e.g. C:\\Python311\\python.exe). Use plain 'python' only if the right interpreter is first on PATH - a mismatch here is the most common cause of 'dependency missing' errors.",
+      "required": true
+    }
+  },
+  "mcpServers": {
+    "pdf2md": {
+      "type": "stdio",
+      "command": "${user_config.python}",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/pdf-to-md.py"
+      ],
+      "env": {
+        "PYTHONUTF8": "1",
+        "PDF2MD_DOCS_DIR": "${user_config.docs_dir}",
+        "PDF2MD_OUTPUT_DIR": "${user_config.output_dir}"
+      }
+    }
+  }
+}

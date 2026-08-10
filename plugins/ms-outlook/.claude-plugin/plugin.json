@@ -1,0 +1,55 @@
+{
+  "name": "ms-outlook",
+  "displayName": "MS Outlook (mail + calendar)",
+  "version": "2.0.0",
+  "description": "Read-only access to local classic Outlook mail and calendar via COM. Windows only; requires pywin32.",
+  "author": {
+    "name": "mcnamee"
+  },
+  "repository": "https://github.com/mcnamee/mcp-servers",
+  "license": "MIT",
+  "keywords": [
+    "outlook",
+    "email",
+    "calendar",
+    "windows"
+  ],
+  "userConfig": {
+    "kb_dir": {
+      "type": "directory",
+      "title": "Knowledge-base folder",
+      "description": "Optional. If set, every email read is also saved as Markdown here for a local RAG index."
+    },
+    "search_folders": {
+      "type": "string",
+      "title": "Search folders",
+      "description": "Optional. Comma-separated folder names for outlook_search_recent, e.g. 'Inbox,Sent Items,Archive'."
+    },
+    "blacklist_file": {
+      "type": "string",
+      "title": "Blacklist file",
+      "description": "Optional. Path to a file of extra content-blacklist terms, one per line."
+    },
+    "python": {
+      "type": "string",
+      "title": "Python interpreter",
+      "description": "Absolute path to the python.exe that has this server's pip dependencies installed (e.g. C:\\Python311\\python.exe). Use plain 'python' only if the right interpreter is first on PATH - a mismatch here is the most common cause of 'dependency missing' errors.",
+      "required": true
+    }
+  },
+  "mcpServers": {
+    "outlook": {
+      "type": "stdio",
+      "command": "${user_config.python}",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/ms-outlook.py"
+      ],
+      "env": {
+        "PYTHONUTF8": "1",
+        "OUTLOOK_KB_DIR": "${user_config.kb_dir}",
+        "OUTLOOK_SEARCH_FOLDERS": "${user_config.search_folders}",
+        "OUTLOOK_BLACKLIST_FILE": "${user_config.blacklist_file}"
+      }
+    }
+  }
+}

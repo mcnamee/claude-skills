@@ -1,0 +1,43 @@
+{
+  "name": "ms-excel",
+  "displayName": "MS Excel (.xlsx)",
+  "version": "2.1.0",
+  "description": "Read and analyse Excel workbooks. Read-only; parses .xlsx directly so Excel is not required.",
+  "author": {
+    "name": "mcnamee"
+  },
+  "repository": "https://github.com/mcnamee/mcp-servers",
+  "license": "MIT",
+  "keywords": [
+    "excel",
+    "xlsx",
+    "spreadsheet"
+  ],
+  "userConfig": {
+    "docs_dir": {
+      "type": "directory",
+      "title": "Workbook folder",
+      "description": "Folder of .xlsx/.xlsm workbooks the server may read. REQUIRED.",
+      "required": true
+    },
+    "python": {
+      "type": "string",
+      "title": "Python interpreter",
+      "description": "Absolute path to the python.exe that has this server's pip dependencies installed (e.g. C:\\Python311\\python.exe). Use plain 'python' only if the right interpreter is first on PATH - a mismatch here is the most common cause of 'dependency missing' errors.",
+      "required": true
+    }
+  },
+  "mcpServers": {
+    "excel": {
+      "type": "stdio",
+      "command": "${user_config.python}",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/ms-excel.py"
+      ],
+      "env": {
+        "PYTHONUTF8": "1",
+        "EXCEL_DOCS_DIR": "${user_config.docs_dir}"
+      }
+    }
+  }
+}

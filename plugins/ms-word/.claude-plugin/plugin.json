@@ -1,0 +1,62 @@
+{
+  "name": "ms-word",
+  "displayName": "MS Word (.docx)",
+  "version": "3.0.0",
+  "description": "Read, edit and create Word .docx files - including Word tracked changes, native styles and filling out templates.",
+  "author": {
+    "name": "mcnamee"
+  },
+  "repository": "https://github.com/mcnamee/mcp-servers",
+  "license": "MIT",
+  "keywords": [
+    "word",
+    "docx",
+    "tracked-changes",
+    "documents"
+  ],
+  "userConfig": {
+    "docs_dir": {
+      "type": "directory",
+      "title": "Documents folder",
+      "description": "Folder of .docx files the server may open and save. REQUIRED - the server refuses to start without it.",
+      "required": true
+    },
+    "output_dir": {
+      "type": "directory",
+      "title": "Output folder",
+      "description": "Optional. Where msword_create writes NEW documents. Defaults to the documents folder."
+    },
+    "kb_dir": {
+      "type": "directory",
+      "title": "Knowledge-base folder",
+      "description": "Optional. If set, every document opened is also mirrored to Markdown here for a local RAG index."
+    },
+    "author": {
+      "type": "string",
+      "title": "Tracked-change author",
+      "description": "Optional. Name stamped on Word tracked changes, e.g. your own name."
+    },
+    "python": {
+      "type": "string",
+      "title": "Python interpreter",
+      "description": "Absolute path to the python.exe that has this server's pip dependencies installed (e.g. C:\\Python311\\python.exe). Use plain 'python' only if the right interpreter is first on PATH - a mismatch here is the most common cause of 'dependency missing' errors.",
+      "required": true
+    }
+  },
+  "mcpServers": {
+    "msword-py": {
+      "type": "stdio",
+      "command": "${user_config.python}",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/ms-word.py"
+      ],
+      "env": {
+        "PYTHONUTF8": "1",
+        "MSWORD_DOCS_DIR": "${user_config.docs_dir}",
+        "MSWORD_OUTPUT_DIR": "${user_config.output_dir}",
+        "MSWORD_KB_DIR": "${user_config.kb_dir}",
+        "MSWORD_AUTHOR": "${user_config.author}"
+      }
+    }
+  }
+}
