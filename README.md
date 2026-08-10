@@ -111,6 +111,85 @@ outside it.
   `ms-word.py` for the wheel-sideloading steps (same pattern applies to
   `pdf-to-md.py`'s dependencies).
 
+## Installation into Claude Code (VS Code)
+
+All servers speak MCP over stdio, so Claude Code launches each one as a
+long-running subprocess. Two things to install: the **servers** (below) and the
+**skills** (see [Skills](#skills-slash-commands-for-each-mcp)).
+
+Pick a scope:
+
+| Scope | Config lives in | Use when |
+|---|---|---|
+| **User** | `%USERPROFILE%\.claude.json` (via `claude mcp add --scope user`) | You want Word/Excel/Outlook tools in **every** folder you open — usually right, since document work isn't one code project |
+| **Project** | `.mcp.json` in the project root | You want the config to **travel with the files** across the airgap, and only load in that folder |
+
+### User scope (available everywhere)
+
+From a terminal, once per server — `--` separates Claude's flags from the
+server's own:
+
+```
+claude mcp add msword-py --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\ms-word.py --docs-dir C:\Users\me\Documents\ai_docs --output-dir C:\Users\me\Documents\ai_generated --author Matt
+claude mcp add excel     --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\ms-excel.py --docs-dir C:\path\to\your\workbooks
+claude mcp add outlook   --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\ms-outlook.py
+```
+
+Secrets stay out of the command line — pass them with `-e` (which writes them
+into the config file) rather than as flags, per the
+[configuration conventions](#configuration-conventions-all-servers):
+
+```
+claude mcp add confluence --scope user -e PYTHONUTF8=1 -e CONFLUENCE_BASE_URL=https://confluence.internal.example.com -e CONFLUENCE_TOKEN=your-personal-access-token -- C:\path\to\python.exe C:\path\to\confluence.py --max-body 20000 --kb-dir C:\reference-docs\confluence
+```
+
+Then `claude mcp list` to confirm they connect, and `/mcp` inside Claude Code
+to see the tools.
+
+### Project scope (config travels with the repo)
+
+Put a `.mcp.json` in the folder you open Claude Code in — copy
+[`.mcp.json.example`](.mcp.json.example) from this repo and edit the paths.
+Claude Code asks once to approve project-scoped servers. Same `command`/`args`/
+`env` shape as the Cline example below, so the per-server flag tables apply
+unchanged:
+
+```json
+{
+  "mcpServers": {
+    "msword-py": {
+      "command": "C:\\path\\to\\python.exe",
+      "args": [
+        "C:\\path\\to\\ms-word.py",
+        "--docs-dir", "C:\\Users\\me\\Documents\\ai_docs",
+        "--output-dir", "C:\\Users\\me\\Documents\\ai_generated"
+      ],
+      "env": { "PYTHONUTF8": "1" }
+    }
+  }
+}
+```
+
+Note the **doubled backslashes** — JSON escapes them.
+
+### Before you wire anything in (airgapped checklist)
+
+1. **Install the pip dependencies into the interpreter Claude Code will
+   launch** — not a different one on the PATH. See
+   [Install everything at once](#install-everything-at-once), and the
+   `ms-word.py` docstring for sideloading wheels offline.
+2. **Run each server's `--check` first.** It validates config (and
+   connectivity, for the HTTP servers) without starting the server, and is far
+   easier to read than an MCP connection failure:
+   ```
+   "C:\path\to\python.exe" C:\path\to\ms-word.py --check
+   ```
+3. **Use absolute paths** for both the interpreter and the script.
+4. **Keep `PYTHONUTF8=1`** — without it, Windows' legacy codepage can corrupt
+   the stdio JSON stream on any non-ASCII content.
+5. If a server misbehaves after an edit, restart Claude Code rather than
+   toggling the server.
+
 ## Installation into Continue (config.yaml)
 
 All servers speak MCP over stdio. Add each one as an entry under the
@@ -121,8 +200,10 @@ stdio JSON stream. After editing `config.yaml`, use VSCode's
 "Developer: Reload Window" rather than toggling the server, to avoid a
 known "already connected to transport" reconnection bug.
 
-Cline users: the flag tables in the per-server sections below apply
-unchanged — see [Installation into Cline](#installation-into-cline-cline_mcp_settingsjson)
+Claude Code and Cline users: the flag tables in the per-server sections below
+apply unchanged — see
+[Installation into Claude Code](#installation-into-claude-code-vs-code) or
+[Installation into Cline](#installation-into-cline-cline_mcp_settingsjson)
 for the JSON equivalent of each YAML example.
 
 ### confluence.py
@@ -727,40 +808,51 @@ one or more of the tools the server exposes.
 
 ## Skills (slash commands for each MCP)
 
-The [`skills/`](skills/) folder contains one Claude skill per server —
-`skills/<server>.md` with YAML frontmatter (`name`, `description`) and
-a body that teaches an agent the server's tools, the right call order, and
-the sharp edges (read-only limits, sandboxes, tracked-changes workflow,
-when to reindex, …). Available skills:
+The [`skills/`](skills/) folder contains one Claude skill per server, laid out
+the way Claude Code expects — `skills/<server>/SKILL.md` with YAML frontmatter
+(`name`, `description`) and a body that teaches an agent the server's tools,
+the right call order, and the sharp edges (read-only limits, sandboxes,
+tracked-changes workflow, when to reindex, …). Available skills:
 
 | Skill | Slash command | Backing server |
 |---|---|---|
-| `skills/confluence.md` | `/confluence` | `confluence.py` |
-| `skills/jira.md` | `/jira` | `jira.py` |
-| `skills/knowledge-base.md` | `/knowledge-base` | `knowledge-base.py` |
-| `skills/ms-excel.md` | `/ms-excel` | `ms-excel.py` |
-| `skills/ms-outlook.md` | `/ms-outlook` | `ms-outlook.py` |
-| `skills/ms-word.md` | `/ms-word` | `ms-word.py` |
-| `skills/pdf-to-md.md` | `/pdf-to-md` | `pdf-to-md.py` |
+| `skills/confluence/SKILL.md` | `/confluence` | `confluence.py` |
+| `skills/jira/SKILL.md` | `/jira` | `jira.py` |
+| `skills/knowledge-base/SKILL.md` | `/knowledge-base` | `knowledge-base.py` |
+| `skills/ms-excel/SKILL.md` | `/ms-excel` | `ms-excel.py` |
+| `skills/ms-outlook/SKILL.md` | `/ms-outlook` | `ms-outlook.py` |
+| `skills/ms-word/SKILL.md` | `/ms-word` | `ms-word.py` |
+| `skills/pdf-to-md/SKILL.md` | `/pdf-to-md` | `pdf-to-md.py` |
 
 ### Installing the skills
 
-- **Claude Code**: skills live in a folder per name, so copy each
-  `skills/<name>.md` into your project's `.claude/skills/<name>/SKILL.md`
-  (or under `%USERPROFILE%\.claude\skills\` for all projects). Claude invokes
-  them automatically when relevant, and `/<name>` triggers one explicitly.
+- **Claude Code**: the layout already matches, so copy the folders straight in
+  — no renaming. For every project:
+  ```
+  xcopy /E /I skills %USERPROFILE%\.claude\skills
+  ```
+  or for one project only, copy `skills\*` into that project's
+  `.claude\skills\`. Claude invokes a skill automatically when it is relevant,
+  and `/<name>` triggers one explicitly. Run `/doctor` (or restart Claude Code)
+  if a newly copied skill does not show up.
 - **Cline**: Cline's slash commands are *workflows* — copy each
-  `skills/<name>.md` into your workspace as `.clinerules/workflows/<name>.md`
-  (e.g. `.clinerules/workflows/ms-word.md`), then type `/ms-word.md` in
-  Cline to run it. The frontmatter is harmless there. To have Cline apply a
-  skill automatically (no slash command), drop it into `.clinerules/`
-  instead of `.clinerules/workflows/`.
-- **Continue**: add each `skills/<name>.md` body as a prompt file (Continue's
+  `skills/<name>/SKILL.md` into your workspace as
+  `.clinerules/workflows/<name>.md` (e.g. `.clinerules/workflows/ms-word.md`),
+  then type `/ms-word.md` in Cline to run it. The frontmatter is harmless
+  there. To have Cline apply a skill automatically (no slash command), drop it
+  into `.clinerules/` instead of `.clinerules/workflows/`.
+- **Continue**: add each `SKILL.md` body as a prompt file (Continue's
   `prompts:` / *.prompt files) if you want `/`-invocable equivalents; the
   files are plain Markdown, so they paste in unchanged.
 
 The skills only describe *how to use* the servers — each one still requires
-its MCP server to be configured in the client (sections above).
+its MCP server to be configured in the client (sections above). Skills are
+**not** a way to run the servers: these are MCP servers, launched as
+long-running stdio subprocesses, not scripts a skill shells out to. That
+distinction matters most for `ms-word.py`, which is session-based
+(`msword_open` returns a `session_id` and holds the document in memory until
+`msword_save`) — a one-shot script invocation would start with no session and
+the open → edit → save workflow could not work.
 
 ## Versioning
 

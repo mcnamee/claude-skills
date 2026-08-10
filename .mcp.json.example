@@ -1,0 +1,96 @@
+{
+  "_comment": [
+    "Project-scoped MCP config for Claude Code. Copy this file to '.mcp.json' in",
+    "the folder you open Claude Code in, delete the servers you do not use, and",
+    "replace every C:\\path\\to\\... with a real absolute path.",
+    "",
+    "  - 'command' must be the SAME python.exe you installed the pip",
+    "    dependencies into (see the README's 'Install everything at once').",
+    "  - Backslashes are DOUBLED because this is JSON.",
+    "  - PYTHONUTF8=1 stops Windows' legacy codepage corrupting the stdio",
+    "    JSON-RPC stream on non-ASCII content. Keep it.",
+    "  - Secrets go in 'env', never in 'args': command lines are visible to",
+    "    other local users in process listings.",
+    "  - Run each server's --check before wiring it in, e.g.",
+    "      \"C:\\path\\to\\python.exe\" C:\\path\\to\\ms-word.py --check",
+    "",
+    "For user-scope install instead (available in every folder), see the",
+    "'claude mcp add --scope user' commands in the README.",
+    "This _comment key is ignored by Claude Code."
+  ],
+  "mcpServers": {
+    "msword-py": {
+      "command": "C:\\path\\to\\python.exe",
+      "args": [
+        "C:\\path\\to\\ms-word.py",
+        "--author", "Matt",
+        "--docs-dir", "C:\\Users\\me\\Documents\\ai_docs",
+        "--output-dir", "C:\\Users\\me\\Documents\\ai_generated",
+        "--kb-dir", "C:\\Users\\me\\Documents\\rag_kb"
+      ],
+      "env": { "PYTHONUTF8": "1" }
+    },
+    "excel": {
+      "command": "C:\\path\\to\\python.exe",
+      "args": [
+        "C:\\path\\to\\ms-excel.py",
+        "--docs-dir", "C:\\path\\to\\your\\workbooks"
+      ],
+      "env": { "PYTHONUTF8": "1" }
+    },
+    "outlook": {
+      "command": "C:\\path\\to\\python.exe",
+      "args": [
+        "C:\\path\\to\\ms-outlook.py",
+        "--search-folders", "Inbox,Sent Items,Archive",
+        "--kb-dir", "C:\\reference-docs\\outlook"
+      ],
+      "env": { "PYTHONUTF8": "1" }
+    },
+    "confluence": {
+      "command": "C:\\path\\to\\python.exe",
+      "args": [
+        "C:\\path\\to\\confluence.py",
+        "--max-body", "20000",
+        "--kb-dir", "C:\\reference-docs\\confluence"
+      ],
+      "env": {
+        "CONFLUENCE_BASE_URL": "https://confluence.internal.example.com",
+        "CONFLUENCE_TOKEN": "your-personal-access-token",
+        "PYTHONUTF8": "1"
+      }
+    },
+    "jira": {
+      "command": "C:\\path\\to\\python.exe",
+      "args": ["C:\\path\\to\\jira.py"],
+      "env": {
+        "JIRA_BASE_URL": "https://jira.internal.example.com",
+        "JIRA_TOKEN": "your-personal-access-token",
+        "JIRA_PROJECTS": "ABC,DEF",
+        "PYTHONUTF8": "1"
+      }
+    },
+    "knowledge-base": {
+      "command": "C:\\path\\to\\python.exe",
+      "args": [
+        "C:\\path\\to\\knowledge-base.py",
+        "--docs-dir", "C:\\Users\\me\\knowledge-base",
+        "--embed-url", "https://ai-gateway.internal.example.com/v1/embeddings",
+        "--embed-model", "text-embedding-3-small"
+      ],
+      "env": {
+        "KB_EMBED_API_KEY": "your-api-key",
+        "PYTHONUTF8": "1"
+      }
+    },
+    "pdf2md": {
+      "command": "C:\\path\\to\\python.exe",
+      "args": [
+        "C:\\path\\to\\pdf-to-md.py",
+        "--docs-dir", "C:\\reference-docs\\pdfs",
+        "--output-dir", "C:\\reference-docs\\markdown"
+      ],
+      "env": { "PYTHONUTF8": "1" }
+    }
+  }
+}
