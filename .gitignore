@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Claude Code project-scoped MCP config. Real ones carry API tokens and
+# personal-access tokens in their "env" blocks, so never commit one - the
+# committed template is .mcp.json.example.
+.mcp.json
