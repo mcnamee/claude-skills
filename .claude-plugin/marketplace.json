@@ -4,7 +4,7 @@
     "name": "mcnamee",
     "url": "https://github.com/mcnamee/claude-skills"
   },
-  "description": "Single-file MCP servers for working with Word, Excel, Outlook, Confluence, Jira, PDFs and a local RAG knowledge base. Most bundle one server with its matching skill, so each installs and updates as one unit - including fully offline; some are skills alone.",
+  "description": "Single-file MCP servers for working with Word, Excel, Outlook, Confluence, Jira, PDFs and a local RAG knowledge base. Each plugin bundles one server with its matching skill, so it installs and updates as one unit - including fully offline.",
   "plugins": [
     {
       "name": "word",
@@ -73,18 +73,6 @@
         "knowledge-base",
         "search",
         "embeddings"
-      ]
-    },
-    {
-      "name": "unslop",
-      "source": "./plugins/unslop",
-      "description": "Strip AI-slop markers from writing - padding phrases, tell-tale vocabulary and stock LLM sentence shapes - without changing the meaning or the author's voice. Skill only; no MCP server.",
-      "version": "1.0.0",
-      "keywords": [
-        "writing",
-        "editing",
-        "ai-slop",
-        "style"
       ]
     },
     {
