@@ -1,11 +1,11 @@
 # claude-skills
 
-Seven MCP servers that give an AI agent hands on the things enterprise work
-actually lives in — Word documents, Excel workbooks, Outlook mail, Confluence,
-Jira, PDFs — plus a local RAG knowledge base to tie them together.
+Eight **Claude Code plugins**. Seven are MCP servers that give an AI agent
+hands on the things enterprise work actually lives in — Word documents, Excel
+workbooks, Outlook mail, Confluence, Jira, PDFs — plus a local RAG knowledge
+base to tie them together. One is a skill on its own.
 
-Each one is packaged as a **Claude Code plugin**, so this repo doubles as a
-plugin marketplace that works **entirely offline**.
+This repo doubles as a plugin marketplace that works **entirely offline**.
 
 ## Why this exists
 
@@ -13,7 +13,8 @@ plugin marketplace that works **entirely offline**.
   no registry lookups. Copy the folder across, add it as a local marketplace,
   install.
 - **One file per server.** Every server is a single `.py` — nothing to build, no
-  package tree to transfer. Four of the seven are **standard library only**.
+  package tree to transfer. Four of the seven are **standard library only**, and
+  `unslop` is a skill with no code at all.
 - **Install with prompts, not JSON.** `/plugin install` asks for the folders and
   the Python interpreter instead of you hand-editing absolute paths in seven
   places. The matching skill comes with the server.
@@ -37,6 +38,7 @@ plugin marketplace that works **entirely offline**.
 | [**jira**](plugins/jira) | 1.1.2 | Query issues, sprints and projects (Jira Data Center v2 API) | _none_ |
 | [**knowledge-base**](plugins/knowledge-base) | 2.0.2 | True RAG over your own Markdown: local ChromaDB index + your embeddings API | `chromadb` |
 | [**pdf-to-md**](plugins/pdf-to-md) | 4.0.2 | Convert PDFs to Markdown with tables preserved | `pymupdf pymupdf4llm` |
+| [**unslop**](plugins/unslop) | 1.0.0 | Strip AI-slop markers from writing, leaving meaning and voice intact — **skill only, no server** | _none_ |
 
 Each plugin's README covers its settings, tools, file access and example
 prompts. Every server also carries a semantic version in `__version__`, printed
@@ -52,7 +54,7 @@ plugins at:
 ```
 
 (Drop `pywin32` if you're not on Windows / not using `outlook`. Install only
-what the plugins you want need — see the table above.) `word.py`'s docstring
+what the plugins you want need — see the table above; `unslop` needs nothing.) `word.py`'s docstring
 walks through sideloading the wheels on an airgapped machine.
 
 **2. Add this repo as a marketplace**, then install whichever plugins you want:
@@ -90,7 +92,8 @@ connected, `claude mcp list` to spot an unresolved environment variable, and
 version across.
 
 > **Skills are namespaced** by their plugin, so it's `/word:word` rather
-> than `/word`.
+> than `/word`. To invoke one by its bare name, install the skill on its own
+> instead — see [Skills](#skills) below.
 >
 > **Plugins are cached on install** (copied under `~/.claude/plugins/`), which is
 > why each plugin contains its own server file rather than sharing one — a path
@@ -158,21 +161,24 @@ symlink dropped inside a configured folder cannot reach files outside it.
 
 ## Skills
 
-Every server ships with a Claude skill at
-`plugins/<name>/skills/<name>/SKILL.md` — it teaches an agent the server's
-tools, the right call order, and the sharp edges (read-only limits, sandboxes,
-the tracked-changes workflow, when to reindex). **Installing the plugin installs
-its skill**, namespaced as `/<plugin>:<skill>`.
+Every plugin ships a Claude skill at `plugins/<name>/skills/<name>/SKILL.md`.
+For the seven servers it teaches an agent the tools, the right call order, and
+the sharp edges (read-only limits, sandboxes, the tracked-changes workflow,
+when to reindex). For `unslop` the skill *is* the plugin. **Installing the
+plugin installs its skill**, namespaced as `/<plugin>:<skill>`.
 
-To install a skill on its own, without its server:
+To install a skill on its own — without its server, and invoked by its bare
+name (`/unslop` rather than `/unslop:unslop`):
 
 ```
-xcopy /E /I plugins\word\skills\word %USERPROFILE%\.claude\skills\word
+xcopy /E /I plugins\unslop\skills\unslop %USERPROFILE%\.claude\skills\unslop
 ```
 
-Skills describe *how to use* a server — they aren't a way to run one. These are
-MCP servers, launched as long-running stdio subprocesses, not scripts a skill
-shells out to. That matters most for `word`, which is session-based
+Run `/doctor` or restart Claude Code if a newly copied skill doesn't appear.
+
+A server's skill describes *how to use* it — it isn't a way to run one. These
+are MCP servers, launched as long-running stdio subprocesses, not scripts a
+skill shells out to. That matters most for `word`, which is session-based
 (`msword_open` returns a `session_id` and holds the document in memory until
 `msword_save`).
 
@@ -185,6 +191,8 @@ Versions follow semver and are bumped on **every** change (see `CLAUDE.md`):
 - **MINOR** — new tools, new flags, new behaviour (backwards compatible)
 - **PATCH** — bug fixes, documentation-only or internal changes
 
-A version appears in four places that must stay in sync: the server's
-`__version__`, its docstring title, its `plugin.json`, and the table above (the
-marketplace manifest mirrors them too).
+A version appears in five places that must stay in sync: the server's
+`__version__`, its docstring title, its `plugin.json`, its own README header
+and the table above (the marketplace manifest mirrors them too). A skill-only
+plugin like `unslop` has no `__version__` or docstring, so for it the
+`plugin.json` is the source of truth.
