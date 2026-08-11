@@ -4,45 +4,31 @@ Strip the markers that make writing read as machine-generated — padding
 phrases, tell-tale vocabulary, and the stock LLM sentence shapes — **without
 changing the meaning or the author's voice**.
 
-| | |
-|---|---|
-| **Ships** | a skill only — no MCP server |
-| **Version** | 1.0.0 |
-| **pip install** | _none_ |
-| **Platform** | any |
-| **Writes to disk** | only if you ask it to edit a file in place |
-
-The only plugin here with no Python behind it: it needs no server, no
-dependencies and no configuration, so it works unchanged on an airgapped
-machine.
+A standalone skill: no MCP server, no Python, no dependencies and no
+configuration, so it works anywhere — including on an airgapped machine.
 
 ## Install
 
-```
-/plugin marketplace add C:\path\to\claude-skills
-/plugin install unslop@mcnamee-claude-skills
-```
+Copy this folder into your Claude skills directory. From the root of this
+repo, in **PowerShell**:
 
-Then invoke it as **`/unslop:unslop`** — Claude Code namespaces a plugin's
-skills by the plugin name.
-
-If you want the shorter bare `/unslop`, install the skill on its own instead
-of as a plugin:
-
-```
-xcopy /E /I plugins\unslop\skills\unslop %USERPROFILE%\.claude\skills\unslop
+```powershell
+$dest = "$env:USERPROFILE\.claude\skills"
+New-Item -ItemType Directory -Force -Path $dest | Out-Null
+Copy-Item -Recurse -Force .\skills\unslop $dest
 ```
 
-Nothing else changes — same skill, same behaviour, just a different name to
-type. Run `/doctor` or restart Claude Code if a newly copied skill doesn't
-show up.
+For one project only, copy it to `.claude\skills\unslop\` inside that project
+instead. Run `/doctor` or restart Claude Code if it doesn't show up.
+
+See [`skills/README.md`](../README.md) for the general install notes.
 
 ## Use
 
 ```
-/unslop:unslop <paste the text>
-/unslop:unslop C:\path\to\draft.md
-/unslop:unslop            (with no argument: the last substantial piece of writing in the conversation)
+/unslop <paste the text>
+/unslop C:\path\to\draft.md
+/unslop                    (with no argument: the last substantial piece of writing in the conversation)
 ```
 
 It returns the cleaned text and nothing else — no preamble, no commentary.

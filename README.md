@@ -1,11 +1,13 @@
 # claude-skills
 
-Eight **Claude Code plugins**. Seven are MCP servers that give an AI agent
-hands on the things enterprise work actually lives in — Word documents, Excel
-workbooks, Outlook mail, Confluence, Jira, PDFs — plus a local RAG knowledge
-base to tie them together. One is a skill on its own.
+Two things, both for Claude Code, both working **entirely offline**:
 
-This repo doubles as a plugin marketplace that works **entirely offline**.
+- **[`plugins/`](plugins)** — seven MCP servers that give an agent hands on the
+  things enterprise work actually lives in: Word documents, Excel workbooks,
+  Outlook mail, Confluence, Jira, PDFs, plus a local RAG knowledge base to tie
+  them together. This repo doubles as a plugin marketplace for them.
+- **[`skills/`](skills)** — standalone skills that need no server and no
+  install beyond a folder copy.
 
 ## Why this exists
 
@@ -14,7 +16,7 @@ This repo doubles as a plugin marketplace that works **entirely offline**.
   install.
 - **One file per server.** Every server is a single `.py` — nothing to build, no
   package tree to transfer. Four of the seven are **standard library only**, and
-  `unslop` is a skill with no code at all.
+  the standalone skills have no code at all.
 - **Install with prompts, not JSON.** `/plugin install` asks for the folders and
   the Python interpreter instead of you hand-editing absolute paths in seven
   places. The matching skill comes with the server.
@@ -31,14 +33,13 @@ This repo doubles as a plugin marketplace that works **entirely offline**.
 
 | Plugin | Version | What it does | pip install |
 |---|---|---|---|
-| [**word**](plugins/word) | 4.0.1 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
+| [**word**](plugins/word) | 4.0.2 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
 | [**excel**](plugins/excel) | 3.0.1 | Read and analyse workbooks; parses `.xlsx` directly, so Excel isn't needed | _none_ |
 | [**outlook**](plugins/outlook) | 3.0.1 | Read local Outlook mail and calendar via COM, with a content blacklist | `pywin32` |
 | [**confluence**](plugins/confluence) | 1.3.2 | Search and read Confluence pages | _none_ |
-| [**jira**](plugins/jira) | 1.1.2 | Query issues, sprints and projects (Jira Data Center v2 API) | _none_ |
-| [**knowledge-base**](plugins/knowledge-base) | 2.0.2 | True RAG over your own Markdown: local ChromaDB index + your embeddings API | `chromadb` |
-| [**pdf-to-md**](plugins/pdf-to-md) | 4.0.2 | Convert PDFs to Markdown with tables preserved | `pymupdf pymupdf4llm` |
-| [**unslop**](plugins/unslop) | 1.0.0 | Strip AI-slop markers from writing, leaving meaning and voice intact — **skill only, no server** | _none_ |
+| [**jira**](plugins/jira) | 1.1.3 | Query issues, sprints and projects (Jira Data Center v2 API) | _none_ |
+| [**knowledge-base**](plugins/knowledge-base) | 2.0.3 | True RAG over your own Markdown: local ChromaDB index + your embeddings API | `chromadb` |
+| [**pdf-to-md**](plugins/pdf-to-md) | 4.0.3 | Convert PDFs to Markdown with tables preserved | `pymupdf pymupdf4llm` |
 
 Each plugin's README covers its settings, tools, file access and example
 prompts. Every server also carries a semantic version in `__version__`, printed
@@ -46,18 +47,24 @@ by `--version` and reported to the MCP client in `serverInfo`.
 
 ## Install
 
+Everything below is **Windows / PowerShell**, which is what this suite targets.
+Two things to know if you're pasting from elsewhere: a quoted path at the start
+of a command needs the call operator (`& "C:\...\python.exe"`), and `%VAR%`
+does not expand — it's `$env:VAR`.
+
 **1. Install the pip dependencies** into the *same* interpreter you'll point the
 plugins at:
 
-```
-"C:\path\to\python.exe" -m pip install python-docx pymupdf pymupdf4llm pywin32 chromadb
+```powershell
+& "C:\path\to\python.exe" -m pip install python-docx pymupdf pymupdf4llm pywin32 chromadb
 ```
 
 (Drop `pywin32` if you're not on Windows / not using `outlook`. Install only
-what the plugins you want need — see the table above; `unslop` needs nothing.) `word.py`'s docstring
+what the plugins you want need — see the table above.) `word.py`'s docstring
 walks through sideloading the wheels on an airgapped machine.
 
-**2. Add this repo as a marketplace**, then install whichever plugins you want:
+**2. Add this repo as a marketplace**, then install whichever plugins you want.
+These are slash commands, typed inside Claude Code — not shell commands:
 
 ```
 /plugin marketplace add C:\path\to\claude-skills
@@ -75,7 +82,13 @@ folder, and the **Python interpreter** (give the absolute path to the
 
 **3. Set your secrets** as Windows user environment variables before starting
 Claude Code — they're read from the ambient environment, never stored in the
-plugin:
+plugin. Only needed for the plugins you actually install:
+
+```powershell
+setx CONFLUENCE_TOKEN "your-personal-access-token"
+setx JIRA_TOKEN       "your-personal-access-token"
+setx KB_EMBED_API_KEY "your-api-key"
+```
 
 | Plugin | Environment variable |
 |---|---|
@@ -83,8 +96,14 @@ plugin:
 | `jira` | `JIRA_TOKEN` |
 | `knowledge-base` | `KB_EMBED_API_KEY` |
 
-`setx` doesn't affect already-running processes, so quit VS Code completely (not
-just a window reload) and reopen it after setting one.
+Two `setx` gotchas. It **doesn't affect processes that are already running**, so
+quit VS Code completely — a window reload is not enough — and reopen it. And it
+**truncates values at 1024 characters**; if you ever hit that, set the variable
+through System Properties → Environment Variables instead.
+
+To check a variable took, in a **new** window: `$env:JIRA_TOKEN`. To set one for
+the current session only (handy for testing, gone when you close the window):
+`$env:JIRA_TOKEN = "..."`.
 
 Useful commands: `/plugin` to browse and manage, `/mcp` to confirm a server
 connected, `claude mcp list` to spot an unresolved environment variable, and
@@ -105,8 +124,8 @@ Run the server's `--check` first. It validates config (and connectivity, for the
 HTTP servers) without starting the server, and is far easier to read than an MCP
 connection failure:
 
-```
-"C:\path\to\python.exe" C:\path\to\claude-skills\plugins\word\word.py --check
+```powershell
+& "C:\path\to\python.exe" C:\path\to\claude-skills\plugins\word\word.py --check
 ```
 
 ### Manual install, without plugins
@@ -119,9 +138,12 @@ files). Keep `PYTHONUTF8=1`: without it, Windows' legacy codepage can corrupt th
 stdio JSON stream on non-ASCII content. Pass secrets with `-e` / the `env` block,
 never as flags.
 
-```
+```powershell
 claude mcp add excel --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\claude-skills\plugins\excel\excel.py --docs-dir C:\path\to\your\workbooks
 ```
+
+(No `&` needed there — `claude` is unquoted, so PowerShell treats it as a
+command already.)
 
 ## Configuration conventions
 
@@ -161,26 +183,38 @@ symlink dropped inside a configured folder cannot reach files outside it.
 
 ## Skills
 
-Every plugin ships a Claude skill at `plugins/<name>/skills/<name>/SKILL.md`.
-For the seven servers it teaches an agent the tools, the right call order, and
-the sharp edges (read-only limits, sandboxes, the tracked-changes workflow,
-when to reindex). For `unslop` the skill *is* the plugin. **Installing the
-plugin installs its skill**, namespaced as `/<plugin>:<skill>`.
+There are two kinds, in two places.
 
-To install a skill on its own — without its server, and invoked by its bare
-name (`/unslop` rather than `/unslop:unslop`):
+**Every plugin ships one**, at `plugins/<name>/skills/<name>/SKILL.md` — it
+teaches an agent that server's tools, the right call order, and the sharp
+edges (read-only limits, sandboxes, the tracked-changes workflow, when to
+reindex). Installing the plugin installs its skill, namespaced as
+`/<plugin>:<skill>` — so `/word:word`, not `/word`.
 
+**[`skills/`](skills) holds standalone skills**, which need no server and no
+plugin. Install one by copying its folder:
+
+| Skill | Invoke | What it does |
+|---|---|---|
+| [**unslop**](skills/unslop) | `/unslop` | Strips AI-slop markers from writing — padding, tell-tale vocabulary, stock LLM sentence shapes — leaving meaning and voice intact |
+
+```powershell
+$dest = "$env:USERPROFILE\.claude\skills"
+New-Item -ItemType Directory -Force -Path $dest | Out-Null
+Copy-Item -Recurse -Force .\skills\unslop $dest
 ```
-xcopy /E /I plugins\unslop\skills\unslop %USERPROFILE%\.claude\skills\unslop
-```
 
-Run `/doctor` or restart Claude Code if a newly copied skill doesn't appear.
+Or copy it into `.claude\skills\` inside a project to scope it there. Run
+`/doctor` or restart Claude Code if a newly copied skill doesn't appear. See
+[`skills/README.md`](skills/README.md) for the details and for how to add
+another.
 
-A server's skill describes *how to use* it — it isn't a way to run one. These
-are MCP servers, launched as long-running stdio subprocesses, not scripts a
-skill shells out to. That matters most for `word`, which is session-based
-(`msword_open` returns a `session_id` and holds the document in memory until
-`msword_save`).
+Note the difference in what they give Claude: a **plugin** adds *tools*, a
+**skill** adds *instructions*. A server's skill describes how to use it — it
+isn't a way to run one. These are MCP servers, launched as long-running stdio
+subprocesses, not scripts a skill shells out to. That matters most for `word`,
+which is session-based (`msword_open` returns a `session_id` and holds the
+document in memory until `msword_save`).
 
 ## Versioning
 
@@ -193,6 +227,6 @@ Versions follow semver and are bumped on **every** change (see `CLAUDE.md`):
 
 A version appears in five places that must stay in sync: the server's
 `__version__`, its docstring title, its `plugin.json`, its own README header
-and the table above (the marketplace manifest mirrors them too). A skill-only
-plugin like `unslop` has no `__version__` or docstring, so for it the
-`plugin.json` is the source of truth.
+and the plugin table above (the marketplace manifest mirrors them too).
+Standalone skills under `skills/` are unversioned — they are prose, not an
+interface anything depends on.

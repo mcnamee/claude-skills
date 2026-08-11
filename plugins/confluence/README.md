@@ -29,6 +29,14 @@ the ambient environment. Credentials are deliberately env-var only: there are no
 `--token`/`--user`/`--password` flags, because command-line arguments are
 visible to other local users in process listings.
 
+```powershell
+setx CONFLUENCE_TOKEN "your-personal-access-token"
+```
+
+`setx` does not affect processes that are already running, so quit VS Code
+completely (a window reload is not enough) and reopen it. Check it took in a
+**new** window with `$env:CONFLUENCE_TOKEN`.
+
 ## Configuration reference
 
 Precedence is **CLI flag > environment variable > constant in the file**.
@@ -66,8 +74,8 @@ only inside that folder.
 `--check` connects, authenticates and reports who you are plus how many spaces
 you can see — run it before wiring the server in:
 
-```
-"C:\path\to\python.exe" confluence.py --check
+```powershell
+& "C:\path\to\python.exe" confluence.py --check
 ```
 
 Behind an internal CA, point `--ca-cert` at the PEM bundle rather than reaching

@@ -78,8 +78,8 @@ emails land alongside your Confluence pages and Word documents.
 
 ## Troubleshooting
 
-```
-"C:\path\to\python.exe" outlook.py --check
+```powershell
+& "C:\path\to\python.exe" outlook.py --check
 ```
 
 connects to Outlook and prints diagnostics plus the blacklist status. If it

@@ -5,7 +5,7 @@ native Word styles, and filling out templates.
 
 | | |
 |---|---|
-| **Server** | `word.py` v4.0.1 |
+| **Server** | `word.py` v4.0.2 |
 | **pip install** | `python-docx` (pulls in `lxml` and `typing_extensions`) |
 | **Platform** | any (Word itself is not required) |
 | **Writes to disk** | yes — the only write-capable server in the suite |
@@ -162,13 +162,13 @@ a symlink dropped inside a configured folder cannot reach files outside it.
 - **"dependency missing" after installing `python-docx`** — the server logs
   `sys.executable` on startup. Almost always the Python interpreter you gave the
   plugin isn't the one you pip-installed into:
-  ```
-  "C:\path\to\python.exe" -m pip install python-docx
+```powershell
+  & "C:\path\to\python.exe" -m pip install python-docx
   ```
 - **Check the config before wiring it in**, which also runs a full offline
   self-test:
-  ```
-  "C:\path\to\python.exe" word.py --check
+```powershell
+  & "C:\path\to\python.exe" word.py --check
   ```
 - For airgapped installs, the docstring at the top of `word.py` walks through
   sideloading the wheels.

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-knowledge-base.py (v2.0.2)
+knowledge-base.py (v2.0.3)
 ==========================
 
 A single-file MCP (Model Context Protocol) server providing true RAG
@@ -170,9 +170,9 @@ and the plugin picks it up from there. Every other setting below is available
 as its KB_* environment variable. See README.md next to this file for the full
 settings reference.
 
-FIRST RUN / TESTING (do this before wiring into the MCP client)
+FIRST RUN / TESTING (PowerShell, before wiring into the MCP client)
 ---------------------------------------------------------------
-    set KB_EMBED_API_KEY=...                        (PowerShell: $env:KB_EMBED_API_KEY="...")
+    $env:KB_EMBED_API_KEY = "..."       (this session only; setx makes it permanent)
     python knowledge-base.py --docs-dir C:\\kb --embed-url https://... --check
         -> validates config, calls the embeddings endpoint once, reports index status
     python knowledge-base.py --docs-dir C:\\kb --embed-url https://... --reindex
@@ -214,7 +214,7 @@ NOTES
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "2.0.2"
+__version__ = "2.0.3"
 
 import os
 import re

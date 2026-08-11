@@ -5,7 +5,7 @@ local knowledge base built from PDF source material.
 
 | | |
 |---|---|
-| **Server** | `pdf-to-md.py` v4.0.2 |
+| **Server** | `pdf-to-md.py` v4.0.3 |
 | **pip install** | `pymupdf pymupdf4llm` |
 | **Platform** | any |
 | **Writes to disk** | yes — the output folder only |
@@ -62,10 +62,10 @@ in the same RAG index.
 - **"dependency missing" after installing `pymupdf`** — the server logs
   `sys.executable` on startup. Almost always the Python interpreter you gave the
   plugin isn't the one you pip-installed into:
-  ```
-  "C:\path\to\python.exe" -m pip install pymupdf pymupdf4llm
+```powershell
+  & "C:\path\to\python.exe" -m pip install pymupdf pymupdf4llm
   ```
 - `--check` reports the folders, dependency status and how many PDFs were found:
-  ```
-  "C:\path\to\python.exe" pdf-to-md.py --check
+```powershell
+  & "C:\path\to\python.exe" pdf-to-md.py --check
   ```

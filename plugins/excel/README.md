@@ -67,7 +67,7 @@ reach files outside it. Nothing is written.
 Run the config check before wiring it in — it's far easier to read than an MCP
 connection failure:
 
-```
-"C:\path\to\python.exe" excel.py --check
-"C:\path\to\python.exe" excel.py --list
+```powershell
+& "C:\path\to\python.exe" excel.py --check
+& "C:\path\to\python.exe" excel.py --list
 ```

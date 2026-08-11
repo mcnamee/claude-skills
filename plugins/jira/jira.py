@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-jira.py (v1.1.2) - A single-file, READ-ONLY MCP (Model Context Protocol)
+jira.py (v1.1.3) - A single-file, READ-ONLY MCP (Model Context Protocol)
 server for querying Jira Data Center (v2 REST API) using only the Python 3
 standard library.
 
@@ -64,11 +64,18 @@ Windows user environment variable before starting Claude Code, and the plugin
 picks it up from there. See README.md next to this file for the full
 settings reference.
 
-VALIDATE BEFORE WIRING IN (run manually on the endpoint)
+VALIDATE BEFORE WIRING IN (PowerShell, on the endpoint)
 --------------------------------------------------------
-    set JIRA_BASE_URL=https://jira.internal.example.com
-    set JIRA_TOKEN=...
+    $env:JIRA_BASE_URL = "https://jira.internal.example.com"
+    $env:JIRA_TOKEN    = "..."
     python jira.py --check
+
+  Those two lines set the variables for THIS PowerShell session only. To make
+  them permanent for your user account, use setx (then open a NEW window - setx
+  does not affect processes that are already running):
+
+    setx JIRA_BASE_URL "https://jira.internal.example.com"
+    setx JIRA_TOKEN "..." 
 
   --check connects to Jira, prints who you are authenticated as and how many
   projects are visible (to stderr), then exits. Expected tail on success:
@@ -108,7 +115,7 @@ failed transfer" rule):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "1.1.2"
+__version__ = "1.1.3"
 
 import argparse
 import base64
