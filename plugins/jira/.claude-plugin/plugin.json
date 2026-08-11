@@ -1,0 +1,50 @@
+{
+  "name": "jira",
+  "displayName": "Jira (read-only)",
+  "version": "1.1.0",
+  "description": "Query Jira issues, sprints and projects. Read-only (Jira Data Center v2 REST API).",
+  "author": {
+    "name": "mcnamee"
+  },
+  "repository": "https://github.com/mcnamee/mcp-servers",
+  "license": "MIT",
+  "keywords": [
+    "jira",
+    "issues",
+    "tickets"
+  ],
+  "userConfig": {
+    "base_url": {
+      "type": "string",
+      "title": "Jira base URL",
+      "description": "e.g. https://jira.internal.example.com - no trailing slash. REQUIRED.",
+      "required": true
+    },
+    "projects": {
+      "type": "string",
+      "title": "Project allowlist",
+      "description": "Optional. Comma-separated project keys, e.g. 'ABC,DEF'. When set, every tool is confined to them."
+    },
+    "python": {
+      "type": "string",
+      "title": "Python interpreter",
+      "description": "Absolute path to the python.exe that has this server's pip dependencies installed (e.g. C:\\Python311\\python.exe). Use plain 'python' only if the right interpreter is first on PATH - a mismatch here is the most common cause of 'dependency missing' errors.",
+      "required": true
+    }
+  },
+  "mcpServers": {
+    "jira": {
+      "type": "stdio",
+      "command": "${user_config.python}",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/jira.py"
+      ],
+      "env": {
+        "PYTHONUTF8": "1",
+        "JIRA_BASE_URL": "${user_config.base_url}",
+        "JIRA_PROJECTS": "${user_config.projects}",
+        "JIRA_TOKEN": "${JIRA_TOKEN}"
+      }
+    }
+  }
+}

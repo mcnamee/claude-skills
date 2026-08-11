@@ -5,7 +5,7 @@ You are an expert Python 3 programmer. You write scripts for an endpoint that is
 ## Constraints
 
 - **Windows computer** - the network is a windows enterprise system, and the script is going to be run on a Windows endpoint 
-- **Single-file scripts only** — it's difficult to get individual files on the endpoint, so please aim for single files scripts
+- **Single-file scripts only** — it's difficult to get individual files on the endpoint, so please aim for single files scripts. Each server lives at `plugins/<name>/<name>.py` and is the only `.py` in its plugin; a plugin must never reference a file outside its own folder, because Claude Code copies plugins into a cache on install and an outside path would break there.
 - **Standard library as priority** — if a module isn't in the Python 3 standard library, ask for confirmation before adding another library. There is an option to use pip, which has a proxy in the network. 
 - **No internet calls** — no requests, urllib calls to external hosts, or network-dependent logic
 - **Python 3 compatible** — assume a reasonably modern Python 3 (3.8+), but do not rely on features from very recent releases unless explicitly asked
@@ -38,7 +38,7 @@ Every MCP server in this repo carries a semantic version:
 - `SERVER_VERSION` / `SERVER_INFO` (whatever the file reports to the MCP client in `serverInfo`) must reference `__version__`, never a duplicate literal.
 - Each server exposes a `--version` flag printing `<server-name> <version>`. It must work even when the server's pip dependencies are missing (servers that import heavy/platform deps at module level answer `--version` before that import).
 
-**Whenever you change a server file, bump its version in the same change** — in `__version__`, the docstring title, and the version table at the top of `README.md` (all three must stay in sync):
+**Whenever you change a server file, bump its version in the same change** — in `__version__`, the docstring title, the `version` field of its `plugins/<name>/.claude-plugin/plugin.json`, and the version table at the top of `README.md` (all four must stay in sync; the marketplace at `.claude-plugin/marketplace.json` mirrors the plugin versions too):
 
 - **MAJOR** — anything that breaks an existing integration: renaming/removing a CLI flag, env var or config constant; changing a tool's name, arguments or output shape; changing defaults in a behaviour-altering way.
 - **MINOR** — backwards-compatible additions: new tools, new flags/env vars, new behaviour.
@@ -52,4 +52,4 @@ Keep every server consistent with these rules (documented for users in README.md
 - **Naming:** env var = server prefix + upper-snake flag name (`--docs-dir` → `EXCEL_DOCS_DIR`). Prefixes: `CONFLUENCE_`, `JIRA_`, `KB_` (knowledge-base), `EXCEL_`, `OUTLOOK_`, `MSWORD_`, `PDF2MD_`. Exception: `--insecure` pairs with `<PREFIX>_VERIFY_SSL=false`.
 - **Secrets are env-var ONLY** — never add `--token`/`--password`/`--*-api-key` flags (argv is visible to other local users in process listings).
 - **Shared flag vocabulary:** `--docs-dir` (the source-documents folder a server is confined to), `--output-dir` (generated files), `--kb-dir` (optional Markdown mirror for the RAG knowledge base), `--base-url`/`--ca-cert`/`--insecure`/`--timeout`/`--max-body` (HTTP servers), `--check` (validate config/connectivity and exit), `--version`. Reuse these names for new servers/settings; do not invent synonyms (no `--folder`, `--input-dir`, `--document-root`).
-- **Skills:** each server has a matching Claude skill at `skills/<server-name>/SKILL.md` — the folder-per-skill layout Claude Code expects, so `skills/` can be copied straight into `.claude/skills/` with no renaming. When a server's tools or workflow change, update its skill (and the README skills table) in the same change.
+- **Skills:** each server has a matching Claude skill at `plugins/<server-name>/skills/<server-name>/SKILL.md`. When a server's tools or workflow change, update its skill (and the README skills table) in the same change.

@@ -1,10 +1,16 @@
 # mcp-servers
 My MCP Servers for Productivity
 
-Each file in this repo is a single-file, stdio-transport MCP server. Most of
-them are standard-library only; a few need one extra pip package. Install
-into the SAME Python interpreter that your MCP client (e.g. Continue or
-Cline) will launch the server with.
+Seven single-file, stdio-transport MCP servers. Most are standard-library
+only; a few need one extra pip package. Install into the SAME Python
+interpreter that your MCP client will launch the server with.
+
+Each server lives in `plugins/<name>/` alongside its skill, so it is also a
+ready-to-install **Claude Code plugin** — this repo doubles as an offline
+plugin marketplace (see
+[Installation into Claude Code](#installation-into-claude-code--plugins-recommended)).
+Other clients (Continue, Cline) point at the same `.py` files directly; nothing
+is duplicated.
 
 ## Servers and dependencies
 
@@ -15,13 +21,13 @@ for the bump rules.
 
 | Server | Version | pip install | Notes |
 |---|---|---|---|
-| `confluence.py` | 1.3.0 | _none_ | standard library only |
-| `jira.py` | 1.1.0 | _none_ | standard library only (read-only, Jira Data Center v2 REST API) |
-| `knowledge-base.py` | 2.0.0 | `pip install chromadb` | true RAG: local ChromaDB vector index + your embeddings API (HTTP is stdlib `urllib`, no `requests`) |
-| `ms-excel.py` | 2.1.0 | _none_ | standard library only (parses .xlsx as a zip of XML) |
-| `ms-word.py` | 3.0.0 | `pip install python-docx` | also pulls in `lxml` (compiled) and `typing_extensions` |
-| `ms-outlook.py` | 2.0.0 | `pip install pywin32` | Windows only (COM automation of classic Outlook) |
-| `pdf-to-md.py` | 4.0.0 | `pip install pymupdf pymupdf4llm` | OCR of scanned PDFs additionally requires Tesseract installed on the machine (not a pip package) |
+| [`confluence`](plugins/confluence) | 1.3.0 | _none_ | standard library only |
+| [`jira`](plugins/jira) | 1.1.0 | _none_ | standard library only (read-only, Jira Data Center v2 REST API) |
+| [`knowledge-base`](plugins/knowledge-base) | 2.0.0 | `pip install chromadb` | true RAG: local ChromaDB vector index + your embeddings API (HTTP is stdlib `urllib`, no `requests`) |
+| [`ms-excel`](plugins/ms-excel) | 2.1.0 | _none_ | standard library only (parses .xlsx as a zip of XML) |
+| [`ms-word`](plugins/ms-word) | 3.0.0 | `pip install python-docx` | also pulls in `lxml` (compiled) and `typing_extensions` |
+| [`ms-outlook`](plugins/ms-outlook) | 2.0.0 | `pip install pywin32` | Windows only (COM automation of classic Outlook) |
+| [`pdf-to-md`](plugins/pdf-to-md) | 4.0.0 | `pip install pymupdf pymupdf4llm` | OCR of scanned PDFs additionally requires Tesseract installed on the machine (not a pip package) |
 
 ## Install everything at once
 
@@ -111,11 +117,69 @@ outside it.
   `ms-word.py` for the wheel-sideloading steps (same pattern applies to
   `pdf-to-md.py`'s dependencies).
 
-## Installation into Claude Code (VS Code)
+## Installation into Claude Code — plugins (recommended)
 
-All servers speak MCP over stdio, so Claude Code launches each one as a
-long-running subprocess. Two things to install: the **servers** (below) and the
-**skills** (see [Skills](#skills-slash-commands-for-each-mcp)).
+Each server is also packaged as a **Claude Code plugin**, bundling the server,
+its skill and its configuration prompts as one installable unit. This repo is a
+plugin **marketplace**, and it works entirely offline — no network, no registry.
+
+```
+/plugin marketplace add C:\path\to\mcp-servers
+/plugin install ms-word@mcnamee-mcp-servers
+```
+
+Claude Code then **prompts you for that server's settings** (documents folder,
+output folder, the Python interpreter, …) instead of you hand-editing JSON, and
+the skill is installed with it. Repeat `/plugin install` for whichever of the
+seven you want — they are independent, so a machine without `pywin32` simply
+does not install `ms-outlook`.
+
+| Plugin | Installs | Prompts for |
+|---|---|---|
+| `ms-word` | Word server + `/ms-word:ms-word` skill | documents folder (required), output folder, knowledge-base folder, tracked-change author |
+| `ms-excel` | Excel server + skill | workbook folder (required) |
+| `ms-outlook` | Outlook server + skill | knowledge-base folder, search folders, blacklist file |
+| `confluence` | Confluence server + skill | base URL (required), knowledge-base folder |
+| `jira` | Jira server + skill | base URL (required), project allowlist |
+| `knowledge-base` | RAG server + skill | docs folder + embeddings URL (required), model |
+| `pdf-to-md` | PDF converter + skill | PDF folder + output folder (required) |
+
+Every plugin also asks for the **Python interpreter** — give the absolute path
+to the `python.exe` that has that server's pip dependencies, since a mismatch
+there is the most common cause of "dependency missing".
+
+**Secrets are not stored in the plugin.** The three HTTP servers read their
+credentials from the ambient environment, so set these as Windows user
+environment variables before starting Claude Code:
+
+| Plugin | Environment variable |
+|---|---|
+| `confluence` | `CONFLUENCE_TOKEN` |
+| `jira` | `JIRA_TOKEN` |
+| `knowledge-base` | `KB_EMBED_API_KEY` |
+
+Useful commands: `/plugin` (browse and manage), `claude plugin list`,
+`/plugin marketplace update mcnamee-mcp-servers` after you transfer a new
+version across, and `/mcp` to confirm a server connected.
+
+Notes and caveats:
+
+- **Skills are namespaced** by their plugin, so it is `/ms-word:ms-word` rather
+  than `/ms-word`.
+- **Plugins are cached on install** (copied under `~/.claude/plugins/`), which
+  is why each plugin contains its own server file rather than sharing one — a
+  path reaching outside the plugin would break once cached. Re-run
+  `/plugin marketplace update` after transferring changes.
+- **Other MCP clients are unaffected** — Continue and Cline configure the same
+  `.py` files directly (see the sections below); nothing is duplicated, the
+  plugin simply wraps the server in place.
+
+## Installation into Claude Code — manual alternative
+
+If you would rather not use plugins (or want a server configured differently
+from what its plugin prompts for), register it directly. Two things to install:
+the **servers** (below) and the **skills** (see
+[Skills](#skills-slash-commands-for-each-mcp)).
 
 Pick a scope:
 
@@ -130,9 +194,9 @@ From a terminal, once per server — `--` separates Claude's flags from the
 server's own:
 
 ```
-claude mcp add msword-py --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\ms-word.py --docs-dir C:\Users\me\Documents\ai_docs --output-dir C:\Users\me\Documents\ai_generated --author Matt
-claude mcp add excel     --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\ms-excel.py --docs-dir C:\path\to\your\workbooks
-claude mcp add outlook   --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\ms-outlook.py
+claude mcp add msword-py --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\plugins\ms-word\ms-word.py --docs-dir C:\Users\me\Documents\ai_docs --output-dir C:\Users\me\Documents\ai_generated --author Matt
+claude mcp add excel     --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\plugins\ms-excel\ms-excel.py --docs-dir C:\path\to\your\workbooks
+claude mcp add outlook   --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\plugins\ms-outlook\ms-outlook.py
 ```
 
 Secrets stay out of the command line — pass them with `-e` (which writes them
@@ -140,7 +204,7 @@ into the config file) rather than as flags, per the
 [configuration conventions](#configuration-conventions-all-servers):
 
 ```
-claude mcp add confluence --scope user -e PYTHONUTF8=1 -e CONFLUENCE_BASE_URL=https://confluence.internal.example.com -e CONFLUENCE_TOKEN=your-personal-access-token -- C:\path\to\python.exe C:\path\to\confluence.py --max-body 20000 --kb-dir C:\reference-docs\confluence
+claude mcp add confluence --scope user -e PYTHONUTF8=1 -e CONFLUENCE_BASE_URL=https://confluence.internal.example.com -e CONFLUENCE_TOKEN=your-personal-access-token -- C:\path\to\python.exe C:\path\to\plugins\confluence\confluence.py --max-body 20000 --kb-dir C:\reference-docs\confluence
 ```
 
 Then `claude mcp list` to confirm they connect, and `/mcp` inside Claude Code
@@ -160,7 +224,7 @@ unchanged:
     "msword-py": {
       "command": "C:\\path\\to\\python.exe",
       "args": [
-        "C:\\path\\to\\ms-word.py",
+        "C:\\path\\to\\plugins\\ms-word\\ms-word.py",
         "--docs-dir", "C:\\Users\\me\\Documents\\ai_docs",
         "--output-dir", "C:\\Users\\me\\Documents\\ai_generated"
       ],
@@ -182,7 +246,7 @@ Note the **doubled backslashes** — JSON escapes them.
    connectivity, for the HTTP servers) without starting the server, and is far
    easier to read than an MCP connection failure:
    ```
-   "C:\path\to\python.exe" C:\path\to\ms-word.py --check
+   "C:\path\to\python.exe" C:\path\to\plugins\ms-word\ms-word.py --check
    ```
 3. **Use absolute paths** for both the interpreter and the script.
 4. **Keep `PYTHONUTF8=1`** — without it, Windows' legacy codepage can corrupt
@@ -233,7 +297,7 @@ mcpServers:
   - name: confluence
     command: C:\path\to\python.exe
     args:
-      - C:\path\to\confluence.py
+      - C:\path\to\plugins\confluence\confluence.py
       - --max-body
       - "20000"
       - --kb-dir
@@ -270,7 +334,7 @@ mcpServers:
   - name: jira
     command: C:\path\to\python.exe
     args:
-      - C:\path\to\jira.py
+      - C:\path\to\plugins\jira\jira.py
     env:
       JIRA_BASE_URL: https://jira.internal.example.com
       JIRA_TOKEN: your-personal-access-token
@@ -363,7 +427,7 @@ mcpServers:
   - name: knowledge-base
     command: C:\path\to\python.exe
     args:
-      - C:\path\to\knowledge-base.py
+      - C:\path\to\plugins\knowledge-base\knowledge-base.py
       - --docs-dir
       - C:\Users\me\knowledge-base
       - --embed-url
@@ -389,7 +453,7 @@ mcpServers:
   - name: excel
     command: C:\path\to\python.exe
     args:
-      - C:\path\to\ms-excel.py
+      - C:\path\to\plugins\ms-excel\ms-excel.py
       - --docs-dir
       - C:\path\to\your\workbooks
     env:
@@ -440,7 +504,7 @@ mcpServers:
   - name: outlook
     command: C:\path\to\python.exe
     args:
-      - C:\path\to\ms-outlook.py
+      - C:\path\to\plugins\ms-outlook\ms-outlook.py
       - --blacklist-file
       - C:\config\outlook-blacklist.txt
       - --search-folders
@@ -550,7 +614,7 @@ mcpServers:
   - name: msword-py
     command: C:\path\to\python.exe
     args:
-      - C:\path\to\ms-word.py
+      - C:\path\to\plugins\ms-word\ms-word.py
       - --author
       - Matt
       - --docs-dir
@@ -581,7 +645,7 @@ mcpServers:
   - name: pdf2md
     command: C:\path\to\python.exe
     args:
-      - C:\path\to\pdf-to-md.py
+      - C:\path\to\plugins\pdf-to-md\pdf-to-md.py
       - --docs-dir
       - C:\Reference\PDFs
       - --output-dir
@@ -613,7 +677,7 @@ don't use, and adjust paths):
     "confluence": {
       "command": "C:\\path\\to\\python.exe",
       "args": [
-        "C:\\path\\to\\confluence.py",
+        "C:\\path\\to\\plugins\\confluence\\confluence.py",
         "--max-body", "20000",
         "--kb-dir", "C:\\reference-docs\\confluence"
       ],
@@ -627,7 +691,7 @@ don't use, and adjust paths):
     },
     "jira": {
       "command": "C:\\path\\to\\python.exe",
-      "args": ["C:\\path\\to\\jira.py"],
+      "args": ["C:\\path\\to\\plugins\\jira\\jira.py"],
       "env": {
         "JIRA_BASE_URL": "https://jira.internal.example.com",
         "JIRA_TOKEN": "your-personal-access-token",
@@ -640,7 +704,7 @@ don't use, and adjust paths):
     "knowledge-base": {
       "command": "C:\\path\\to\\python.exe",
       "args": [
-        "C:\\path\\to\\knowledge-base.py",
+        "C:\\path\\to\\plugins\\knowledge-base\\knowledge-base.py",
         "--docs-dir", "C:\\Users\\me\\knowledge-base",
         "--embed-url", "https://ai-gateway.internal.example.com/v1/embeddings",
         "--embed-model", "text-embedding-3-small"
@@ -655,7 +719,7 @@ don't use, and adjust paths):
     "excel": {
       "command": "C:\\path\\to\\python.exe",
       "args": [
-        "C:\\path\\to\\ms-excel.py",
+        "C:\\path\\to\\plugins\\ms-excel\\ms-excel.py",
         "--docs-dir", "C:\\path\\to\\your\\workbooks"
       ],
       "env": { "PYTHONUTF8": "1" },
@@ -665,7 +729,7 @@ don't use, and adjust paths):
     "outlook": {
       "command": "C:\\path\\to\\python.exe",
       "args": [
-        "C:\\path\\to\\ms-outlook.py",
+        "C:\\path\\to\\plugins\\ms-outlook\\ms-outlook.py",
         "--blacklist-file", "C:\\config\\outlook-blacklist.txt",
         "--search-folders", "Inbox,Sent Items,Archive",
         "--kb-dir", "C:\\reference-docs\\outlook"
@@ -677,7 +741,7 @@ don't use, and adjust paths):
     "msword-py": {
       "command": "C:\\path\\to\\python.exe",
       "args": [
-        "C:\\path\\to\\ms-word.py",
+        "C:\\path\\to\\plugins\\ms-word\\ms-word.py",
         "--author", "Matt",
         "--docs-dir", "C:\\Users\\me\\Documents\\ai_docs",
         "--output-dir", "C:\\Users\\me\\Documents\\ai_generated",
@@ -690,7 +754,7 @@ don't use, and adjust paths):
     "pdf2md": {
       "command": "C:\\path\\to\\python.exe",
       "args": [
-        "C:\\path\\to\\pdf-to-md.py",
+        "C:\\path\\to\\plugins\\pdf-to-md\\pdf-to-md.py",
         "--docs-dir", "C:\\Reference\\PDFs",
         "--output-dir", "C:\\Reference\\Markdown",
         "--recursive"
@@ -714,7 +778,7 @@ Cline notes:
   shows as errored, use "Developer: Reload Window" and check the server's
   stderr output in the MCP pane (every server logs its config problems
   there — or run the same command with `--check` in a terminal first).
-- The per-MCP skills in the [`skills/`](skills/) folder can be used as Cline
+- The per-MCP skills in each `plugins/<name>/skills/` folder can be used as Cline
   workflows for slash commands — see [Skills](#skills-slash-commands-for-each-mcp) below.
 
 ## Usage examples
@@ -808,35 +872,40 @@ one or more of the tools the server exposes.
 
 ## Skills (slash commands for each MCP)
 
-The [`skills/`](skills/) folder contains one Claude skill per server, laid out
-the way Claude Code expects — `skills/<server>/SKILL.md` with YAML frontmatter
-(`name`, `description`) and a body that teaches an agent the server's tools,
-the right call order, and the sharp edges (read-only limits, sandboxes,
-tracked-changes workflow, when to reindex, …). Available skills:
+Every server ships with a Claude skill at
+`plugins/<server>/skills/<server>/SKILL.md` — YAML frontmatter (`name`,
+`description`) plus a body that teaches an agent the server's tools, the right
+call order, and the sharp edges (read-only limits, sandboxes, tracked-changes
+workflow, when to reindex, …).
+
+**If you install the plugins, the skills come with them** — nothing to copy.
+The table below is for installing a skill on its own, or for Cline/Continue.
+Available skills:
 
 | Skill | Slash command | Backing server |
 |---|---|---|
-| `skills/confluence/SKILL.md` | `/confluence` | `confluence.py` |
-| `skills/jira/SKILL.md` | `/jira` | `jira.py` |
-| `skills/knowledge-base/SKILL.md` | `/knowledge-base` | `knowledge-base.py` |
-| `skills/ms-excel/SKILL.md` | `/ms-excel` | `ms-excel.py` |
-| `skills/ms-outlook/SKILL.md` | `/ms-outlook` | `ms-outlook.py` |
-| `skills/ms-word/SKILL.md` | `/ms-word` | `ms-word.py` |
-| `skills/pdf-to-md/SKILL.md` | `/pdf-to-md` | `pdf-to-md.py` |
+| `plugins/confluence/skills/confluence/SKILL.md` | `/confluence` | `confluence.py` |
+| `plugins/jira/skills/jira/SKILL.md` | `/jira` | `jira.py` |
+| `plugins/knowledge-base/skills/knowledge-base/SKILL.md` | `/knowledge-base` | `knowledge-base.py` |
+| `plugins/ms-excel/skills/ms-excel/SKILL.md` | `/ms-excel` | `ms-excel.py` |
+| `plugins/ms-outlook/skills/ms-outlook/SKILL.md` | `/ms-outlook` | `ms-outlook.py` |
+| `plugins/ms-word/skills/ms-word/SKILL.md` | `/ms-word` | `ms-word.py` |
+| `plugins/pdf-to-md/skills/pdf-to-md/SKILL.md` | `/pdf-to-md` | `pdf-to-md.py` |
 
 ### Installing the skills
 
-- **Claude Code**: the layout already matches, so copy the folders straight in
-  — no renaming. For every project:
+- **Claude Code**: normally you do not do this — `/plugin install` brings the
+  skill with its server (see
+  [Installation into Claude Code](#installation-into-claude-code--plugins-recommended)).
+  To install a skill *without* its server, copy its folder in:
   ```
-  xcopy /E /I skills %USERPROFILE%\.claude\skills
+  xcopy /E /I plugins\ms-word\skills\ms-word %USERPROFILE%\.claude\skills\ms-word
   ```
-  or for one project only, copy `skills\*` into that project's
-  `.claude\skills\`. Claude invokes a skill automatically when it is relevant,
-  and `/<name>` triggers one explicitly. Run `/doctor` (or restart Claude Code)
-  if a newly copied skill does not show up.
+  Claude invokes a skill automatically when relevant; a standalone one is
+  `/ms-word`, while a plugin's is namespaced `/ms-word:ms-word`. Run `/doctor`
+  (or restart Claude Code) if a newly copied skill does not show up.
 - **Cline**: Cline's slash commands are *workflows* — copy each
-  `skills/<name>/SKILL.md` into your workspace as
+  `plugins/<name>/skills/<name>/SKILL.md` into your workspace as
   `.clinerules/workflows/<name>.md` (e.g. `.clinerules/workflows/ms-word.md`),
   then type `/ms-word.md` in Cline to run it. The frontmatter is harmless
   there. To have Cline apply a skill automatically (no slash command), drop it
