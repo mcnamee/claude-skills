@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 r"""
-pdf-to-md.py (v4.0.2) - Self-contained MCP (Model Context Protocol) stdio
+pdf-to-md.py (v4.0.3) - Self-contained MCP (Model Context Protocol) stdio
 server that converts PDFs in a folder to Markdown, including tables (both
 bordered and borderless).
 
@@ -24,10 +24,10 @@ Notes:
     the client runs a different Python, the server reports the package as
     missing even though "pip show pymupdf4llm" lists it. The reliable way is
     to use ONE explicit interpreter for both steps:
-        "C:\path\to\python.exe" -m pip install pymupdf pymupdf4llm
+        & "C:\path\to\python.exe" -m pip install pymupdf pymupdf4llm
     and give that same full path as the interpreter in the config below
     (instead of a bare "python"). Verify with:
-        "C:\path\to\python.exe" -c "import pymupdf4llm, fitz; print(pymupdf4llm.__file__)"
+        & "C:\path\to\python.exe" -c "import pymupdf4llm, fitz; print(pymupdf4llm.__file__)"
     On startup this server logs its own interpreter path (sys.executable) to
     stderr - compare it against where the packages are installed.
   * OCR (for scanned, image-only PDFs) additionally needs Tesseract installed
@@ -120,7 +120,7 @@ A quick Python conversion check (no MCP) can be done with:
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "4.0.2"
+__version__ = "4.0.3"
 
 import argparse
 import contextlib

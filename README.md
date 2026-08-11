@@ -33,13 +33,13 @@ Two things, both for Claude Code, both working **entirely offline**:
 
 | Plugin | Version | What it does | pip install |
 |---|---|---|---|
-| [**word**](plugins/word) | 4.0.1 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
+| [**word**](plugins/word) | 4.0.2 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
 | [**excel**](plugins/excel) | 3.0.1 | Read and analyse workbooks; parses `.xlsx` directly, so Excel isn't needed | _none_ |
 | [**outlook**](plugins/outlook) | 3.0.1 | Read local Outlook mail and calendar via COM, with a content blacklist | `pywin32` |
 | [**confluence**](plugins/confluence) | 1.3.2 | Search and read Confluence pages | _none_ |
-| [**jira**](plugins/jira) | 1.1.2 | Query issues, sprints and projects (Jira Data Center v2 API) | _none_ |
-| [**knowledge-base**](plugins/knowledge-base) | 2.0.2 | True RAG over your own Markdown: local ChromaDB index + your embeddings API | `chromadb` |
-| [**pdf-to-md**](plugins/pdf-to-md) | 4.0.2 | Convert PDFs to Markdown with tables preserved | `pymupdf pymupdf4llm` |
+| [**jira**](plugins/jira) | 1.1.3 | Query issues, sprints and projects (Jira Data Center v2 API) | _none_ |
+| [**knowledge-base**](plugins/knowledge-base) | 2.0.3 | True RAG over your own Markdown: local ChromaDB index + your embeddings API | `chromadb` |
+| [**pdf-to-md**](plugins/pdf-to-md) | 4.0.3 | Convert PDFs to Markdown with tables preserved | `pymupdf pymupdf4llm` |
 
 Each plugin's README covers its settings, tools, file access and example
 prompts. Every server also carries a semantic version in `__version__`, printed
@@ -47,18 +47,24 @@ by `--version` and reported to the MCP client in `serverInfo`.
 
 ## Install
 
+Everything below is **Windows / PowerShell**, which is what this suite targets.
+Two things to know if you're pasting from elsewhere: a quoted path at the start
+of a command needs the call operator (`& "C:\...\python.exe"`), and `%VAR%`
+does not expand — it's `$env:VAR`.
+
 **1. Install the pip dependencies** into the *same* interpreter you'll point the
 plugins at:
 
-```
-"C:\path\to\python.exe" -m pip install python-docx pymupdf pymupdf4llm pywin32 chromadb
+```powershell
+& "C:\path\to\python.exe" -m pip install python-docx pymupdf pymupdf4llm pywin32 chromadb
 ```
 
 (Drop `pywin32` if you're not on Windows / not using `outlook`. Install only
 what the plugins you want need — see the table above.) `word.py`'s docstring
 walks through sideloading the wheels on an airgapped machine.
 
-**2. Add this repo as a marketplace**, then install whichever plugins you want:
+**2. Add this repo as a marketplace**, then install whichever plugins you want.
+These are slash commands, typed inside Claude Code — not shell commands:
 
 ```
 /plugin marketplace add C:\path\to\claude-skills
@@ -76,7 +82,13 @@ folder, and the **Python interpreter** (give the absolute path to the
 
 **3. Set your secrets** as Windows user environment variables before starting
 Claude Code — they're read from the ambient environment, never stored in the
-plugin:
+plugin. Only needed for the plugins you actually install:
+
+```powershell
+setx CONFLUENCE_TOKEN "your-personal-access-token"
+setx JIRA_TOKEN       "your-personal-access-token"
+setx KB_EMBED_API_KEY "your-api-key"
+```
 
 | Plugin | Environment variable |
 |---|---|
@@ -84,8 +96,14 @@ plugin:
 | `jira` | `JIRA_TOKEN` |
 | `knowledge-base` | `KB_EMBED_API_KEY` |
 
-`setx` doesn't affect already-running processes, so quit VS Code completely (not
-just a window reload) and reopen it after setting one.
+Two `setx` gotchas. It **doesn't affect processes that are already running**, so
+quit VS Code completely — a window reload is not enough — and reopen it. And it
+**truncates values at 1024 characters**; if you ever hit that, set the variable
+through System Properties → Environment Variables instead.
+
+To check a variable took, in a **new** window: `$env:JIRA_TOKEN`. To set one for
+the current session only (handy for testing, gone when you close the window):
+`$env:JIRA_TOKEN = "..."`.
 
 Useful commands: `/plugin` to browse and manage, `/mcp` to confirm a server
 connected, `claude mcp list` to spot an unresolved environment variable, and
@@ -106,8 +124,8 @@ Run the server's `--check` first. It validates config (and connectivity, for the
 HTTP servers) without starting the server, and is far easier to read than an MCP
 connection failure:
 
-```
-"C:\path\to\python.exe" C:\path\to\claude-skills\plugins\word\word.py --check
+```powershell
+& "C:\path\to\python.exe" C:\path\to\claude-skills\plugins\word\word.py --check
 ```
 
 ### Manual install, without plugins
@@ -120,9 +138,12 @@ files). Keep `PYTHONUTF8=1`: without it, Windows' legacy codepage can corrupt th
 stdio JSON stream on non-ASCII content. Pass secrets with `-e` / the `env` block,
 never as flags.
 
-```
+```powershell
 claude mcp add excel --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\claude-skills\plugins\excel\excel.py --docs-dir C:\path\to\your\workbooks
 ```
+
+(No `&` needed there — `claude` is unquoted, so PowerShell treats it as a
+command already.)
 
 ## Configuration conventions
 
@@ -177,13 +198,14 @@ plugin. Install one by copying its folder:
 |---|---|---|
 | [**unslop**](skills/unslop) | `/unslop` | Strips AI-slop markers from writing — padding, tell-tale vocabulary, stock LLM sentence shapes — leaving meaning and voice intact |
 
-```
-xcopy /E /I skills\unslop %USERPROFILE%\.claude\skills\unslop
+```powershell
+$dest = "$env:USERPROFILE\.claude\skills"
+New-Item -ItemType Directory -Force -Path $dest | Out-Null
+Copy-Item -Recurse -Force .\skills\unslop $dest
 ```
 
-…or `cp -r skills/unslop ~/.claude/skills/unslop` on macOS/Linux, or into
-`.claude/skills/` inside a project to scope it there. Run `/doctor` or restart
-Claude Code if a newly copied skill doesn't appear. See
+Or copy it into `.claude\skills\` inside a project to scope it there. Run
+`/doctor` or restart Claude Code if a newly copied skill doesn't appear. See
 [`skills/README.md`](skills/README.md) for the details and for how to add
 another.
 

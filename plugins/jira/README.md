@@ -6,7 +6,7 @@ comments on, or deletes anything.
 
 | | |
 |---|---|
-| **Server** | `jira.py` v1.1.2 |
+| **Server** | `jira.py` v1.1.3 |
 | **pip install** | _none_ — standard library only (HTTP via stdlib `urllib`) |
 | **Platform** | any |
 | **Writes to disk** | no |
@@ -32,6 +32,14 @@ environment variable before starting Claude Code — the plugin reads it from th
 ambient environment. Credentials are deliberately env-var only: there are no
 `--token`/`--user`/`--password` flags, because command-line arguments are
 visible to other local users in process listings.
+
+```powershell
+setx JIRA_TOKEN "your-personal-access-token"
+```
+
+`setx` does not affect processes that are already running, so quit VS Code
+completely (a window reload is not enough) and reopen it. Check it took in a
+**new** window with `$env:JIRA_TOKEN`.
 
 ## Configuration reference
 
@@ -68,8 +76,8 @@ startup.
 
 ## Troubleshooting
 
-```
-"C:\path\to\python.exe" jira.py --check
+```powershell
+& "C:\path\to\python.exe" jira.py --check
 ```
 
 connects, authenticates and reports who you are plus how many projects you can

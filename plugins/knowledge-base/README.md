@@ -5,7 +5,7 @@ local ChromaDB vector index plus your own embeddings API.
 
 | | |
 |---|---|
-| **Server** | `knowledge-base.py` v2.0.2 |
+| **Server** | `knowledge-base.py` v2.0.3 |
 | **pip install** | `chromadb` (HTTP to your endpoints is stdlib `urllib` — no `requests`) |
 | **Platform** | any |
 | **Writes to disk** | yes — the vector index folder only |
@@ -48,6 +48,14 @@ Windows user environment variable before starting Claude Code. API keys are
 deliberately env-var only: there are no `--*-api-key` flags, because
 command-line arguments are visible to other local users in process listings.
 
+```powershell
+setx KB_EMBED_API_KEY "your-api-key"
+```
+
+`setx` does not affect processes that are already running, so quit VS Code
+completely (a window reload is not enough) and reopen it. Check it took in a
+**new** window with `$env:KB_EMBED_API_KEY`.
+
 Everything else in the reference below is set with the matching `KB_*`
 environment variable (or by launching the server manually with the flag).
 
@@ -56,10 +64,10 @@ environment variable (or by launching the server manually with the flag).
 Before wiring it into the client — the docstring at the top of
 `knowledge-base.py` walks through this:
 
-```
-"C:\path\to\python.exe" knowledge-base.py --check
-"C:\path\to\python.exe" knowledge-base.py --reindex
-"C:\path\to\python.exe" knowledge-base.py --search "some topic"
+```powershell
+& "C:\path\to\python.exe" knowledge-base.py --check
+& "C:\path\to\python.exe" knowledge-base.py --reindex
+& "C:\path\to\python.exe" knowledge-base.py --search "some topic"
 ```
 
 If you change embedding model, run `--reindex --force` once — vector dimensions

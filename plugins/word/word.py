@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r"""
-word.py (v4.0.1) - A single-file MCP (Model Context Protocol) stdio server
+word.py (v4.0.2) - A single-file MCP (Model Context Protocol) stdio server
 that gives an AI agent read/search/edit/generate access to Word .docx files.
 
 It follows a simple open -> edit -> save workflow (msword_open ... msword_save),
@@ -115,11 +115,13 @@ WHAT IT CANNOT DO
              python -m pip download python-docx -d .\wheels
       2. Transfer the .\wheels folder to the airgapped endpoint.
       3. Install with the SAME interpreter the MCP client will launch (use -m
-         pip so the interpreter and pip cannot drift apart):
-             "C:\path\to\python.exe" -m pip install --no-index ^
+         pip so the interpreter and pip cannot drift apart). PowerShell - the
+         backtick is the line continuation, and "&" is required because the
+         interpreter path is quoted:
+             & "C:\path\to\python.exe" -m pip install --no-index `
                  --find-links .\wheels python-docx
       4. Confirm the interpreter can see it:
-             "C:\path\to\python.exe" -m docx  (no error = importable)
+             & "C:\path\to\python.exe" -m docx  (no error = importable)
 
     If your corporate mirror proxies PyPI you may be able to skip the manual
     download and just run:  python -m pip install python-docx
@@ -132,7 +134,7 @@ WHAT IT CANNOT DO
     Run the built-in self-test. It creates a temp .docx, opens/edits/saves/
     reopens it, and prints PASS/FAIL. No arguments, no network, no side files
     left behind:
-        "C:\path\to\python.exe" word.py --check
+        & "C:\path\to\python.exe" word.py --check
 
     Expected tail of output on success:
         [check] round-trip: PASS
@@ -192,7 +194,7 @@ failed transfer" rule):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "4.0.1"
+__version__ = "4.0.2"
 
 # =============================================================================
 # CONFIGURATION  (all user-editable settings live here, nothing scattered below)

@@ -9,19 +9,16 @@ configuration, so it works anywhere — including on an airgapped machine.
 
 ## Install
 
-Copy this folder into your Claude skills directory:
+Copy this folder into your Claude skills directory. From the root of this
+repo, in **PowerShell**:
 
-```
-xcopy /E /I skills\unslop %USERPROFILE%\.claude\skills\unslop
-```
-
-macOS/Linux:
-
-```
-cp -r skills/unslop ~/.claude/skills/unslop
+```powershell
+$dest = "$env:USERPROFILE\.claude\skills"
+New-Item -ItemType Directory -Force -Path $dest | Out-Null
+Copy-Item -Recurse -Force .\skills\unslop $dest
 ```
 
-For one project only, copy it to `.claude/skills/unslop/` in that project
+For one project only, copy it to `.claude\skills\unslop\` inside that project
 instead. Run `/doctor` or restart Claude Code if it doesn't show up.
 
 See [`skills/README.md`](../README.md) for the general install notes.

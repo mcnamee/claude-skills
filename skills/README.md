@@ -12,7 +12,8 @@ skills/
 ```
 
 That layout is deliberately identical to the one Claude Code expects in
-`~/.claude/skills/`, so installing a skill is a straight folder copy.
+`%USERPROFILE%\.claude\skills\`, so installing a skill is a straight folder
+copy. Every command below is **PowerShell**.
 
 The [`plugins/`](../plugins) folder is the other half of this repo: MCP servers
 that give Claude new *tools*. Skills here give Claude new *instructions* — they
@@ -26,23 +27,30 @@ need nothing installed and work anywhere, including offline.
 
 ## Install
 
-Copy the skill's folder into your Claude skills directory.
+Copy the skill's folder into your Claude skills directory. From the root of
+this repo, in **PowerShell**:
 
-**For you, in every project** (Windows):
-
-```
-xcopy /E /I skills\unslop %USERPROFILE%\.claude\skills\unslop
-```
-
-macOS/Linux:
-
-```
-cp -r skills/unslop ~/.claude/skills/unslop
+```powershell
+$dest = "$env:USERPROFILE\.claude\skills"
+New-Item -ItemType Directory -Force -Path $dest | Out-Null
+Copy-Item -Recurse -Force .\skills\unslop $dest
 ```
 
-**For one project only** — copy it to `.claude/skills/<name>/` in that
-project's folder instead. Useful when the skill encodes something
-project-specific, or when you want it committed alongside the code.
+`New-Item -Force` is there so the first install works before
+`~\.claude\skills` exists; `Copy-Item -Recurse` into the parent folder lands
+the skill at `%USERPROFILE%\.claude\skills\unslop`.
+
+**For one project only** — copy it to `.claude\skills\<name>\` inside that
+project instead:
+
+```powershell
+$dest = ".\.claude\skills"
+New-Item -ItemType Directory -Force -Path $dest | Out-Null
+Copy-Item -Recurse -Force C:\path\to\claude-skills\skills\unslop $dest
+```
+
+Useful when the skill encodes something project-specific, or when you want it
+committed alongside the code.
 
 Then invoke it by name: `/unslop`. Claude also applies a skill automatically
 when the task matches its `description`, so an explicit slash command isn't
@@ -51,12 +59,17 @@ ask.
 
 If a newly copied skill doesn't appear, run `/doctor` or restart Claude Code.
 
-To update one, copy the folder over the top again. To remove it, delete the
-folder from `~/.claude/skills/`.
+To update one, run the same `Copy-Item` again — `-Force` overwrites. To
+remove it:
+
+```powershell
+Remove-Item -Recurse -Force "$env:USERPROFILE\.claude\skills\unslop"
+```
 
 ## Adding a skill
 
-1. `mkdir skills/<name>` and write `SKILL.md` with YAML frontmatter:
+1. `New-Item -ItemType Directory skills\<name>` and write `SKILL.md` with
+   YAML frontmatter:
    ```yaml
    ---
    name: <name>
