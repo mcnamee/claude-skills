@@ -34,7 +34,7 @@ This script will be transferred to an airgapped network, which is time-consuming
 
 Every MCP server in this repo carries a semantic version:
 
-- `__version__ = "X.Y.Z"` sits immediately after the module docstring, and the docstring's title line shows the same version, e.g. `ms-excel.py (v2.0.0)`.
+- `__version__ = "X.Y.Z"` sits immediately after the module docstring, and the docstring's title line shows the same version, e.g. `excel.py (v2.0.0)`.
 - `SERVER_VERSION` / `SERVER_INFO` (whatever the file reports to the MCP client in `serverInfo`) must reference `__version__`, never a duplicate literal.
 - Each server exposes a `--version` flag printing `<server-name> <version>`. It must work even when the server's pip dependencies are missing (servers that import heavy/platform deps at module level answer `--version` before that import).
 
@@ -49,7 +49,7 @@ Every MCP server in this repo carries a semantic version:
 Keep every server consistent with these rules (documented for users in README.md → "Configuration conventions"):
 
 - **Precedence:** CLI flag > environment variable > constant in the file's CONFIG block. Every non-secret setting should offer at least flag + env var.
-- **Naming:** env var = server prefix + upper-snake flag name (`--docs-dir` → `EXCEL_DOCS_DIR`). Prefixes: `CONFLUENCE_`, `JIRA_`, `KB_` (knowledge-base), `EXCEL_`, `OUTLOOK_`, `MSWORD_`, `PDF2MD_`. Exception: `--insecure` pairs with `<PREFIX>_VERIFY_SSL=false`.
+- **Naming:** env var = server prefix + upper-snake flag name (`--docs-dir` → `EXCEL_DOCS_DIR`). Prefixes: `CONFLUENCE_`, `JIRA_`, `KB_` (knowledge-base), `EXCEL_`, `OUTLOOK_`, `MSWORD_` (the `word` server keeps this older prefix, as do its `msword_*` tool names — renaming them would break every existing config), `PDF2MD_`. Exception: `--insecure` pairs with `<PREFIX>_VERIFY_SSL=false`.
 - **Secrets are env-var ONLY** — never add `--token`/`--password`/`--*-api-key` flags (argv is visible to other local users in process listings).
 - **Shared flag vocabulary:** `--docs-dir` (the source-documents folder a server is confined to), `--output-dir` (generated files), `--kb-dir` (optional Markdown mirror for the RAG knowledge base), `--base-url`/`--ca-cert`/`--insecure`/`--timeout`/`--max-body` (HTTP servers), `--check` (validate config/connectivity and exit), `--version`. Reuse these names for new servers/settings; do not invent synonyms (no `--folder`, `--input-dir`, `--document-root`).
 - **Skills:** each server has a matching Claude skill at `plugins/<server-name>/skills/<server-name>/SKILL.md`. When a server's tools or workflow change, update its skill in the same change.

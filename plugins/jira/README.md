@@ -64,7 +64,7 @@ startup.
 4. "Everything resolved in project ABC in the last week, for the release notes." → `jira_search_jql` with `project = ABC AND resolved >= -7d`
 5. "How healthy is project ABC — what's open, in progress, unassigned?" → `jira_project_status`
 6. "Which projects can I see in Jira?" → `jira_list_projects`
-7. "Draft a status report from my open tickets as a Word doc with tracked changes." → `jira_my_issues` + the `ms-word` plugin's editing tools
+7. "Draft a status report from my open tickets as a Word doc with tracked changes." → `jira_my_issues` + the `word` plugin's editing tools
 
 ## Troubleshooting
 

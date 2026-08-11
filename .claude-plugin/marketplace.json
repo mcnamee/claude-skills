@@ -7,10 +7,10 @@
   "description": "Single-file MCP servers for working with Word, Excel, Outlook, Confluence, Jira, PDFs and a local RAG knowledge base. Each plugin bundles one server with its matching skill, so it installs and updates as one unit - including fully offline.",
   "plugins": [
     {
-      "name": "ms-word",
-      "source": "./plugins/ms-word",
+      "name": "word",
+      "source": "./plugins/word",
       "description": "Read, edit and create Word .docx files - including Word tracked changes, native styles and filling out templates.",
-      "version": "3.0.1",
+      "version": "4.0.0",
       "keywords": [
         "word",
         "docx",
@@ -19,10 +19,10 @@
       ]
     },
     {
-      "name": "ms-excel",
-      "source": "./plugins/ms-excel",
+      "name": "excel",
+      "source": "./plugins/excel",
       "description": "Read and analyse Excel workbooks. Read-only; parses .xlsx directly so Excel is not required.",
-      "version": "2.1.1",
+      "version": "3.0.0",
       "keywords": [
         "excel",
         "xlsx",
@@ -30,10 +30,10 @@
       ]
     },
     {
-      "name": "ms-outlook",
-      "source": "./plugins/ms-outlook",
+      "name": "outlook",
+      "source": "./plugins/outlook",
       "description": "Read-only access to local classic Outlook mail and calendar via COM. Windows only; requires pywin32.",
-      "version": "2.0.1",
+      "version": "3.0.0",
       "keywords": [
         "outlook",
         "email",

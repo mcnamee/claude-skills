@@ -1,4 +1,4 @@
-# MS Outlook (mail + calendar)
+# Outlook (mail + calendar)
 
 Read-only access to your local classic Outlook mail and calendar over COM, with
 a content blacklist that withholds classified/compliance-marked items from the
@@ -6,7 +6,7 @@ AI entirely.
 
 | | |
 |---|---|
-| **Server** | `ms-outlook.py` v2.0.1 |
+| **Server** | `outlook.py` v3.0.0 |
 | **pip install** | `pywin32` |
 | **Platform** | **Windows only** — requires classic Win32 Outlook (not "New Outlook") installed, running, and logged into a profile |
 | **Writes to disk** | only if the knowledge-base folder is set |
@@ -15,7 +15,7 @@ AI entirely.
 
 ```
 /plugin marketplace add C:\path\to\mcp-servers
-/plugin install ms-outlook@mcnamee-mcp-servers
+/plugin install outlook@mcnamee-mcp-servers
 ```
 
 | Prompt | Required | Env var | Purpose |
@@ -47,7 +47,7 @@ and skipped by `outlook_search_recent` (results are labelled with their folder
 path, so a marked folder name never appears in output).
 
 Everything else is configured by editing the `USER CONFIGURATION` block at the
-top of `ms-outlook.py` directly (there are no CLI flags/env vars for these):
+top of `outlook.py` directly (there are no CLI flags/env vars for these):
 
 | Setting | Purpose |
 |---|---|
@@ -79,7 +79,7 @@ emails land alongside your Confluence pages and Word documents.
 ## Troubleshooting
 
 ```
-"C:\path\to\python.exe" ms-outlook.py --check
+"C:\path\to\python.exe" outlook.py --check
 ```
 
 connects to Outlook and prints diagnostics plus the blacklist status. If it

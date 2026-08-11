@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r"""
-ms-word.py (v3.0.1) - A single-file MCP (Model Context Protocol) stdio server
+word.py (v4.0.0) - A single-file MCP (Model Context Protocol) stdio server
 that gives an AI agent read/search/edit/generate access to Word .docx files.
 
 It follows a simple open -> edit -> save workflow (msword_open ... msword_save),
@@ -132,7 +132,7 @@ WHAT IT CANNOT DO
     Run the built-in self-test. It creates a temp .docx, opens/edits/saves/
     reopens it, and prints PASS/FAIL. No arguments, no network, no side files
     left behind:
-        "C:\path\to\python.exe" ms-word.py --check
+        "C:\path\to\python.exe" word.py --check
 
     Expected tail of output on success:
         [check] round-trip: PASS
@@ -141,11 +141,11 @@ WHAT IT CANNOT DO
 =============================================================================
  INSTALLING INTO CLAUDE CODE
 =============================================================================
-    This server ships as the "ms-word" Claude Code plugin (its manifest is
+    This server ships as the "word" Claude Code plugin (its manifest is
     .claude-plugin/plugin.json next to this file), so the normal install is:
 
         /plugin marketplace add C:\path\to\mcp-servers
-        /plugin install ms-word@mcnamee-mcp-servers
+        /plugin install word@mcnamee-mcp-servers
 
     Claude Code then prompts for each setting below and for the Python
     interpreter - use the SAME python.exe you installed the wheels with.
@@ -154,7 +154,7 @@ WHAT IT CANNOT DO
 
     To register the server by hand instead:
 
-        claude mcp add msword-py --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\ms-word.py --author Matt --docs-dir C:\Users\me\Documents\ai_docs --output-dir C:\Users\me\Documents\ai_generated --kb-dir C:\Users\me\Documents\rag_kb
+        claude mcp add word --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\word.py --author Matt --docs-dir C:\Users\me\Documents\ai_docs --output-dir C:\Users\me\Documents\ai_generated --kb-dir C:\Users\me\Documents\rag_kb
 
     The --author value (MSWORD_AUTHOR) is stamped on every tracked change;
     omit it to fall back to the TRACKED_CHANGE_AUTHOR config constant below.
@@ -192,12 +192,12 @@ failed transfer" rule):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "3.0.1"
+__version__ = "4.0.0"
 
 # =============================================================================
 # CONFIGURATION  (all user-editable settings live here, nothing scattered below)
 # =============================================================================
-SERVER_NAME = "msword-py"          # advertised to the MCP client
+SERVER_NAME = "word"               # advertised to the MCP client
 SERVER_VERSION = __version__
 PROTOCOL_VERSION_FALLBACK = "2024-11-05"  # used if the client sends none
 
@@ -4498,7 +4498,7 @@ def run_check():
 
 def main():
     parser = argparse.ArgumentParser(
-        description="MS Word (.docx) python-docx MCP stdio server. "
+        description="Word (.docx) python-docx MCP stdio server. "
                     "With no arguments it runs as an MCP server on stdin/stdout."
     )
     parser.add_argument(

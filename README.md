@@ -30,9 +30,9 @@ plugin marketplace that works **entirely offline**.
 
 | Plugin | Version | What it does | pip install |
 |---|---|---|---|
-| [**ms-word**](plugins/ms-word) | 3.0.1 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
-| [**ms-excel**](plugins/ms-excel) | 2.1.1 | Read and analyse workbooks; parses `.xlsx` directly, so Excel isn't needed | _none_ |
-| [**ms-outlook**](plugins/ms-outlook) | 2.0.1 | Read local Outlook mail and calendar via COM, with a content blacklist | `pywin32` |
+| [**word**](plugins/word) | 4.0.0 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
+| [**excel**](plugins/excel) | 3.0.0 | Read and analyse workbooks; parses `.xlsx` directly, so Excel isn't needed | _none_ |
+| [**outlook**](plugins/outlook) | 3.0.0 | Read local Outlook mail and calendar via COM, with a content blacklist | `pywin32` |
 | [**confluence**](plugins/confluence) | 1.3.1 | Search and read Confluence pages | _none_ |
 | [**jira**](plugins/jira) | 1.1.1 | Query issues, sprints and projects (Jira Data Center v2 API) | _none_ |
 | [**knowledge-base**](plugins/knowledge-base) | 2.0.1 | True RAG over your own Markdown: local ChromaDB index + your embeddings API | `chromadb` |
@@ -51,25 +51,25 @@ plugins at:
 "C:\path\to\python.exe" -m pip install python-docx pymupdf pymupdf4llm pywin32 chromadb
 ```
 
-(Drop `pywin32` if you're not on Windows / not using `ms-outlook`. Install only
-what the plugins you want need — see the table above.) `ms-word.py`'s docstring
+(Drop `pywin32` if you're not on Windows / not using `outlook`. Install only
+what the plugins you want need — see the table above.) `word.py`'s docstring
 walks through sideloading the wheels on an airgapped machine.
 
 **2. Add this repo as a marketplace**, then install whichever plugins you want:
 
 ```
 /plugin marketplace add C:\path\to\mcp-servers
-/plugin install ms-word@mcnamee-mcp-servers
-/plugin install ms-excel@mcnamee-mcp-servers
+/plugin install word@mcnamee-mcp-servers
+/plugin install excel@mcnamee-mcp-servers
 ```
 
 Claude Code prompts for that server's settings — documents folder, output
 folder, and the **Python interpreter** (give the absolute path to the
 `python.exe` from step 1; a mismatch here is the most common cause of
 "dependency missing"). The plugins are independent, so a machine without
-`pywin32` simply doesn't install `ms-outlook`.
+`pywin32` simply doesn't install `outlook`.
 
-`ms-excel` is the simplest to start with: standard library only, one prompt.
+`excel` is the simplest to start with: standard library only, one prompt.
 
 **3. Set your secrets** as Windows user environment variables before starting
 Claude Code — they're read from the ambient environment, never stored in the
@@ -89,8 +89,8 @@ connected, `claude mcp list` to spot an unresolved environment variable, and
 `/plugin marketplace update mcnamee-mcp-servers` after you transfer a new
 version across.
 
-> **Skills are namespaced** by their plugin, so it's `/ms-word:ms-word` rather
-> than `/ms-word`.
+> **Skills are namespaced** by their plugin, so it's `/word:word` rather
+> than `/word`.
 >
 > **Plugins are cached on install** (copied under `~/.claude/plugins/`), which is
 > why each plugin contains its own server file rather than sharing one — a path
@@ -103,7 +103,7 @@ HTTP servers) without starting the server, and is far easier to read than an MCP
 connection failure:
 
 ```
-"C:\path\to\python.exe" C:\path\to\mcp-servers\plugins\ms-word\ms-word.py --check
+"C:\path\to\python.exe" C:\path\to\mcp-servers\plugins\word\word.py --check
 ```
 
 ### Manual install, without plugins
@@ -117,7 +117,7 @@ stdio JSON stream on non-ASCII content. Pass secrets with `-e` / the `env` block
 never as flags.
 
 ```
-claude mcp add excel --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\mcp-servers\plugins\ms-excel\ms-excel.py --docs-dir C:\path\to\your\workbooks
+claude mcp add excel --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\mcp-servers\plugins\excel\excel.py --docs-dir C:\path\to\your\workbooks
 ```
 
 ## Configuration conventions
@@ -127,7 +127,7 @@ The per-plugin READMEs list each server's actual settings.
 
 1. **Precedence: CLI flag > environment variable > constant in the file.**
 2. **Naming: the env var is the server's prefix + the flag name.** `--docs-dir`
-   on `ms-excel.py` is `EXCEL_DOCS_DIR`; on `ms-word.py` it is
+   on `excel.py` is `EXCEL_DOCS_DIR`; on `word.py` it is
    `MSWORD_DOCS_DIR`. Prefixes: `CONFLUENCE_`, `JIRA_`, `KB_`, `EXCEL_`,
    `OUTLOOK_`, `MSWORD_`, `PDF2MD_`. The one deliberate exception: `--insecure`
    pairs with `<PREFIX>_VERIFY_SSL=false`.
@@ -145,12 +145,12 @@ its configuration, and that configuration is **required**:
 
 | Plugin | Local file access |
 |---|---|
-| `ms-word` | Read/write, confined to the documents folder (plus the output and knowledge-base folders, if set) |
-| `ms-excel` | Read-only, confined to the workbook folder |
+| `word` | Read/write, confined to the documents folder (plus the output and knowledge-base folders, if set) |
+| `excel` | Read-only, confined to the workbook folder |
 | `knowledge-base` | Reads the documents folder; writes only its vector index; network only to the endpoints you configure |
 | `pdf-to-md` | Reads the PDF folder, writes the output folder |
 | `confluence` | None unless a knowledge-base folder is set; then writes only there |
-| `ms-outlook` | None unless a knowledge-base folder is set; then writes only there |
+| `outlook` | None unless a knowledge-base folder is set; then writes only there |
 | `jira` | None — HTTP GET to Jira only |
 
 Paths are resolved (symlinks included) before the containment check, so a
@@ -167,12 +167,12 @@ its skill**, namespaced as `/<plugin>:<skill>`.
 To install a skill on its own, without its server:
 
 ```
-xcopy /E /I plugins\ms-word\skills\ms-word %USERPROFILE%\.claude\skills\ms-word
+xcopy /E /I plugins\word\skills\word %USERPROFILE%\.claude\skills\word
 ```
 
 Skills describe *how to use* a server — they aren't a way to run one. These are
 MCP servers, launched as long-running stdio subprocesses, not scripts a skill
-shells out to. That matters most for `ms-word`, which is session-based
+shells out to. That matters most for `word`, which is session-based
 (`msword_open` returns a `session_id` and holds the document in memory until
 `msword_save`).
 

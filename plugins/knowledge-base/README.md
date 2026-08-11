@@ -134,7 +134,7 @@ configure.
 
 ## Feeding it
 
-The `confluence`, `ms-outlook` and `ms-word` plugins each take a
+The `confluence`, `outlook` and `word` plugins each take a
 **knowledge-base folder** setting. Point all of them at this plugin's documents
 folder and everything you read — wiki pages, emails, Word documents — is
 mirrored to Markdown there, ready for `kb_index`. The `pdf-to-md` plugin fills

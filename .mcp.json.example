@@ -12,17 +12,17 @@
     "  - Secrets go in 'env', never in 'args': command lines are visible to",
     "    other local users in process listings.",
     "  - Run each server's --check before wiring it in, e.g.",
-    "      \"C:\\path\\to\\python.exe\" C:\\path\\to\\mcp-servers\\plugins\\ms-word\\ms-word.py --check",
+    "      \"C:\\path\\to\\python.exe\" C:\\path\\to\\mcp-servers\\plugins\\word\\word.py --check",
     "",
     "The recommended install is the Claude Code plugin route instead - see the",
     "root README.md. This file is the manual, project-scoped alternative.",
     "This _comment key is ignored by Claude Code."
   ],
   "mcpServers": {
-    "msword-py": {
+    "word": {
       "command": "C:\\path\\to\\python.exe",
       "args": [
-        "C:\\path\\to\\mcp-servers\\plugins\\ms-word\\ms-word.py",
+        "C:\\path\\to\\mcp-servers\\plugins\\word\\word.py",
         "--author", "Matt",
         "--docs-dir", "C:\\Users\\me\\Documents\\ai_docs",
         "--output-dir", "C:\\Users\\me\\Documents\\ai_generated",
@@ -33,7 +33,7 @@
     "excel": {
       "command": "C:\\path\\to\\python.exe",
       "args": [
-        "C:\\path\\to\\mcp-servers\\plugins\\ms-excel\\ms-excel.py",
+        "C:\\path\\to\\mcp-servers\\plugins\\excel\\excel.py",
         "--docs-dir", "C:\\path\\to\\your\\workbooks"
       ],
       "env": { "PYTHONUTF8": "1" }
@@ -41,7 +41,7 @@
     "outlook": {
       "command": "C:\\path\\to\\python.exe",
       "args": [
-        "C:\\path\\to\\mcp-servers\\plugins\\ms-outlook\\ms-outlook.py",
+        "C:\\path\\to\\mcp-servers\\plugins\\outlook\\outlook.py",
         "--search-folders", "Inbox,Sent Items,Archive",
         "--kb-dir", "C:\\reference-docs\\outlook"
       ],

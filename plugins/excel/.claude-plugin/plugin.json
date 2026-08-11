@@ -1,7 +1,7 @@
 {
-  "name": "ms-excel",
-  "displayName": "MS Excel (.xlsx)",
-  "version": "2.1.1",
+  "name": "excel",
+  "displayName": "Excel (.xlsx)",
+  "version": "3.0.0",
   "description": "Read and analyse Excel workbooks. Read-only; parses .xlsx directly so Excel is not required.",
   "author": {
     "name": "mcnamee"
@@ -32,7 +32,7 @@
       "type": "stdio",
       "command": "${user_config.python}",
       "args": [
-        "${CLAUDE_PLUGIN_ROOT}/ms-excel.py"
+        "${CLAUDE_PLUGIN_ROOT}/excel.py"
       ],
       "env": {
         "PYTHONUTF8": "1",

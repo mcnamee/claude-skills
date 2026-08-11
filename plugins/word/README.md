@@ -1,11 +1,11 @@
-# MS Word (.docx)
+# Word (.docx)
 
 Read, edit and create Word documents — including **real Word tracked changes**,
 native Word styles, and filling out templates.
 
 | | |
 |---|---|
-| **Server** | `ms-word.py` v3.0.1 |
+| **Server** | `word.py` v4.0.0 |
 | **pip install** | `python-docx` (pulls in `lxml` and `typing_extensions`) |
 | **Platform** | any (Word itself is not required) |
 | **Writes to disk** | yes — the only write-capable server in the suite |
@@ -14,10 +14,10 @@ native Word styles, and filling out templates.
 
 ```
 /plugin marketplace add C:\path\to\mcp-servers
-/plugin install ms-word@mcnamee-mcp-servers
+/plugin install word@mcnamee-mcp-servers
 ```
 
-Claude Code prompts for the settings below; the `/ms-word:ms-word` skill is
+Claude Code prompts for the settings below; the `/word:word` skill is
 installed with the server.
 
 | Prompt | Required | Env var | Purpose |
@@ -27,6 +27,11 @@ installed with the server.
 | Knowledge-base folder | no | `MSWORD_KB_DIR` | Mirrors every opened document to Markdown for a local RAG index |
 | Tracked-change author | no | `MSWORD_AUTHOR` | Name stamped on tracked changes |
 | Python interpreter | **yes** | — | Absolute path to the `python.exe` that has `python-docx` installed |
+
+> The plugin, folder and server file are named `word`, but the environment
+> variables keep their `MSWORD_` prefix and the tools keep their `msword_`
+> prefix — renaming those would break every existing config and every skill
+> that names a tool, for no functional gain.
 
 ## Configuration reference
 
@@ -163,7 +168,7 @@ a symlink dropped inside a configured folder cannot reach files outside it.
 - **Check the config before wiring it in**, which also runs a full offline
   self-test:
   ```
-  "C:\path\to\python.exe" ms-word.py --check
+  "C:\path\to\python.exe" word.py --check
   ```
-- For airgapped installs, the docstring at the top of `ms-word.py` walks through
+- For airgapped installs, the docstring at the top of `word.py` walks through
   sideloading the wheels.

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ms-outlook.py (v2.0.1)
+outlook.py (v3.0.0)
 ======================
 
 A single-file MCP (Model Context Protocol) server giving an LLM read-only
@@ -44,7 +44,7 @@ OPTIONAL: Markdown export for a RAG knowledge base
 --------------------------------------------------
 Set --kb-dir (or OUTLOOK_KB_DIR, or the KB_DIR config constant) to a folder and
 every email read with outlook_get_email is ALSO written out as a Markdown file
-there, the same way confluence.py mirrors pages and ms-word.py mirrors
+there, the same way confluence.py mirrors pages and word.py mirrors
 documents, so the content can feed a local RAG index (e.g. alongside
 knowledge-base.py). Files are named 'Email - <date> - <subject> (<id>).md' and
 overwritten on re-read of the same message. Blocked (blacklisted) messages are
@@ -123,11 +123,11 @@ list (they never reduce it). Example file contents:
 
 INSTALLING INTO CLAUDE CODE
 ---------------------------
-This server ships as the "ms-outlook" Claude Code plugin (its manifest is
+This server ships as the "outlook" Claude Code plugin (its manifest is
 .claude-plugin/plugin.json next to this file), so the normal install is:
 
     /plugin marketplace add C:\\path\\to\\mcp-servers
-    /plugin install ms-outlook@mcnamee-mcp-servers
+    /plugin install outlook@mcnamee-mcp-servers
 
 Claude Code prompts for the optional knowledge-base folder, search folders and
 blacklist file, plus the Python interpreter (the one with pywin32 installed).
@@ -135,7 +135,7 @@ PYTHONUTF8=1 is set for you by the manifest.
 
 To register the server by hand instead:
 
-    claude mcp add outlook --scope user -e PYTHONUTF8=1 -- C:\\path\\to\\python.exe C:\\path\\to\\ms-outlook.py --search-folders "Inbox,Sent Items,Archive" --kb-dir C:\\reference-docs\\outlook
+    claude mcp add outlook --scope user -e PYTHONUTF8=1 -- C:\\path\\to\\python.exe C:\\path\\to\\outlook.py --search-folders "Inbox,Sent Items,Archive" --kb-dir C:\\reference-docs\\outlook
 
 See README.md next to this file for the full settings reference.
 
@@ -145,7 +145,7 @@ USAGE / TESTING
   arguments (optionally --blacklist-file).
 - Connectivity check (run manually on the endpoint before wiring it in):
 
-      python ms-outlook.py --check
+      python outlook.py --check
 
   Connects to Outlook and prints mailbox diagnostics + blacklist status to
   stderr, then exits.
@@ -160,7 +160,7 @@ IMPORTANT (stdio-on-Windows pitfalls)
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "2.0.1"
+__version__ = "3.0.0"
 
 import os
 import re
@@ -208,7 +208,7 @@ SEARCH_ALL_FOLDERS = ["Inbox", "Sent Items", "Archive"]
 # --- 5. KB_DIR  (optional Markdown export for a local RAG knowledge base).
 #        If set, EVERY email read with outlook_get_email is ALSO written out as
 #        a Markdown file into this folder, the same way confluence.py mirrors
-#        pages and ms-word.py mirrors documents, so the content can feed a local
+#        pages and word.py mirrors documents, so the content can feed a local
 #        RAG index (e.g. alongside knowledge-base.py). Files are named
 #        'Email - <date> - <subject> (<id>).md' and overwritten on re-read of
 #        the same message. Blocked (blacklisted) messages are NEVER written -
@@ -709,7 +709,7 @@ def tool_search_emails(args):
 
 
 # ---------------------------------------------------------------------------
-# Markdown export for the RAG knowledge base (mirrors confluence.py / ms-word.py)
+# Markdown export for the RAG knowledge base (mirrors confluence.py / word.py)
 # ---------------------------------------------------------------------------
 
 def safe_filename(name, max_len=120):
@@ -1633,7 +1633,7 @@ def main():
         default=os.environ.get("OUTLOOK_KB_DIR"),
         help="If set, every email read with outlook_get_email is ALSO saved as a "
              "Markdown file into this folder for a local RAG knowledge base (like "
-             "confluence.py / ms-word.py). Files are named "
+             "confluence.py / word.py). Files are named "
              "'Email - <date> - <subject> (<id>).md' and overwritten on re-read. "
              "Blocked (blacklisted) messages are never written. Falls back to the "
              "OUTLOOK_KB_DIR environment variable, then the KB_DIR config constant.",

@@ -1,13 +1,13 @@
 ---
-name: ms-excel
+name: excel
 description: Read and analyse Excel workbooks via the excel MCP server (read-only .xlsx/.xlsm). Use when the user asks what's in a spreadsheet, wants data read, searched, or summarised from Excel files.
 ---
 
 # Excel (via the `excel` MCP server)
 
-Requires the `ms-excel.py` MCP server (READ-ONLY; parses .xlsx directly, no
+Requires the `excel.py` MCP server (READ-ONLY; parses .xlsx directly, no
 Excel needed). If its tools are not available, tell the user to wire it in
-first (see the repo README) and to verify with `python ms-excel.py --check`.
+first (see the repo README) and to verify with `python excel.py --check`.
 
 ## Tools
 

@@ -1,4 +1,4 @@
-# MS Excel (.xlsx)
+# Excel (.xlsx)
 
 Read and analyse Excel workbooks. **Read-only** — nothing is ever written to a
 workbook — and it parses `.xlsx` directly as a zip of XML, so Excel itself does
@@ -6,7 +6,7 @@ not need to be installed.
 
 | | |
 |---|---|
-| **Server** | `ms-excel.py` v2.1.1 |
+| **Server** | `excel.py` v3.0.0 |
 | **pip install** | _none_ — standard library only |
 | **Platform** | any |
 | **Writes to disk** | no |
@@ -15,7 +15,7 @@ not need to be installed.
 
 ```
 /plugin marketplace add C:\path\to\mcp-servers
-/plugin install ms-excel@mcnamee-mcp-servers
+/plugin install excel@mcnamee-mcp-servers
 ```
 
 This is the simplest plugin in the suite — standard library only, one prompt —
@@ -41,7 +41,7 @@ Precedence is **CLI flag > environment variable > constant in the file**.
 
 Every tool takes a `workbook` name, resolved forgivingly against the folder:
 exact filename → name without extension → case-insensitive → a unique substring
-→ and finally a **fuzzy** name match (the same matcher as `ms-word`), so
+→ and finally a **fuzzy** name match (the same matcher as `word`), so
 *"budgit q3"* or *"q3 budget"* still opens `Budget Q3 2024.xlsx`. A genuinely
 ambiguous name returns the candidate list rather than guessing; use
 `excel_list_workbooks` to see what's available. Fuzzy fallbacks are logged to
@@ -68,6 +68,6 @@ Run the config check before wiring it in — it's far easier to read than an MCP
 connection failure:
 
 ```
-"C:\path\to\python.exe" ms-excel.py --check
-"C:\path\to\python.exe" ms-excel.py --list
+"C:\path\to\python.exe" excel.py --check
+"C:\path\to\python.exe" excel.py --list
 ```

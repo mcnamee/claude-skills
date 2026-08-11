@@ -1,7 +1,7 @@
 {
-  "name": "ms-word",
-  "displayName": "MS Word (.docx)",
-  "version": "3.0.1",
+  "name": "word",
+  "displayName": "Word (.docx)",
+  "version": "4.0.0",
   "description": "Read, edit and create Word .docx files - including Word tracked changes, native styles and filling out templates.",
   "author": {
     "name": "mcnamee"
@@ -44,11 +44,11 @@
     }
   },
   "mcpServers": {
-    "msword-py": {
+    "word": {
       "type": "stdio",
       "command": "${user_config.python}",
       "args": [
-        "${CLAUDE_PLUGIN_ROOT}/ms-word.py"
+        "${CLAUDE_PLUGIN_ROOT}/word.py"
       ],
       "env": {
         "PYTHONUTF8": "1",

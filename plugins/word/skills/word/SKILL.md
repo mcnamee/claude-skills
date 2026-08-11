@@ -1,14 +1,14 @@
 ---
-name: ms-word
+name: word
 description: Read, edit and create Word .docx files via the msword MCP server, including Word tracked changes, native Word styles (real bullet/numbered lists and headings), editing tables (set cells, add/delete rows), and creating documents from a template — including filling out an example template (placeholders + example tables). Use when the user asks to open/summarise/search a Word document, edit or redline one with tracked changes, accept/reject revisions, add bullet points or headings, fill in or edit tables, or draft a new .docx (optionally from a template).
 ---
 
-# Word (via the `msword-py` MCP server)
+# Word (via the `word` MCP server)
 
-Requires the `ms-word.py` MCP server (the only write-capable server in the
+Requires the `word.py` MCP server (the only write-capable server in the
 suite; sandboxed to its configured docs folder). If its tools are not
 available, tell the user to wire it in first (see the repo README) and to
-verify with `python ms-word.py --check`.
+verify with `python word.py --check`.
 
 ## Core workflow: open → edit → save
 
