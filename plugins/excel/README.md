@@ -6,7 +6,7 @@ not need to be installed.
 
 | | |
 |---|---|
-| **Server** | `excel.py` v3.0.0 |
+| **Server** | `excel.py` v3.0.1 |
 | **pip install** | _none_ — standard library only |
 | **Platform** | any |
 | **Writes to disk** | no |
@@ -14,8 +14,8 @@ not need to be installed.
 ## Install
 
 ```
-/plugin marketplace add C:\path\to\mcp-servers
-/plugin install excel@mcnamee-mcp-servers
+/plugin marketplace add C:\path\to\claude-skills
+/plugin install excel@mcnamee-claude-skills
 ```
 
 This is the simplest plugin in the suite — standard library only, one prompt —

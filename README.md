@@ -1,4 +1,4 @@
-# mcp-servers
+# claude-skills
 
 Seven MCP servers that give an AI agent hands on the things enterprise work
 actually lives in — Word documents, Excel workbooks, Outlook mail, Confluence,
@@ -30,13 +30,13 @@ plugin marketplace that works **entirely offline**.
 
 | Plugin | Version | What it does | pip install |
 |---|---|---|---|
-| [**word**](plugins/word) | 4.0.0 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
-| [**excel**](plugins/excel) | 3.0.0 | Read and analyse workbooks; parses `.xlsx` directly, so Excel isn't needed | _none_ |
-| [**outlook**](plugins/outlook) | 3.0.0 | Read local Outlook mail and calendar via COM, with a content blacklist | `pywin32` |
-| [**confluence**](plugins/confluence) | 1.3.1 | Search and read Confluence pages | _none_ |
-| [**jira**](plugins/jira) | 1.1.1 | Query issues, sprints and projects (Jira Data Center v2 API) | _none_ |
-| [**knowledge-base**](plugins/knowledge-base) | 2.0.1 | True RAG over your own Markdown: local ChromaDB index + your embeddings API | `chromadb` |
-| [**pdf-to-md**](plugins/pdf-to-md) | 4.0.1 | Convert PDFs to Markdown with tables preserved | `pymupdf pymupdf4llm` |
+| [**word**](plugins/word) | 4.0.1 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
+| [**excel**](plugins/excel) | 3.0.1 | Read and analyse workbooks; parses `.xlsx` directly, so Excel isn't needed | _none_ |
+| [**outlook**](plugins/outlook) | 3.0.1 | Read local Outlook mail and calendar via COM, with a content blacklist | `pywin32` |
+| [**confluence**](plugins/confluence) | 1.3.2 | Search and read Confluence pages | _none_ |
+| [**jira**](plugins/jira) | 1.1.2 | Query issues, sprints and projects (Jira Data Center v2 API) | _none_ |
+| [**knowledge-base**](plugins/knowledge-base) | 2.0.2 | True RAG over your own Markdown: local ChromaDB index + your embeddings API | `chromadb` |
+| [**pdf-to-md**](plugins/pdf-to-md) | 4.0.2 | Convert PDFs to Markdown with tables preserved | `pymupdf pymupdf4llm` |
 
 Each plugin's README covers its settings, tools, file access and example
 prompts. Every server also carries a semantic version in `__version__`, printed
@@ -58,9 +58,9 @@ walks through sideloading the wheels on an airgapped machine.
 **2. Add this repo as a marketplace**, then install whichever plugins you want:
 
 ```
-/plugin marketplace add C:\path\to\mcp-servers
-/plugin install word@mcnamee-mcp-servers
-/plugin install excel@mcnamee-mcp-servers
+/plugin marketplace add C:\path\to\claude-skills
+/plugin install word@mcnamee-claude-skills
+/plugin install excel@mcnamee-claude-skills
 ```
 
 Claude Code prompts for that server's settings — documents folder, output
@@ -86,7 +86,7 @@ just a window reload) and reopen it after setting one.
 
 Useful commands: `/plugin` to browse and manage, `/mcp` to confirm a server
 connected, `claude mcp list` to spot an unresolved environment variable, and
-`/plugin marketplace update mcnamee-mcp-servers` after you transfer a new
+`/plugin marketplace update mcnamee-claude-skills` after you transfer a new
 version across.
 
 > **Skills are namespaced** by their plugin, so it's `/word:word` rather
@@ -103,7 +103,7 @@ HTTP servers) without starting the server, and is far easier to read than an MCP
 connection failure:
 
 ```
-"C:\path\to\python.exe" C:\path\to\mcp-servers\plugins\word\word.py --check
+"C:\path\to\python.exe" C:\path\to\claude-skills\plugins\word\word.py --check
 ```
 
 ### Manual install, without plugins
@@ -117,7 +117,7 @@ stdio JSON stream on non-ASCII content. Pass secrets with `-e` / the `env` block
 never as flags.
 
 ```
-claude mcp add excel --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\mcp-servers\plugins\excel\excel.py --docs-dir C:\path\to\your\workbooks
+claude mcp add excel --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\claude-skills\plugins\excel\excel.py --docs-dir C:\path\to\your\workbooks
 ```
 
 ## Configuration conventions

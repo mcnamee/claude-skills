@@ -1,12 +1,12 @@
 {
   "name": "confluence",
   "displayName": "Confluence (read-only)",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "description": "Search and read Confluence pages, optionally mirroring them to Markdown for a local RAG knowledge base.",
   "author": {
     "name": "mcnamee"
   },
-  "repository": "https://github.com/mcnamee/mcp-servers",
+  "repository": "https://github.com/mcnamee/claude-skills",
   "license": "MIT",
   "keywords": [
     "confluence",

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-confluence.py (v1.3.1) - A single-file MCP (Model Context Protocol) server
+confluence.py (v1.3.2) - A single-file MCP (Model Context Protocol) server
 for querying Confluence Data Center (tested against the 9.x v1 REST API)
 using only the Python 3 standard library.
 
@@ -37,6 +37,20 @@ to other local users in process listings:
                         and overwritten if they already exist. Leave unset to
                         disable saving.
 
+INSTALLING INTO CLAUDE CODE
+---------------------------
+This server ships as the "confluence" Claude Code plugin (its manifest is
+.claude-plugin/plugin.json next to this file), so the normal install is:
+
+    /plugin marketplace add C:\path\to\claude-skills
+    /plugin install confluence@mcnamee-claude-skills
+
+Claude Code prompts for the base URL, the optional knowledge-base folder and
+the Python interpreter. CONFLUENCE_TOKEN is NOT stored in the plugin - set it
+as a Windows user environment variable before starting Claude Code, and the
+plugin picks it up from there. See README.md next to this file for the full
+settings reference.
+
 Diagnostic output goes ONLY to stderr. stdout is reserved for the JSON-RPC
 stream - writing anything else there would corrupt the protocol.
 
@@ -46,7 +60,7 @@ many spaces are visible (to stderr), then exit without starting the server.
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "1.3.1"
+__version__ = "1.3.2"
 
 import argparse
 import base64

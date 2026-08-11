@@ -1,12 +1,12 @@
 {
   "name": "pdf-to-md",
   "displayName": "PDF to Markdown",
-  "version": "4.0.1",
+  "version": "4.0.2",
   "description": "Convert PDFs to Markdown with tables preserved, for feeding a local knowledge base. Requires pymupdf.",
   "author": {
     "name": "mcnamee"
   },
-  "repository": "https://github.com/mcnamee/mcp-servers",
+  "repository": "https://github.com/mcnamee/claude-skills",
   "license": "MIT",
   "keywords": [
     "pdf",

@@ -1,12 +1,12 @@
 {
   "name": "knowledge-base",
   "displayName": "Knowledge base (RAG)",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "True RAG over your own Markdown docs: a local ChromaDB vector index plus your embeddings API. Requires chromadb.",
   "author": {
     "name": "mcnamee"
   },
-  "repository": "https://github.com/mcnamee/mcp-servers",
+  "repository": "https://github.com/mcnamee/claude-skills",
   "license": "MIT",
   "keywords": [
     "rag",

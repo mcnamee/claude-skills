@@ -1,12 +1,12 @@
 {
   "name": "outlook",
   "displayName": "Outlook (mail + calendar)",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Read-only access to local classic Outlook mail and calendar via COM. Windows only; requires pywin32.",
   "author": {
     "name": "mcnamee"
   },
-  "repository": "https://github.com/mcnamee/mcp-servers",
+  "repository": "https://github.com/mcnamee/claude-skills",
   "license": "MIT",
   "keywords": [
     "outlook",

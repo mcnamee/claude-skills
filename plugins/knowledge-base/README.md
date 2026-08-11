@@ -5,7 +5,7 @@ local ChromaDB vector index plus your own embeddings API.
 
 | | |
 |---|---|
-| **Server** | `knowledge-base.py` v2.0.1 |
+| **Server** | `knowledge-base.py` v2.0.2 |
 | **pip install** | `chromadb` (HTTP to your endpoints is stdlib `urllib` — no `requests`) |
 | **Platform** | any |
 | **Writes to disk** | yes — the vector index folder only |
@@ -32,8 +32,8 @@ local ChromaDB vector index plus your own embeddings API.
 ## Install
 
 ```
-/plugin marketplace add C:\path\to\mcp-servers
-/plugin install knowledge-base@mcnamee-mcp-servers
+/plugin marketplace add C:\path\to\claude-skills
+/plugin install knowledge-base@mcnamee-claude-skills
 ```
 
 | Prompt | Required | Env var | Purpose |

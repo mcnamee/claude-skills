@@ -6,7 +6,7 @@ AI entirely.
 
 | | |
 |---|---|
-| **Server** | `outlook.py` v3.0.0 |
+| **Server** | `outlook.py` v3.0.1 |
 | **pip install** | `pywin32` |
 | **Platform** | **Windows only** — requires classic Win32 Outlook (not "New Outlook") installed, running, and logged into a profile |
 | **Writes to disk** | only if the knowledge-base folder is set |
@@ -14,8 +14,8 @@ AI entirely.
 ## Install
 
 ```
-/plugin marketplace add C:\path\to\mcp-servers
-/plugin install outlook@mcnamee-mcp-servers
+/plugin marketplace add C:\path\to\claude-skills
+/plugin install outlook@mcnamee-claude-skills
 ```
 
 | Prompt | Required | Env var | Purpose |
