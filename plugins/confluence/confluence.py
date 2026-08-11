@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-confluence.py (v1.3.0) - A single-file MCP (Model Context Protocol) server
+confluence.py (v1.3.1) - A single-file MCP (Model Context Protocol) server
 for querying Confluence Data Center (tested against the 9.x v1 REST API)
 using only the Python 3 standard library.
 
-It speaks MCP over stdio (newline-delimited JSON-RPC 2.0), which is what the
-Continue VSCode extension launches for a `type: stdio` server. No third-party
-packages are required.
+It speaks MCP over stdio (newline-delimited JSON-RPC 2.0), the transport an
+MCP client launches for a `type: stdio` server. No third-party packages are
+required.
 
 Tools exposed (read-only / query):
   - confluence_search           : free-text search for pages
@@ -14,8 +14,8 @@ Tools exposed (read-only / query):
   - confluence_get_page         : fetch one page by numeric ID (with body text)
   - confluence_get_page_by_title: fetch one page by exact title + space key
 
-Configuration is read from environment variables (the natural fit for
-Continue's `env:` block); non-secret settings can be overridden by
+Configuration is read from environment variables (the natural fit for an
+MCP client's `env` block); non-secret settings can be overridden by
 command-line arguments. CREDENTIALS ARE ENV-VAR ONLY - there are no
 --token/--user/--password flags, because command-line arguments are visible
 to other local users in process listings:
@@ -46,7 +46,7 @@ many spaces are visible (to stderr), then exit without starting the server.
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "1.3.0"
+__version__ = "1.3.1"
 
 import argparse
 import base64

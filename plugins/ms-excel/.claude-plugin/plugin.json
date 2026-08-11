@@ -1,7 +1,7 @@
 {
   "name": "ms-excel",
   "displayName": "MS Excel (.xlsx)",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Read and analyse Excel workbooks. Read-only; parses .xlsx directly so Excel is not required.",
   "author": {
     "name": "mcnamee"

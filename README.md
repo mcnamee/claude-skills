@@ -1,156 +1,79 @@
 # mcp-servers
-My MCP Servers for Productivity
 
-Seven single-file, stdio-transport MCP servers. Most are standard-library
-only; a few need one extra pip package. Install into the SAME Python
-interpreter that your MCP client will launch the server with.
+Seven MCP servers that give an AI agent hands on the things enterprise work
+actually lives in — Word documents, Excel workbooks, Outlook mail, Confluence,
+Jira, PDFs — plus a local RAG knowledge base to tie them together.
 
-Each server lives in `plugins/<name>/` alongside its skill, so it is also a
-ready-to-install **Claude Code plugin** — this repo doubles as an offline
-plugin marketplace (see
-[Installation into Claude Code](#installation-into-claude-code--plugins-recommended)).
-Other clients (Continue, Cline) point at the same `.py` files directly; nothing
-is duplicated.
+Each one is packaged as a **Claude Code plugin**, so this repo doubles as a
+plugin marketplace that works **entirely offline**.
 
-## Servers and dependencies
+## Why this exists
 
-Every server carries a semantic version in a `__version__` constant at the
-top of the file (also printed by `--version` and reported to the MCP client
-in `serverInfo`). The version is bumped on every change — see `CLAUDE.md`
-for the bump rules.
+- **Built for an airgapped Windows endpoint.** No internet calls, no telemetry,
+  no registry lookups. Copy the folder across, add it as a local marketplace,
+  install.
+- **One file per server.** Every server is a single `.py` — nothing to build, no
+  package tree to transfer. Four of the seven are **standard library only**.
+- **Install with prompts, not JSON.** `/plugin install` asks for the folders and
+  the Python interpreter instead of you hand-editing absolute paths in seven
+  places. The matching skill comes with the server.
+- **Confined by default.** Every server that touches the filesystem is locked to
+  the folders you name, and refuses to start unconfined rather than falling back
+  to "anywhere". Five of the seven are read-only.
+- **Secrets never hit the command line.** Tokens and API keys are environment
+  variables only — argv is visible to other local users in process listings.
+- **They compose.** Word, Outlook and Confluence can each mirror what they read
+  into one Markdown folder; `pdf-to-md` fills the same folder from PDFs; the
+  `knowledge-base` server indexes it and answers questions over the lot.
 
-| Server | Version | pip install | Notes |
+## The plugins
+
+| Plugin | Version | What it does | pip install |
 |---|---|---|---|
-| [`confluence`](plugins/confluence) | 1.3.0 | _none_ | standard library only |
-| [`jira`](plugins/jira) | 1.1.0 | _none_ | standard library only (read-only, Jira Data Center v2 REST API) |
-| [`knowledge-base`](plugins/knowledge-base) | 2.0.0 | `pip install chromadb` | true RAG: local ChromaDB vector index + your embeddings API (HTTP is stdlib `urllib`, no `requests`) |
-| [`ms-excel`](plugins/ms-excel) | 2.1.0 | _none_ | standard library only (parses .xlsx as a zip of XML) |
-| [`ms-word`](plugins/ms-word) | 3.0.0 | `pip install python-docx` | also pulls in `lxml` (compiled) and `typing_extensions` |
-| [`ms-outlook`](plugins/ms-outlook) | 2.0.0 | `pip install pywin32` | Windows only (COM automation of classic Outlook) |
-| [`pdf-to-md`](plugins/pdf-to-md) | 4.0.0 | `pip install pymupdf pymupdf4llm` | OCR of scanned PDFs additionally requires Tesseract installed on the machine (not a pip package) |
+| [**ms-word**](plugins/ms-word) | 3.0.1 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
+| [**ms-excel**](plugins/ms-excel) | 2.1.1 | Read and analyse workbooks; parses `.xlsx` directly, so Excel isn't needed | _none_ |
+| [**ms-outlook**](plugins/ms-outlook) | 2.0.1 | Read local Outlook mail and calendar via COM, with a content blacklist | `pywin32` |
+| [**confluence**](plugins/confluence) | 1.3.1 | Search and read Confluence pages | _none_ |
+| [**jira**](plugins/jira) | 1.1.1 | Query issues, sprints and projects (Jira Data Center v2 API) | _none_ |
+| [**knowledge-base**](plugins/knowledge-base) | 2.0.1 | True RAG over your own Markdown: local ChromaDB index + your embeddings API | `chromadb` |
+| [**pdf-to-md**](plugins/pdf-to-md) | 4.0.1 | Convert PDFs to Markdown with tables preserved | `pymupdf pymupdf4llm` |
 
-## Install everything at once
+Each plugin's README covers its settings, tools, file access and example
+prompts. Every server also carries a semantic version in `__version__`, printed
+by `--version` and reported to the MCP client in `serverInfo`.
+
+## Install
+
+**1. Install the pip dependencies** into the *same* interpreter you'll point the
+plugins at:
 
 ```
-pip install python-docx pymupdf pymupdf4llm pywin32 chromadb
+"C:\path\to\python.exe" -m pip install python-docx pymupdf pymupdf4llm pywin32 chromadb
 ```
 
-(Drop `pywin32` if you're not on Windows / not using `ms-outlook.py`.)
+(Drop `pywin32` if you're not on Windows / not using `ms-outlook`. Install only
+what the plugins you want need — see the table above.) `ms-word.py`'s docstring
+walks through sideloading the wheels on an airgapped machine.
 
-## Configuration conventions (all servers)
-
-Every server follows the same configuration pattern, so once you know one
-you know them all:
-
-1. **Precedence: CLI flag > environment variable > constant in the file.**
-   Every non-secret setting can be supplied three ways; the flag always wins,
-   then the env var, then the (optional) constant in the file's CONFIG block.
-2. **Naming: the env var is the server's prefix + the flag name.**
-   `--docs-dir` on `ms-excel.py` is `EXCEL_DOCS_DIR`; on `ms-word.py` it is
-   `MSWORD_DOCS_DIR`; `--timeout` on `jira.py` is `JIRA_TIMEOUT`. Prefixes:
-   `CONFLUENCE_`, `JIRA_`, `KB_` (knowledge-base), `EXCEL_`,
-   `OUTLOOK_`, `MSWORD_`, `PDF2MD_`. The one deliberate exception:
-   `--insecure` pairs with `<PREFIX>_VERIFY_SSL=false`.
-3. **Secrets are env-var ONLY.** There are deliberately no
-   `--token`/`--password`/`--*-api-key` flags anywhere, because command-line
-   arguments are visible to other local users in process listings. Put
-   credentials in the `env:` block of your MCP client config.
-4. **Common flag vocabulary across the suite:**
-   - `--docs-dir` — the folder of source documents the server is confined to
-     (workbooks for Excel, .docx sandbox for Word, PDFs for pdf-to-md,
-     markdown/text for the knowledge-base server)
-   - `--output-dir` — folder generated files are written to (`ms-word.py`,
-     `pdf-to-md.py`)
-   - `--kb-dir` — optional folder where read content is mirrored as Markdown
-     for a local RAG knowledge base (`confluence.py`, `ms-outlook.py`,
-     `ms-word.py`)
-   - `--base-url`, `--ca-cert`, `--insecure`, `--timeout`, `--max-body` —
-     the HTTP servers (`confluence.py`, `jira.py`, `knowledge-base.py`)
-   - `--check` — validate config/environment (and connectivity, for the HTTP
-     servers) and exit without starting the server; run it first, before
-     wiring a server into your MCP client
-   - `--version` — print the server's name and semantic version, then exit
-     (works even when the server's pip dependencies are missing)
-
-> **Upgrading from an older checkout?** These names were standardized in the
-> v2.x/v4.x bumps: `ms-excel.py --folder`/`EXCEL_WORKBOOK_FOLDER` became
-> `--docs-dir`/`EXCEL_DOCS_DIR`, `ms-word.py --document-root`/
-> `MSWORD_DOCUMENT_ROOT` became `--docs-dir`/`MSWORD_DOCS_DIR`, and
-> `pdf-to-md.py --input-dir`/`PDF2MD_INPUT_DIR` became
-> `--docs-dir`/`PDF2MD_DOCS_DIR`. Also: the old standard-library keyword-search
-> `knowledge-base.py` has been removed, and the RAG server `knowledge-base-rag.py`
-> has taken its place as `knowledge-base.py` (ChromaDB vector index; its tools
-> are `kb_ask`/`kb_retrieve`/`kb_index`/`kb_status`, not the old
-> `reference_search`/`reference_get`). Update your client config when you update
-> the files.
-
-## File access policy
-
-Every server that touches the filesystem is confined to the folder(s) named
-in its configuration, and that configuration is **required** — a server will
-refuse to start unconfined rather than fall back to "anywhere":
-
-| Server | Confined to | Required setting |
-|---|---|---|
-| `ms-word.py` | open/save only inside the docs folder (and the output folder, if set); new docs written to the output folder; Markdown mirrored to the knowledge-base folder | `--docs-dir` / `MSWORD_DOCS_DIR` / `DOCS_DIR` constant (required); optional `--output-dir` and `--kb-dir` |
-| `ms-excel.py` | reads only inside the workbook folder | `--docs-dir` / `EXCEL_DOCS_DIR` / `DOCS_DIR` constant |
-| `knowledge-base.py` | reads only inside the docs folder; writes only the vector-index folder (default `<docs-dir>\.kb-rag-index`); network only to the endpoint(s) you configure | `--docs-dir` / `KB_DOCS_DIR` + `--embed-url` / `KB_EMBED_URL` |
-| `pdf-to-md.py` | reads only the docs folder, writes only the output folder | `--docs-dir` + `--output-dir` (or `PDF2MD_DOCS_DIR`/`PDF2MD_OUTPUT_DIR`) |
-| `confluence.py` | no local file access unless `CONFLUENCE_KB_DIR` is set; then writes only inside that folder | n/a (mirroring is optional; unset = no file access) |
-| `jira.py` | no local file access (HTTP GET to Jira only; reads the optional `JIRA_CA_CERT` bundle once at startup) | n/a |
-| `ms-outlook.py` | no local file access unless `--kb-dir` (`OUTLOOK_KB_DIR`) is set; then writes only inside that folder (reads the optional `--blacklist-file` once at startup) | n/a (mirroring is optional; unset = no file access) |
-
-In all cases paths are resolved (symlinks included) before the containment
-check, so a symlink dropped inside a configured folder cannot reach files
-outside it.
-
-## Notes
-
-- `ms-word.py` and `pdf-to-md.py` log `sys.executable` on startup, so if a
-  dependency reports as "missing" even after installing it, check that you
-  installed into the same interpreter your MCP client launches the server
-  with, e.g.:
-  ```
-  "C:\path\to\python.exe" -m pip install python-docx pymupdf pymupdf4llm pywin32 chromadb
-  ```
-- For airgapped/offline installs, see the docstring at the top of
-  `ms-word.py` for the wheel-sideloading steps (same pattern applies to
-  `pdf-to-md.py`'s dependencies).
-
-## Installation into Claude Code — plugins (recommended)
-
-Each server is also packaged as a **Claude Code plugin**, bundling the server,
-its skill and its configuration prompts as one installable unit. This repo is a
-plugin **marketplace**, and it works entirely offline — no network, no registry.
+**2. Add this repo as a marketplace**, then install whichever plugins you want:
 
 ```
 /plugin marketplace add C:\path\to\mcp-servers
 /plugin install ms-word@mcnamee-mcp-servers
+/plugin install ms-excel@mcnamee-mcp-servers
 ```
 
-Claude Code then **prompts you for that server's settings** (documents folder,
-output folder, the Python interpreter, …) instead of you hand-editing JSON, and
-the skill is installed with it. Repeat `/plugin install` for whichever of the
-seven you want — they are independent, so a machine without `pywin32` simply
-does not install `ms-outlook`.
+Claude Code prompts for that server's settings — documents folder, output
+folder, and the **Python interpreter** (give the absolute path to the
+`python.exe` from step 1; a mismatch here is the most common cause of
+"dependency missing"). The plugins are independent, so a machine without
+`pywin32` simply doesn't install `ms-outlook`.
 
-| Plugin | Installs | Prompts for |
-|---|---|---|
-| `ms-word` | Word server + `/ms-word:ms-word` skill | documents folder (required), output folder, knowledge-base folder, tracked-change author |
-| `ms-excel` | Excel server + skill | workbook folder (required) |
-| `ms-outlook` | Outlook server + skill | knowledge-base folder, search folders, blacklist file |
-| `confluence` | Confluence server + skill | base URL (required), knowledge-base folder |
-| `jira` | Jira server + skill | base URL (required), project allowlist |
-| `knowledge-base` | RAG server + skill | docs folder + embeddings URL (required), model |
-| `pdf-to-md` | PDF converter + skill | PDF folder + output folder (required) |
+`ms-excel` is the simplest to start with: standard library only, one prompt.
 
-Every plugin also asks for the **Python interpreter** — give the absolute path
-to the `python.exe` that has that server's pip dependencies, since a mismatch
-there is the most common cause of "dependency missing".
-
-**Secrets are not stored in the plugin.** The three HTTP servers read their
-credentials from the ambient environment, so set these as Windows user
-environment variables before starting Claude Code:
+**3. Set your secrets** as Windows user environment variables before starting
+Claude Code — they're read from the ambient environment, never stored in the
+plugin:
 
 | Plugin | Environment variable |
 |---|---|
@@ -158,781 +81,110 @@ environment variables before starting Claude Code:
 | `jira` | `JIRA_TOKEN` |
 | `knowledge-base` | `KB_EMBED_API_KEY` |
 
-Useful commands: `/plugin` (browse and manage), `claude plugin list`,
+`setx` doesn't affect already-running processes, so quit VS Code completely (not
+just a window reload) and reopen it after setting one.
+
+Useful commands: `/plugin` to browse and manage, `/mcp` to confirm a server
+connected, `claude mcp list` to spot an unresolved environment variable, and
 `/plugin marketplace update mcnamee-mcp-servers` after you transfer a new
-version across, and `/mcp` to confirm a server connected.
+version across.
 
-Notes and caveats:
+> **Skills are namespaced** by their plugin, so it's `/ms-word:ms-word` rather
+> than `/ms-word`.
+>
+> **Plugins are cached on install** (copied under `~/.claude/plugins/`), which is
+> why each plugin contains its own server file rather than sharing one — a path
+> reaching outside the plugin would break once cached.
 
-- **Skills are namespaced** by their plugin, so it is `/ms-word:ms-word` rather
-  than `/ms-word`.
-- **Plugins are cached on install** (copied under `~/.claude/plugins/`), which
-  is why each plugin contains its own server file rather than sharing one — a
-  path reaching outside the plugin would break once cached. Re-run
-  `/plugin marketplace update` after transferring changes.
-- **Other MCP clients are unaffected** — Continue and Cline configure the same
-  `.py` files directly (see the sections below); nothing is duplicated, the
-  plugin simply wraps the server in place.
+### Before you wire anything in
 
-## Installation into Claude Code — manual alternative
-
-If you would rather not use plugins (or want a server configured differently
-from what its plugin prompts for), register it directly. Two things to install:
-the **servers** (below) and the **skills** (see
-[Skills](#skills-slash-commands-for-each-mcp)).
-
-Pick a scope:
-
-| Scope | Config lives in | Use when |
-|---|---|---|
-| **User** | `%USERPROFILE%\.claude.json` (via `claude mcp add --scope user`) | You want Word/Excel/Outlook tools in **every** folder you open — usually right, since document work isn't one code project |
-| **Project** | `.mcp.json` in the project root | You want the config to **travel with the files** across the airgap, and only load in that folder |
-
-### User scope (available everywhere)
-
-From a terminal, once per server — `--` separates Claude's flags from the
-server's own:
+Run the server's `--check` first. It validates config (and connectivity, for the
+HTTP servers) without starting the server, and is far easier to read than an MCP
+connection failure:
 
 ```
-claude mcp add msword-py --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\plugins\ms-word\ms-word.py --docs-dir C:\Users\me\Documents\ai_docs --output-dir C:\Users\me\Documents\ai_generated --author Matt
-claude mcp add excel     --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\plugins\ms-excel\ms-excel.py --docs-dir C:\path\to\your\workbooks
-claude mcp add outlook   --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\plugins\ms-outlook\ms-outlook.py
+"C:\path\to\python.exe" C:\path\to\mcp-servers\plugins\ms-word\ms-word.py --check
 ```
 
-Secrets stay out of the command line — pass them with `-e` (which writes them
-into the config file) rather than as flags, per the
-[configuration conventions](#configuration-conventions-all-servers):
+### Manual install, without plugins
+
+If you'd rather configure a server directly — or want one configured differently
+from what its plugin prompts for — register it with `claude mcp add --scope user`
+(available in every folder), or copy [`.mcp.json.example`](.mcp.json.example) to
+`.mcp.json` in the folder you open Claude Code in (config travels with the
+files). Keep `PYTHONUTF8=1`: without it, Windows' legacy codepage can corrupt the
+stdio JSON stream on non-ASCII content. Pass secrets with `-e` / the `env` block,
+never as flags.
 
 ```
-claude mcp add confluence --scope user -e PYTHONUTF8=1 -e CONFLUENCE_BASE_URL=https://confluence.internal.example.com -e CONFLUENCE_TOKEN=your-personal-access-token -- C:\path\to\python.exe C:\path\to\plugins\confluence\confluence.py --max-body 20000 --kb-dir C:\reference-docs\confluence
+claude mcp add excel --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\mcp-servers\plugins\ms-excel\ms-excel.py --docs-dir C:\path\to\your\workbooks
 ```
 
-Then `claude mcp list` to confirm they connect, and `/mcp` inside Claude Code
-to see the tools.
+## Configuration conventions
 
-### Project scope (config travels with the repo)
+Every server follows the same pattern, so once you know one you know them all.
+The per-plugin READMEs list each server's actual settings.
 
-Put a `.mcp.json` in the folder you open Claude Code in — copy
-[`.mcp.json.example`](.mcp.json.example) from this repo and edit the paths.
-Claude Code asks once to approve project-scoped servers. Same `command`/`args`/
-`env` shape as the Cline example below, so the per-server flag tables apply
-unchanged:
+1. **Precedence: CLI flag > environment variable > constant in the file.**
+2. **Naming: the env var is the server's prefix + the flag name.** `--docs-dir`
+   on `ms-excel.py` is `EXCEL_DOCS_DIR`; on `ms-word.py` it is
+   `MSWORD_DOCS_DIR`. Prefixes: `CONFLUENCE_`, `JIRA_`, `KB_`, `EXCEL_`,
+   `OUTLOOK_`, `MSWORD_`, `PDF2MD_`. The one deliberate exception: `--insecure`
+   pairs with `<PREFIX>_VERIFY_SSL=false`.
+3. **Secrets are env-var only.** No `--token`/`--password`/`--*-api-key` flags
+   anywhere, because command-line arguments are visible to other local users.
+4. **Shared flag vocabulary:** `--docs-dir` (the source folder a server is
+   confined to), `--output-dir` (generated files), `--kb-dir` (Markdown mirror
+   for the RAG knowledge base), `--base-url`/`--ca-cert`/`--insecure`/
+   `--timeout`/`--max-body` (the HTTP servers), `--check`, `--version`.
 
-```json
-{
-  "mcpServers": {
-    "msword-py": {
-      "command": "C:\\path\\to\\python.exe",
-      "args": [
-        "C:\\path\\to\\plugins\\ms-word\\ms-word.py",
-        "--docs-dir", "C:\\Users\\me\\Documents\\ai_docs",
-        "--output-dir", "C:\\Users\\me\\Documents\\ai_generated"
-      ],
-      "env": { "PYTHONUTF8": "1" }
-    }
-  }
-}
-```
+## File access policy
 
-Note the **doubled backslashes** — JSON escapes them.
+Every server that touches the filesystem is confined to the folder(s) named in
+its configuration, and that configuration is **required**:
 
-### Before you wire anything in (airgapped checklist)
-
-1. **Install the pip dependencies into the interpreter Claude Code will
-   launch** — not a different one on the PATH. See
-   [Install everything at once](#install-everything-at-once), and the
-   `ms-word.py` docstring for sideloading wheels offline.
-2. **Run each server's `--check` first.** It validates config (and
-   connectivity, for the HTTP servers) without starting the server, and is far
-   easier to read than an MCP connection failure:
-   ```
-   "C:\path\to\python.exe" C:\path\to\plugins\ms-word\ms-word.py --check
-   ```
-3. **Use absolute paths** for both the interpreter and the script.
-4. **Keep `PYTHONUTF8=1`** — without it, Windows' legacy codepage can corrupt
-   the stdio JSON stream on any non-ASCII content.
-5. If a server misbehaves after an edit, restart Claude Code rather than
-   toggling the server.
-
-## Installation into Continue (config.yaml)
-
-All servers speak MCP over stdio. Add each one as an entry under the
-`mcpServers:` block of Continue's `config.yaml`. Use the full path to the
-Python interpreter you installed dependencies into (not a bare `python`),
-and set `PYTHONUTF8: "1"` so Windows' default codepage can't corrupt the
-stdio JSON stream. After editing `config.yaml`, use VSCode's
-"Developer: Reload Window" rather than toggling the server, to avoid a
-known "already connected to transport" reconnection bug.
-
-Claude Code and Cline users: the flag tables in the per-server sections below
-apply unchanged — see
-[Installation into Claude Code](#installation-into-claude-code-vs-code) or
-[Installation into Cline](#installation-into-cline-cline_mcp_settingsjson)
-for the JSON equivalent of each YAML example.
-
-### confluence.py
-
-Configuration is via environment variables (non-secret settings also have
-equivalent CLI flags, which take priority over the env vars). **Credentials
-are env-var only** — there are deliberately no `--token`/`--user`/`--password`
-flags, because command-line arguments are visible to other local users in
-process listings.
-
-| Env var | CLI flag | Purpose |
-|---|---|---|
-| `CONFLUENCE_BASE_URL` | `--base-url` | Base URL incl. any context path, no trailing slash |
-| `CONFLUENCE_TOKEN` | _(env only)_ | Personal Access Token, sent as Bearer (preferred over basic auth) |
-| `CONFLUENCE_USER` | _(env only)_ | Username for basic auth (fallback if no token) |
-| `CONFLUENCE_PASSWORD` | _(env only)_ | Password for basic auth |
-| `CONFLUENCE_CA_CERT` | `--ca-cert` | Path to a PEM CA bundle for an internal CA |
-| `CONFLUENCE_VERIFY_SSL=false` | `--insecure` | Disable TLS certificate verification |
-| `CONFLUENCE_TIMEOUT` | `--timeout` | Request timeout in seconds (default 30) |
-| `CONFLUENCE_MAX_BODY` | `--max-body` | Truncate page bodies to N chars, 0 = unlimited (default). Applies only to text returned to the model, not to files saved via `CONFLUENCE_KB_DIR` |
-| `CONFLUENCE_KB_DIR` | `--kb-dir` | If set, every page read is also saved as a Markdown file (`Confluence - <title>.md`, overwritten each time) into this folder — handy for feeding a local RAG knowledge base, e.g. alongside `knowledge-base.py` |
-| — | `--check` | Connect to Confluence, print who you are authenticated as + visible space count to stderr, then exit (no server) |
-| — | `--version` | Print version and exit |
-
-```yaml
-mcpServers:
-  - name: confluence
-    command: C:\path\to\python.exe
-    args:
-      - C:\path\to\plugins\confluence\confluence.py
-      - --max-body
-      - "20000"
-      - --kb-dir
-      - C:\reference-docs\confluence
-    env:
-      CONFLUENCE_BASE_URL: https://confluence.internal.example.com
-      CONFLUENCE_TOKEN: your-personal-access-token
-      PYTHONUTF8: "1"
-```
-
-### jira.py
-
-Read-only access to Jira Data Center (v2 REST API). Every request is an HTTP
-GET — there is no code path that creates, edits, transitions, comments on, or
-deletes anything. Like `confluence.py`, **credentials are env-var only** (no
-`--token`/`--user`/`--password` flags).
-
-| Env var | CLI flag | Purpose |
-|---|---|---|
-| `JIRA_BASE_URL` | `--base-url` | Base URL incl. any context path, no trailing slash |
-| `JIRA_TOKEN` | _(env only)_ | Personal Access Token, sent as Bearer (preferred; Jira DC 8.14+) |
-| `JIRA_USER` | _(env only)_ | Username for basic auth (fallback if no token) |
-| `JIRA_PASSWORD` | _(env only)_ | Password for basic auth |
-| `JIRA_PROJECTS` | `--projects` | Optional comma-separated **project-key allowlist** (e.g. `"ABC,DEF"`). When set, every tool is confined to those projects: searches are scoped with an AND clause, issue keys outside the list are refused, and other projects are hidden from `jira_list_projects` |
-| `JIRA_CA_CERT` | `--ca-cert` | Path to a PEM CA bundle for an internal CA |
-| `JIRA_VERIFY_SSL=false` | `--insecure` | Disable TLS certificate verification |
-| `JIRA_TIMEOUT` | `--timeout` | Request timeout in seconds (default 30) |
-| `JIRA_MAX_BODY` | `--max-body` | Truncate issue descriptions to N chars, 0 = unlimited (default) |
-| — | `--check` | Connect to Jira, print who you are authenticated as + visible project count to stderr, then exit (no server) |
-| — | `--version` | Print version and exit |
-
-```yaml
-mcpServers:
-  - name: jira
-    command: C:\path\to\python.exe
-    args:
-      - C:\path\to\plugins\jira\jira.py
-    env:
-      JIRA_BASE_URL: https://jira.internal.example.com
-      JIRA_TOKEN: your-personal-access-token
-      JIRA_PROJECTS: "ABC,DEF"        # optional allowlist
-      PYTHONUTF8: "1"
-```
-
-> Targets Jira **Data Center / Server** (plain-text descriptions via the v2
-> API). Jira Cloud's v3 API returns rich-text documents and is not supported.
-
-### knowledge-base.py
-
-True RAG (Retrieval-Augmented Generation) over a folder of your own markdown
-files, in three stages:
-
-1. **Index** — documents are split into heading-aware chunks, embedded via
-   your embeddings API endpoint, and stored in a local ChromaDB vector
-   database on disk. Indexing is incremental: only new/changed files are
-   re-embedded, deleted files are removed.
-2. **Retrieve** — a question is embedded the same way and the most
-   semantically similar chunks come back with source file, section heading
-   and similarity score.
-3. **Generate** — (optional) the retrieved chunks + question go to a
-   chat-completions endpoint, which writes a grounded answer citing its
-   sources. With no chat endpoint configured, `kb_ask` returns the retrieved
-   context and the agent you're already talking to writes the answer — so
-   generation works either way.
-
-Requires `pip install chromadb` (ChromaDB's anonymised telemetry is disabled
-in the file; HTTP to your endpoints is stdlib `urllib`). **API keys are
-env-var only** — there are deliberately no `--*-api-key` flags, because
-command-line arguments are visible to other local users in process listings.
-Note that retrieved document text *is* sent to the endpoints you configure —
-that is what RAG is — so point it only at material appropriate for those APIs.
-
-| Tool | Purpose |
+| Plugin | Local file access |
 |---|---|
-| `kb_index` | Build/update the vector index (incremental; `force=true` rebuilds — needed after changing embedding model) |
-| `kb_retrieve` | Semantic vector search: top-k most similar chunks, with source file, heading and similarity score |
-| `kb_ask` | Full RAG: retrieve, then generate a grounded cited answer (or return context for the agent, if no chat endpoint) |
-| `kb_status` | Documents vs index freshness + configuration summary (never shows keys) |
+| `ms-word` | Read/write, confined to the documents folder (plus the output and knowledge-base folders, if set) |
+| `ms-excel` | Read-only, confined to the workbook folder |
+| `knowledge-base` | Reads the documents folder; writes only its vector index; network only to the endpoints you configure |
+| `pdf-to-md` | Reads the PDF folder, writes the output folder |
+| `confluence` | None unless a knowledge-base folder is set; then writes only there |
+| `ms-outlook` | None unless a knowledge-base folder is set; then writes only there |
+| `jira` | None — HTTP GET to Jira only |
 
-| Env var | CLI flag | Purpose |
-|---|---|---|
-| `KB_DOCS_DIR` | `--docs-dir` | **Required.** Folder of `.md`/`.markdown`/`.txt` docs, searched recursively |
-| `KB_INDEX_DIR` | `--index-dir` | ChromaDB folder (default `<docs-dir>\.kb-rag-index`) |
-| `KB_COLLECTION` | `--collection` | ChromaDB collection name (default `kb-rag`) |
-| `KB_EMBED_URL` | `--embed-url` | **Required.** Full URL of the embeddings endpoint |
-| `KB_EMBED_MODEL` | `--embed-model` | Model name sent in embed requests (omit if the endpoint fixes one) |
-| `KB_EMBED_API_KEY` | _(env only)_ | API key for the embeddings endpoint |
-| `KB_EMBED_AUTH_HEADER` | `--embed-auth-header` | Header the key is sent in — default `Authorization` (as `Bearer <key>`); any other name (e.g. Azure's `api-key`) sends the raw key |
-| `KB_EMBED_STYLE` | `--embed-style` | Request format: `openai` (default; batch `{"input": [...]}`), `ollama` (`{"prompt": ...}` one-per-request), or `kserve-jina` (KServe V2 Open Inference Protocol — texts sent as a BYTES input tensor `{"inputs": [{"name", "shape", "datatype", "data"}]}`, e.g. a Jina embeddings model served on KServe; the model name is part of the `--embed-url` path such as `https://host/v2/models/jina-embeddings/infer`, and flat FP32 output tensors are reshaped via their `shape`; nested data and KServe V1 `predictions` responses also parsed), or `raw-json` (plain `{"texts": [...]}` body — for KServe **custom** predictors and other bespoke wrappers that unpack the raw request body into their pipeline's arguments; the telltale symptom is a server error like `pipeline() missing 1 required positional argument: 'texts'` that doesn't change when the tensor name does). Response parsing additionally accepts bare `embedding`/`embeddings` shapes, so most bespoke internal endpoints work unchanged |
-| `KB_EMBED_TENSOR_NAME` | `--embed-tensor-name` | `kserve-jina` style only: name of the input tensor the texts are sent as (default `text`) |
-| `KB_EMBED_JSON_KEY` | `--embed-json-key` | `raw-json` style only: the JSON key the batch of texts is sent under (default `texts`; e.g. `instances` for a V1-flavoured custom wrapper) |
-| `KB_EMBED_TEMPLATE` | `--embed-template` | **Full request-body control** when none of the styles matches your endpoint: the complete JSON body to POST, with the JSON string `"__TEXTS__"` where the array of texts goes; `"__COUNT__"` becomes the number of texts in the batch (an integer — for strictly-validated tensor `shape` fields) and `"__MODEL__"` the `--embed-model` name. Overrides the style's request shape; batching still applies. E.g. a FastAPI custom predictor that validates `{"inputs": {"texts": [...]}}` (symptom: HTTP 422 with `loc: [body, inputs]`) is `KB_EMBED_TEMPLATE={"inputs": {"texts": "__TEXTS__"}}`; a strict V2 tensor envelope with a custom `texts` field is `{"inputs": [{"name": "texts", "shape": ["__COUNT__"], "datatype": "BYTES", "data": "__TEXTS__", "texts": "__TEXTS__"}]}`. Tip: FastAPI-wrapped endpoints publish their exact schema at `/openapi.json` (and Swagger UI at `/docs`) — fetch it with your mTLS certs instead of guessing field by field |
-| `KB_EMBED_RESPONSE_PATH` | `--embed-response-path` | Dotted path to the vectors in the response when auto-detection can't find them, e.g. `outputs.embeddings` or `result.0.vectors` (numeric parts index lists). Applies to every style |
-| `KB_DEBUG=1` | `--debug` | Log every request/response body (truncated) to stderr — run `--check` with it to see exactly what is sent and what came back, for matching an unknown endpoint |
-| `KB_EMBED_BATCH` | `--embed-batch` | Texts per embeddings request, openai and kserve-jina styles (default 16) |
-| `KB_EMBED_QUERY_PREFIX` | `--embed-query-prefix` | Prefix for query embeds, for models that need it (e5-style `"query: "`) |
-| `KB_EMBED_DOC_PREFIX` | `--embed-doc-prefix` | Prefix for document embeds (`"passage: "`) |
-| `KB_EMBED_EXTRA_HEADERS` | _(env only)_ | JSON object of extra HTTP headers for the embed endpoint |
-| `KB_CHAT_URL` | `--chat-url` | *Optional.* Chat-completions endpoint for the generate step (OpenAI shape; Ollama `/api/chat` and `/api/generate` response shapes also parsed) |
-| `KB_CHAT_MODEL` | `--chat-model` | Generation model name |
-| `KB_CHAT_API_KEY` | _(env only)_ | API key for the chat endpoint (falls back to `KB_EMBED_API_KEY`) |
-| `KB_CHAT_AUTH_HEADER` | `--chat-auth-header` | As per `KB_EMBED_AUTH_HEADER` |
-| `KB_CHAT_MAX_TOKENS` | `--chat-max-tokens` | `max_tokens` for generation (default 1024; 0 omits the field) |
-| `KB_CHAT_EXTRA_HEADERS` | _(env only)_ | JSON object of extra HTTP headers for the chat endpoint |
-| `KB_CA_CERT` | `--ca-cert` | Path to a PEM CA bundle for an internal CA |
-| `KB_CLIENT_CERT` | `--client-cert` | Path to a PEM client certificate, for gateways that require **mutual TLS (mTLS)** — the fix for errors like `CERTIFICATE_NOT_PROVIDED` / `certificate required`. Presented to both endpoints. Loaded once at startup, so a bad path/passphrase fails immediately |
-| `KB_CLIENT_KEY` | `--client-key` | Path to the PEM private key for the client certificate; omit if the `--client-cert` file contains both cert and key |
-| `KB_CLIENT_KEY_PASSWORD` | _(env only)_ | Passphrase, if the client private key is encrypted |
-| `KB_VERIFY_SSL=false` | `--insecure` | Disable TLS certificate verification. Note this cannot fix an mTLS error — it controls how *you* verify the *server*, not the certificate you present to it (that's `--client-cert`) |
-| `KB_TIMEOUT` | `--timeout` | HTTP timeout in seconds (default 120) |
-| `KB_CHUNK_CHARS` | `--chunk-chars` | Soft max characters per chunk (default 1500) |
-| `KB_CHUNK_OVERLAP` | `--chunk-overlap` | Overlap between adjacent chunks (default 200) |
-| `KB_TOP_K` | `--top-k` | Default chunks retrieved (default 5) |
-| — | `--check` | Validate config, call the endpoint(s) once, report index status, then exit |
-| — | `--reindex` | Build/update the vector index, then exit (add `--force` to rebuild from scratch) |
-| — | `--search QUERY` | Test retrieval from the command line, then exit |
-| — | `--ask QUESTION` | Test full RAG (retrieve + generate) from the command line, then exit |
-| — | `--version` | Print version and exit |
+Paths are resolved (symlinks included) before the containment check, so a
+symlink dropped inside a configured folder cannot reach files outside it.
 
-First run (before wiring into the MCP client): `--check`, then `--reindex`,
-then `--search "some topic"` to confirm retrieval — the docstring at the top
-of the file walks through it. If you change embedding model, run
-`--reindex --force` once (vector dimensions differ between models).
-
-```yaml
-mcpServers:
-  - name: knowledge-base
-    command: C:\path\to\python.exe
-    args:
-      - C:\path\to\plugins\knowledge-base\knowledge-base.py
-      - --docs-dir
-      - C:\Users\me\knowledge-base
-      - --embed-url
-      - https://ai-gateway.internal.example.com/v1/embeddings
-      - --embed-model
-      - text-embedding-3-small
-    env:
-      KB_EMBED_API_KEY: your-api-key
-      PYTHONUTF8: "1"
-```
-
-### ms-excel.py
-
-| CLI flag | Purpose |
-|---|---|
-| `--docs-dir` | **Required.** Folder of `.xlsx`/`.xlsm` workbooks to expose — the server only reads files inside it and refuses to start without one. Falls back to the `EXCEL_DOCS_DIR` env var, then the `DOCS_DIR` constant in the file |
-| `--check` | Print environment/config diagnostics and exit (no server) |
-| `--list` | List readable workbooks in the folder and exit (no server) |
-| `--version` | Print version and exit |
-
-```yaml
-mcpServers:
-  - name: excel
-    command: C:\path\to\python.exe
-    args:
-      - C:\path\to\plugins\ms-excel\ms-excel.py
-      - --docs-dir
-      - C:\path\to\your\workbooks
-    env:
-      PYTHONUTF8: "1"
-```
-
-**Finding a workbook by name.** Every tool takes a `workbook` name, resolved
-forgivingly against the folder: exact filename → name without extension →
-case-insensitive → a unique substring → and finally a **fuzzy** name match
-(same matcher as `ms-word.py` / `pdf-to-md.py`), so *"budgit q3"* or *"q3
-budget"* still opens `Budget Q3 2024.xlsx`. A genuinely ambiguous name returns
-the candidate list rather than guessing; use `excel_list_workbooks` to see
-what's available. (Fuzzy fallbacks are logged to stderr for audit.)
-
-### ms-outlook.py
-
-Windows only — requires classic Win32 Outlook (not "New Outlook") installed,
-running, and logged into a profile.
-
-| CLI flag | Purpose |
-|---|---|
-| `--blacklist-file` | Path to a file of extra content-blacklist terms (one per line, `#` for comments), added to the built-in list. Falls back to the `OUTLOOK_BLACKLIST_FILE` env var |
-| `--search-folders` | Comma-separated folder names used as the **default** folder set for `outlook_search_recent`, overriding the `SEARCH_ALL_FOLDERS` value in the file (e.g. `"Inbox,Sent Items,Archive"`). A per-call `folders` argument still takes priority. Falls back to the `OUTLOOK_SEARCH_FOLDERS` env var |
-| `--kb-dir` | If set, every email read with `outlook_get_email` is *also* saved as a Markdown file into this folder for a local RAG knowledge base (like `confluence.py` / `ms-word.py`). Files are named `Email - <date> - <subject> (<id>).md` and overwritten on re-read of the same message; the folder is created at startup. **Blocked (blacklisted) messages are never written** — mirroring only runs after a message clears the content filter. Falls back to the `OUTLOOK_KB_DIR` env var, then the `KB_DIR` config constant. Omit to keep the server file-free (the default) |
-| `--require-blacklist` | Fail closed: refuse to start unless the content blacklist has at least one active term, so a missing/empty terms file cannot silently disable the compliance filter. Also via `OUTLOOK_REQUIRE_BLACKLIST=1` or the `REQUIRE_BLACKLIST` constant in the file |
-| `--check` | Connect to Outlook, print diagnostics + blacklist status to stderr, then exit (no server) |
-| `--version` | Print version and exit |
-
-The content blacklist also applies to **folder names**: folders whose
-store/path matches a blacklisted term are withheld from
-`outlook_list_folders` and skipped by `outlook_search_recent` (results are
-labelled with their folder path, so a marked folder name never appears in
-output).
-
-Everything else is configured by editing the `USER CONFIGURATION` block at
-the top of `ms-outlook.py` directly (there are no extra CLI flags/env vars
-for these):
-
-| Setting | Purpose |
-|---|---|
-| `BLACKLIST_TERMS` | Built-in list of classification/compliance terms that cause an item to be withheld from the AI entirely |
-| `BLACKLIST_MATCH_MODE` | `"word"` (default, whole-term match) or `"substring"` (for terms containing punctuation) |
-| `MAX_BODY_CHARS` / `CALENDAR_HARD_CAP` / `SEARCH_SCAN_CAP` | Safety caps on body length / items scanned |
-| `SEARCH_ALL_FOLDERS` | Folder names (matched across every store) that `outlook_search_recent` searches by default — `["Inbox", "Sent Items", "Archive"]`; use `outlook_list_folders` to see real folder names first. This is only the built-in default: override it at launch with `--search-folders`, or per call by passing a `folders` argument to `outlook_search_recent` |
-
-```yaml
-mcpServers:
-  - name: outlook
-    command: C:\path\to\python.exe
-    args:
-      - C:\path\to\plugins\ms-outlook\ms-outlook.py
-      - --blacklist-file
-      - C:\config\outlook-blacklist.txt
-      - --search-folders
-      - "Inbox,Sent Items,Archive"
-      - --kb-dir
-      - C:\reference-docs\outlook
-    env:
-      PYTHONUTF8: "1"
-```
-
-`--kb-dir` is optional — drop those two lines to keep the server file-free
-(no emails written to disk). When set, point it at the same folder your
-`knowledge-base.py` server indexes so read emails land alongside your
-Confluence pages and Word documents.
-
-### ms-word.py
-
-| CLI flag | Purpose |
-|---|---|
-| `--check` | Run an offline open/edit/save/reopen self-test and exit (no server) |
-| `--author` | Author name stamped on Word tracked changes. Falls back to the `MSWORD_AUTHOR` env var, then the `TRACKED_CHANGE_AUTHOR` config value in the file. Can also be overridden per-call via the `author` argument on the editing tools (`msword_replace_text`, `msword_set_paragraph_text`, `msword_insert_paragraph`, `msword_delete_paragraph`) |
-| `--docs-dir` | **Required.** Path sandbox: every open/save must be inside this directory tree, and the server refuses to start without one (`--check` is exempt — the self-test sandboxes itself to its own temp folder). Falls back to the `MSWORD_DOCS_DIR` env var, then the `DOCS_DIR` config value. This is the only write-capable server in the suite, and the model chooses the open/save paths |
-| `--version` | Print version and exit |
-| `--output-dir` | Optional folder where `msword_create` writes **new** `.docx` files, kept **separate** from the knowledge-base folder. Falls back to the `MSWORD_OUTPUT_DIR` env var, then the `OUTPUT_DIR` config value, and finally to the document root. Also treated as a permitted open/save location so created documents can be reopened and edited |
-| `--kb-dir` | Optional. If set, **every document opened** with `msword_open` is *also* written out as a Markdown file into this folder for a local RAG knowledge base (like `confluence.py`'s `--kb-dir`). Falls back to the `MSWORD_KB_DIR` env var, then the `KB_DIR` config value. Files are named `Word - <name>.md` and overwritten each open; the folder is created if missing. Omit to disable mirroring |
-
-**Finding documents by name.** You don't need absolute paths. `msword_open`
-resolves a relative path against the **document root**, so *"edit Policy
-103.docx"* opens `<docs-dir>\Policy 103.docx` directly — a bare filename is
-even located if it sits in a subfolder of the root. Previously a relative name
-resolved against the server's working directory (wherever the client launched
-Python), so it fell outside the sandbox and the model had to guess the full
-path. If there's no exact match, `msword_open` falls back to a **fuzzy name
-match** (same matcher as `pdf-to-md.py`), so *"budget policy"* opens
-`Budget Policy 2024.docx`; when a fuzzy match is used the result carries
-`fuzzy_matched: true` and the requested text so the caller can confirm it got
-the right file, and a genuinely ambiguous name returns the tied candidates
-rather than guessing. Use **`msword_list_documents`** (optionally with a
-`query` substring) to list the `.docx` files under the root — name, relative
-path, size and modified time — when you're unsure of the exact name.
-
-**Native Word styles.** Structure lives in paragraph *styles*, not typed
-characters, so the tools steer towards real ones: `msword_list_styles` reports
-every style a document actually defines (with each one's role and what the
-Markdown export turns it into, plus a `recommended` block naming the right
-style for *this* template), style names resolve forgivingly (case-insensitive,
-`ListBullet`, or an alias like `bullets`) and an unknown name comes back with
-the closest real matches instead of a dead end. Text typed as a fake list item
-(`"- First point"`) is auto-corrected to a real `List Bullet` paragraph and the
-correction is reported in a `warning` — pass `literal_text: true` for text that
-must keep a leading marker (`- 5 degrees`), and note a multi-item block in one
-call is refused (add one paragraph per item). `msword_insert_paragraph` with no
-`style` now follows Word's Enter-key rule instead of defaulting to Normal, and
-`msword_add_table` defaults to `Table Grid` so tables have visible borders.
-This matters beyond appearance: the knowledge-base export below is **entirely
-style-driven**, so a hand-typed hyphen is mirrored as a plain paragraph and the
-list structure is lost.
-
-**Building a RAG knowledge base.** Point `--kb-dir` at the same folder your
-`knowledge-base.py` server indexes. Each time a `.docx` is opened, a Markdown
-copy is dropped there — headings become `#`/`##`, `List Bullet`/`List Number`
-paragraphs become `-`/`1.` lists, and tables become GitHub-style pipe tables —
-so Word content lands alongside the Confluence pages in the same RAG index.
-
-**Creating documents.** `msword_create` makes a new `.docx` in the
-`--output-dir` folder (falling back to the document root) and opens it as a
-session; build it up with `msword_add_heading` / `msword_add_paragraph` /
-`msword_add_table` and persist with `msword_save` (omit its `path` to save in
-place). Any directory part in the requested filename is stripped, so new files
-always land inside the output folder.
-
-**From a template.** Pass `template` to `msword_create` to base the new
-document on an existing one — a corporate letterhead, report layout or contract
-boilerplate. The template is a `.docx` in the document root, named the same
-forgiving way as `msword_open` (bare name, relative path, or a fuzzy near-miss,
-e.g. `template: "Report Template.docx"`); its styles, headers/footers, page
-setup and boilerplate are inherited into the new file, which is written to the
-output folder. **The template file itself is never modified**, and the result
-includes the resolved `template` so you can confirm the right one was used.
-`.docx` templates only; keep them in the docs folder (a `templates/` subfolder
-is a tidy convention, discoverable via `msword_list_documents`).
-
-**Filling out an example template.** When the template is a form to fill in —
-placeholder text plus an *example* table (e.g. an agenda with a Time/Item/Owner
-table) — the table-editing tools let an agent populate it. Read the structure
-with `msword_get_content` (`mode: "structured"`) and `msword_get_tables`, swap
-placeholder text with `msword_replace_text` (templates that use explicit
-`{{TOKEN}}` markers are the most reliable to fill), then for the repeating table:
-`msword_add_table_row` (with `copy_from_row` to clone a styled example row's
-borders/shading/fonts, and `values` to fill it) once per real item,
-`msword_set_cell` to set an individual cell by `(table_index, row, col)`, and
-`msword_delete_table_row` to drop leftover example rows (delete highest index
-first, since indices shift). These table edits are plain (untracked); a table
-row/cell change can't be a Word tracked change.
-
-Tracked changes are recorded the way Word itself records them: replacements
-are diffed **word-by-word** (only the words that actually change are marked
-as deleted/inserted — never "whole paragraph deleted + whole paragraph
-reinserted"), and whole-paragraph inserts/deletes include the paragraph mark
-so accepting/rejecting adds or removes the paragraph itself. Changes can be
-accepted/rejected all at once or individually by id. While changes are
-pending, `msword_get_content`/`msword_search` show the final ("No Markup")
-view.
-
-```yaml
-mcpServers:
-  - name: msword-py
-    command: C:\path\to\python.exe
-    args:
-      - C:\path\to\plugins\ms-word\ms-word.py
-      - --author
-      - Matt
-      - --docs-dir
-      - C:\Users\me\Documents\ai_docs
-      - --output-dir
-      - C:\Users\me\Documents\ai_generated
-      - --kb-dir
-      - C:\Users\me\Documents\rag_kb
-    env:
-      PYTHONUTF8: "1"
-```
-
-`--output-dir` and `--kb-dir` are optional — drop those four lines to keep new
-documents in the document root and disable Markdown mirroring.
-
-### pdf-to-md.py
-
-| CLI flag | Purpose |
-|---|---|
-| `--docs-dir` | **Required.** Folder containing the source PDFs. Falls back to the `PDF2MD_DOCS_DIR` env var |
-| `--output-dir` | **Required.** Folder to write `.md` files into. Falls back to the `PDF2MD_OUTPUT_DIR` env var |
-| `--recursive` | Also search sub-folders of `--docs-dir` (sub-folder structure is mirrored in the output). Also via `PDF2MD_RECURSIVE=1` |
-| `--check` | Print environment/config diagnostics (folders, dependency status, PDFs found) and exit (no server) |
-| `--version` | Print version and exit |
-
-```yaml
-mcpServers:
-  - name: pdf2md
-    command: C:\path\to\python.exe
-    args:
-      - C:\path\to\plugins\pdf-to-md\pdf-to-md.py
-      - --docs-dir
-      - C:\Reference\PDFs
-      - --output-dir
-      - C:\Reference\Markdown
-      - --recursive
-    env:
-      PYTHONUTF8: "1"
-```
-
-## Installation into Cline (cline_mcp_settings.json)
-
-Cline (and Roo Code, which uses the same format) configures MCP servers in a
-JSON file instead of Continue's YAML. Open it via the Cline pane → **MCP
-Servers** → **Installed** → **Configure MCP Servers**, which edits:
-
-```
-%APPDATA%\Code\User\globalStorage\saoudrizwan.claude-dev\settings\cline_mcp_settings.json
-```
-
-The mapping from the Continue examples above is mechanical — same `command`,
-`args` and `env`, just as JSON (remember to **double the backslashes** in
-JSON paths). The flag tables in the per-server sections apply unchanged.
-A complete example with every server in this repo (drop the entries you
-don't use, and adjust paths):
-
-```json
-{
-  "mcpServers": {
-    "confluence": {
-      "command": "C:\\path\\to\\python.exe",
-      "args": [
-        "C:\\path\\to\\plugins\\confluence\\confluence.py",
-        "--max-body", "20000",
-        "--kb-dir", "C:\\reference-docs\\confluence"
-      ],
-      "env": {
-        "CONFLUENCE_BASE_URL": "https://confluence.internal.example.com",
-        "CONFLUENCE_TOKEN": "your-personal-access-token",
-        "PYTHONUTF8": "1"
-      },
-      "disabled": false,
-      "autoApprove": []
-    },
-    "jira": {
-      "command": "C:\\path\\to\\python.exe",
-      "args": ["C:\\path\\to\\plugins\\jira\\jira.py"],
-      "env": {
-        "JIRA_BASE_URL": "https://jira.internal.example.com",
-        "JIRA_TOKEN": "your-personal-access-token",
-        "JIRA_PROJECTS": "ABC,DEF",
-        "PYTHONUTF8": "1"
-      },
-      "disabled": false,
-      "autoApprove": []
-    },
-    "knowledge-base": {
-      "command": "C:\\path\\to\\python.exe",
-      "args": [
-        "C:\\path\\to\\plugins\\knowledge-base\\knowledge-base.py",
-        "--docs-dir", "C:\\Users\\me\\knowledge-base",
-        "--embed-url", "https://ai-gateway.internal.example.com/v1/embeddings",
-        "--embed-model", "text-embedding-3-small"
-      ],
-      "env": {
-        "KB_EMBED_API_KEY": "your-api-key",
-        "PYTHONUTF8": "1"
-      },
-      "disabled": false,
-      "autoApprove": []
-    },
-    "excel": {
-      "command": "C:\\path\\to\\python.exe",
-      "args": [
-        "C:\\path\\to\\plugins\\ms-excel\\ms-excel.py",
-        "--docs-dir", "C:\\path\\to\\your\\workbooks"
-      ],
-      "env": { "PYTHONUTF8": "1" },
-      "disabled": false,
-      "autoApprove": []
-    },
-    "outlook": {
-      "command": "C:\\path\\to\\python.exe",
-      "args": [
-        "C:\\path\\to\\plugins\\ms-outlook\\ms-outlook.py",
-        "--blacklist-file", "C:\\config\\outlook-blacklist.txt",
-        "--search-folders", "Inbox,Sent Items,Archive",
-        "--kb-dir", "C:\\reference-docs\\outlook"
-      ],
-      "env": { "PYTHONUTF8": "1" },
-      "disabled": false,
-      "autoApprove": []
-    },
-    "msword-py": {
-      "command": "C:\\path\\to\\python.exe",
-      "args": [
-        "C:\\path\\to\\plugins\\ms-word\\ms-word.py",
-        "--author", "Matt",
-        "--docs-dir", "C:\\Users\\me\\Documents\\ai_docs",
-        "--output-dir", "C:\\Users\\me\\Documents\\ai_generated",
-        "--kb-dir", "C:\\Users\\me\\Documents\\rag_kb"
-      ],
-      "env": { "PYTHONUTF8": "1" },
-      "disabled": false,
-      "autoApprove": []
-    },
-    "pdf2md": {
-      "command": "C:\\path\\to\\python.exe",
-      "args": [
-        "C:\\path\\to\\plugins\\pdf-to-md\\pdf-to-md.py",
-        "--docs-dir", "C:\\Reference\\PDFs",
-        "--output-dir", "C:\\Reference\\Markdown",
-        "--recursive"
-      ],
-      "env": { "PYTHONUTF8": "1" },
-      "disabled": false,
-      "autoApprove": []
-    }
-  }
-}
-```
-
-Cline notes:
-
-- `"disabled": false` / `"autoApprove": []` are Cline-specific fields —
-  list tool names in `autoApprove` (e.g. `"excel_read_range"`) to skip the
-  per-call approval prompt for read-only tools you trust.
-- Credentials stay in the `env` block, same as Continue — the settings file
-  is local to your profile, and secrets never appear in process listings.
-- After editing the file, Cline reloads servers automatically; if a server
-  shows as errored, use "Developer: Reload Window" and check the server's
-  stderr output in the MCP pane (every server logs its config problems
-  there — or run the same command with `--check` in a terminal first).
-- The per-MCP skills in each `plugins/<name>/skills/` folder can be used as Cline
-  workflows for slash commands — see [Skills](#skills-slash-commands-for-each-mcp) below.
-
-## Usage examples
-
-These are natural-language prompts you can give an AI agent (e.g. in
-Continue's agent mode) once the relevant server is wired in. Each maps to
-one or more of the tools the server exposes.
-
-### confluence.py
-
-1. "Search Confluence for our incident response runbook." → `confluence_search`
-2. "Find pages in the DOCS space that mention 'release notes' and were updated in the last 30 days." → `confluence_search_cql`
-3. "Pull up the full content of Confluence page 393217." → `confluence_get_page`
-4. "Open the 'Q3 Roadmap' page in the PROD space and summarise it." → `confluence_get_page_by_title`
-5. "List every page under the 'Engineering Handbook' in the DOCS space, direct children only." → `confluence_list_pages_under`
-6. "Pull the onboarding runbook into our local knowledge base for offline search." → `confluence_get_page` (or `confluence_get_page_by_title`), automatically mirrored to Markdown when `--kb-dir`/`CONFLUENCE_KB_DIR` is configured, so `knowledge-base.py`'s `kb_index`/`kb_ask` can find it afterwards
-
-### jira.py
-
-1. "What's assigned to me right now, highest priority first?" → `jira_my_issues`
-2. "Find any tickets mentioning the login timeout bug — has anyone reported this before?" → `jira_search`
-3. "Show me ABC-123 in full, including the comments and who changed its status." → `jira_get_issue` with `include_changelog=true`
-4. "Everything resolved in project ABC in the last week, for the release notes." → `jira_search_jql` with `project = ABC AND resolved >= -7d`
-5. "How healthy is project ABC — what's open, in progress, unassigned?" → `jira_project_status`
-6. "Which projects can I see in Jira?" → `jira_list_projects`
-7. "Draft a status report from my open tickets as a Word doc with tracked changes." → `jira_my_issues` + `ms-word.py`'s editing tools
-
-### knowledge-base.py
-
-1. "Using my knowledge base, can I extend my work trip by 2 days, pay for my own accommodation for the weekend, and fly back Monday?" → `kb_ask` (retrieves the travel policy's trip-extension chunks and generates a cited answer — or hands the agent the chunks to answer from, if no chat endpoint is configured)
-2. "Find the parts of our policies about accommodation and per diem." → `kb_retrieve`
-3. "I've added some new documents to the knowledge base folder — pick them up." → `kb_index` (incremental: only new/changed files are embedded)
-4. "Is the knowledge base index up to date? What's actually indexed?" → `kb_status`
-5. "Rebuild the whole knowledge base index from scratch (we switched embedding model)." → `kb_index` with `force=true`
-
-### ms-excel.py
-
-1. "What Excel workbooks are available for me to look at?" → `excel_list_workbooks`
-2. "List the sheets in the 'budget' workbook." → `excel_list_sheets` (the `workbook` name is matched forgivingly — a near-miss like `"q3 budget"` still resolves to `Budget Q3 2024.xlsx`)
-3. "What are the column headers on the 'Q3' sheet of the budget workbook?" → `excel_get_headers`
-4. "Read rows A1:D50 from the Q3 sheet." → `excel_read_range`
-5. "Find every cell in the budget workbook that mentions 'Marketing'." → `excel_search`
-6. "Give me the sum, average, min and max of the Revenue column on the Q3 sheet." → `excel_column_stats`
-
-### ms-outlook.py
-
-1. "Show me my 10 most recent unread emails." → `outlook_list_recent_emails`
-2. "Search my inbox for anything from 'Jane Smith' about the contract renewal." → `outlook_search_emails`
-3. "Open that email from the vendor and summarise the key dates." → `outlook_get_email`
-4. "Read these project emails so they get saved into my RAG knowledge base as Markdown." → `outlook_get_email` with `--kb-dir` set (each cleared email is written to `Email - <date> - <subject> (<id>).md` for `knowledge-base.py` to index)
-5. "What's on my calendar for the next 7 days?" → `outlook_get_calendar`
-6. "What did I send last week?" → `outlook_list_sent_emails`
-7. "Find everything about the 'Acme renewal' across my Inbox, Sent Items and Archive from the last month." → `outlook_search_recent`
-8. "Search only my 'Projects' and 'Sent Items' folders for anything about the budget review." → `outlook_search_recent` with a `folders` argument overriding the default set
-9. "What are my actual Outlook folder names, so I can point the search at the right archive?" → `outlook_list_folders`
-
-### ms-word.py
-
-1. "Edit the Word file Policy 103.docx to…" → `msword_open` with `path: "Policy 103.docx"` (resolved against the document root — no absolute path needed) + the editing tools
-2. "Open the budget policy doc." (name not exact) → `msword_open` with `path: "budget policy"` (fuzzy-matches `Budget Policy 2024.docx`; the result flags `fuzzy_matched` so you can confirm)
-3. "What Word documents do I have?" / "I'm not sure of the exact file name." → `msword_list_documents` (optionally with a `query`), then `msword_open` on the one you want
-4. "Open the proposal.docx and show me its full text." → `msword_open` + `msword_get_content`
-5. "Open every .docx in my docs folder so it gets mirrored into the RAG knowledge base as Markdown." → `msword_open` with `--kb-dir` set (each open writes `Word - <name>.md` next to the Confluence pages for `knowledge-base.py` to index)
-6. "Create a new status report document and draft it with a title, headings and a summary table, then save it to my generated-docs folder." → `msword_create` (writes to `--output-dir`) + `msword_add_heading` + `msword_add_paragraph` + `msword_add_table` + `msword_save`
-7. "Create a Q3 report from my report template." → `msword_create` with `template: "Report Template.docx"` (inherits the template's styles/headers/boilerplate into a new file in the output folder; the template is left untouched) + the add_* tools + `msword_save`
-8. "Use my agenda template and fill it out for Monday's meeting — one row per item." → `msword_create` with `template: "Agenda Template.docx"` + `msword_replace_text` (placeholders) + `msword_add_table_row` (with `copy_from_row` to clone the example row) per item + `msword_set_cell` + `msword_delete_table_row` (drop leftover example rows) + `msword_save`
-9. "Find every mention of 'Acme Corp' in the contract and replace it with 'Acme Corporation'." → `msword_search` + `msword_replace_text`
-10. "Add a 'Next Steps' heading and a summary paragraph to the end of the report, then save it." → `msword_add_heading` + `msword_add_paragraph` + `msword_save`
-11. "Pull out the data from every table in the document as structured rows." → `msword_get_tables`
-12. "Add a 3x4 pricing table to the end of the quote document with these values, using the 'Table Grid' style." → `msword_add_table` + `msword_save`
-13. "Fill cell B2 of the second table with 'Approved', and add a row for the new line item." → `msword_set_cell` + `msword_add_table_row`
-14. "Change 'DRAFT' to 'FINAL' throughout the report as a tracked change so it shows up as a Word revision for review." → `msword_replace_text` with `track_changes=true`
-15. "Rewrite the third paragraph to be more concise, showing your edits as tracked changes — only mark the words you actually changed." → `msword_set_paragraph_text` with `track_changes=true` (old vs new text is diffed word-by-word, like editing in Word with Track Changes on)
-16. "Add a new paragraph after the introduction as a tracked insertion, so reviewers can reject it if they disagree." → `msword_insert_paragraph` with `track_changes=true`
-17. "Delete the whole limitation-of-liability paragraph as a tracked change — struck out, so legal can accept or reject it." → `msword_delete_paragraph` with `track_changes=true`
-18. "What tracked changes are currently in this document, and who made them?" → `msword_list_changes`
-19. "Accept Jane's two changes in the pricing section but leave everything else pending." → `msword_list_changes` + `msword_accept_changes` with those change ids
-20. "Reject just the change that deleted the warranty sentence." → `msword_list_changes` + `msword_reject_changes` with that change id
-21. "Accept all the tracked changes in this document now that legal has signed off." → `msword_accept_all_changes`
-22. "Reject all the tracked changes and revert this document to its original wording." → `msword_reject_all_changes`
-24. "What styles does this template actually have — I want the corporate bullet style, not a generic one." → `msword_list_styles` (exact names, which are built-in vs from the template, and which the Markdown export treats as lists/headings)
-25. "Add these five points as proper Word bullet points, not hyphens." → `msword_add_paragraph` once per point with `style: "List Bullet"` (typing "- " is auto-corrected and flagged in a `warning`)
-26. "Turn that hand-typed hyphen list into real Word bullets." → `msword_get_content` (`mode: "structured"`) + `msword_set_paragraph_text` + `msword_set_paragraph_format` with `style: "List Bullet"`
-
-### pdf-to-md.py
-
-1. "Convert every PDF in the reference folder to Markdown." → `convert_all_pdfs`
-2. "Convert just the 'procurement policy' PDF to Markdown." → `convert_pdf_to_markdown`
-3. "Reconvert all PDFs to Markdown even though some already have a .md file, since the source PDFs changed." → `convert_all_pdfs` with `force=true`
-4. "Convert all our compliance PDFs (including those in sub-folders) to Markdown so the knowledge-base server can search them." → `convert_all_pdfs` (with `--recursive` set at startup) feeding into `knowledge-base.py`'s `kb_index` / `kb_ask`
-
-## Skills (slash commands for each MCP)
+## Skills
 
 Every server ships with a Claude skill at
-`plugins/<server>/skills/<server>/SKILL.md` — YAML frontmatter (`name`,
-`description`) plus a body that teaches an agent the server's tools, the right
-call order, and the sharp edges (read-only limits, sandboxes, tracked-changes
-workflow, when to reindex, …).
+`plugins/<name>/skills/<name>/SKILL.md` — it teaches an agent the server's
+tools, the right call order, and the sharp edges (read-only limits, sandboxes,
+the tracked-changes workflow, when to reindex). **Installing the plugin installs
+its skill**, namespaced as `/<plugin>:<skill>`.
 
-**If you install the plugins, the skills come with them** — nothing to copy.
-The table below is for installing a skill on its own, or for Cline/Continue.
-Available skills:
+To install a skill on its own, without its server:
 
-| Skill | Slash command | Backing server |
-|---|---|---|
-| `plugins/confluence/skills/confluence/SKILL.md` | `/confluence` | `confluence.py` |
-| `plugins/jira/skills/jira/SKILL.md` | `/jira` | `jira.py` |
-| `plugins/knowledge-base/skills/knowledge-base/SKILL.md` | `/knowledge-base` | `knowledge-base.py` |
-| `plugins/ms-excel/skills/ms-excel/SKILL.md` | `/ms-excel` | `ms-excel.py` |
-| `plugins/ms-outlook/skills/ms-outlook/SKILL.md` | `/ms-outlook` | `ms-outlook.py` |
-| `plugins/ms-word/skills/ms-word/SKILL.md` | `/ms-word` | `ms-word.py` |
-| `plugins/pdf-to-md/skills/pdf-to-md/SKILL.md` | `/pdf-to-md` | `pdf-to-md.py` |
+```
+xcopy /E /I plugins\ms-word\skills\ms-word %USERPROFILE%\.claude\skills\ms-word
+```
 
-### Installing the skills
-
-- **Claude Code**: normally you do not do this — `/plugin install` brings the
-  skill with its server (see
-  [Installation into Claude Code](#installation-into-claude-code--plugins-recommended)).
-  To install a skill *without* its server, copy its folder in:
-  ```
-  xcopy /E /I plugins\ms-word\skills\ms-word %USERPROFILE%\.claude\skills\ms-word
-  ```
-  Claude invokes a skill automatically when relevant; a standalone one is
-  `/ms-word`, while a plugin's is namespaced `/ms-word:ms-word`. Run `/doctor`
-  (or restart Claude Code) if a newly copied skill does not show up.
-- **Cline**: Cline's slash commands are *workflows* — copy each
-  `plugins/<name>/skills/<name>/SKILL.md` into your workspace as
-  `.clinerules/workflows/<name>.md` (e.g. `.clinerules/workflows/ms-word.md`),
-  then type `/ms-word.md` in Cline to run it. The frontmatter is harmless
-  there. To have Cline apply a skill automatically (no slash command), drop it
-  into `.clinerules/` instead of `.clinerules/workflows/`.
-- **Continue**: add each `SKILL.md` body as a prompt file (Continue's
-  `prompts:` / *.prompt files) if you want `/`-invocable equivalents; the
-  files are plain Markdown, so they paste in unchanged.
-
-The skills only describe *how to use* the servers — each one still requires
-its MCP server to be configured in the client (sections above). Skills are
-**not** a way to run the servers: these are MCP servers, launched as
-long-running stdio subprocesses, not scripts a skill shells out to. That
-distinction matters most for `ms-word.py`, which is session-based
+Skills describe *how to use* a server — they aren't a way to run one. These are
+MCP servers, launched as long-running stdio subprocesses, not scripts a skill
+shells out to. That matters most for `ms-word`, which is session-based
 (`msword_open` returns a `session_id` and holds the document in memory until
-`msword_save`) — a one-shot script invocation would start with no session and
-the open → edit → save workflow could not work.
+`msword_save`).
 
 ## Versioning
 
-Every server carries `__version__` at the top of the file, printed by
-`--version` and reported to MCP clients via `serverInfo`. Versions follow
-semver and are bumped on EVERY change (see `CLAUDE.md`):
+Versions follow semver and are bumped on **every** change (see `CLAUDE.md`):
 
-- **MAJOR** — breaking change to configuration (flag/env-var renames) or to
-  a tool's name/arguments/output shape
+- **MAJOR** — breaking change to configuration (flag/env-var renames) or to a
+  tool's name/arguments/output shape
 - **MINOR** — new tools, new flags, new behaviour (backwards compatible)
 - **PATCH** — bug fixes, documentation-only or internal changes
 
-The per-server versions are listed in the table at the top of this README;
-keep that table, the file's docstring title and `__version__` in sync.
+A version appears in four places that must stay in sync: the server's
+`__version__`, its docstring title, its `plugin.json`, and the table above (the
+marketplace manifest mirrors them too).

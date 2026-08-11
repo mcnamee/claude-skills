@@ -18,7 +18,7 @@ You are an expert Python 3 programmer. You write scripts for an endpoint that is
 - Handle likely error conditions explicitly (file not found, bad input, permission errors, etc.)
 - Use argparse for any script that accepts arguments, with sensible --help text
 - Prefer explicit over clever — readability matters more than brevity
-- Ensure documentation (eg. args, usage, requirements, testing is updated in both the docblock at the top as well as the root README.md)
+- Ensure documentation (eg. args, usage, requirements, testing) is updated in both the docblock at the top of the server and its own `plugins/<name>/README.md`. The root `README.md` is deliberately kept short — benefits, install, links to each plugin, shared conventions — so per-server detail belongs in the plugin README, not there.
 
 ## Before writing code
 
@@ -38,7 +38,7 @@ Every MCP server in this repo carries a semantic version:
 - `SERVER_VERSION` / `SERVER_INFO` (whatever the file reports to the MCP client in `serverInfo`) must reference `__version__`, never a duplicate literal.
 - Each server exposes a `--version` flag printing `<server-name> <version>`. It must work even when the server's pip dependencies are missing (servers that import heavy/platform deps at module level answer `--version` before that import).
 
-**Whenever you change a server file, bump its version in the same change** — in `__version__`, the docstring title, the `version` field of its `plugins/<name>/.claude-plugin/plugin.json`, and the version table at the top of `README.md` (all four must stay in sync; the marketplace at `.claude-plugin/marketplace.json` mirrors the plugin versions too):
+**Whenever you change a server file, bump its version in the same change** — in `__version__`, the docstring title, the `version` field of its `plugins/<name>/.claude-plugin/plugin.json`, the header table of its `plugins/<name>/README.md`, and the plugin table in the root `README.md` (all five must stay in sync; the marketplace at `.claude-plugin/marketplace.json` mirrors the plugin versions too):
 
 - **MAJOR** — anything that breaks an existing integration: renaming/removing a CLI flag, env var or config constant; changing a tool's name, arguments or output shape; changing defaults in a behaviour-altering way.
 - **MINOR** — backwards-compatible additions: new tools, new flags/env vars, new behaviour.
@@ -52,4 +52,5 @@ Keep every server consistent with these rules (documented for users in README.md
 - **Naming:** env var = server prefix + upper-snake flag name (`--docs-dir` → `EXCEL_DOCS_DIR`). Prefixes: `CONFLUENCE_`, `JIRA_`, `KB_` (knowledge-base), `EXCEL_`, `OUTLOOK_`, `MSWORD_`, `PDF2MD_`. Exception: `--insecure` pairs with `<PREFIX>_VERIFY_SSL=false`.
 - **Secrets are env-var ONLY** — never add `--token`/`--password`/`--*-api-key` flags (argv is visible to other local users in process listings).
 - **Shared flag vocabulary:** `--docs-dir` (the source-documents folder a server is confined to), `--output-dir` (generated files), `--kb-dir` (optional Markdown mirror for the RAG knowledge base), `--base-url`/`--ca-cert`/`--insecure`/`--timeout`/`--max-body` (HTTP servers), `--check` (validate config/connectivity and exit), `--version`. Reuse these names for new servers/settings; do not invent synonyms (no `--folder`, `--input-dir`, `--document-root`).
-- **Skills:** each server has a matching Claude skill at `plugins/<server-name>/skills/<server-name>/SKILL.md`. When a server's tools or workflow change, update its skill (and the README skills table) in the same change.
+- **Skills:** each server has a matching Claude skill at `plugins/<server-name>/skills/<server-name>/SKILL.md`. When a server's tools or workflow change, update its skill in the same change.
+- **Claude Code only:** the suite targets Claude Code (plugins, with `claude mcp add` / `.mcp.json` as the manual fallback). Do not add configuration examples for other MCP clients.

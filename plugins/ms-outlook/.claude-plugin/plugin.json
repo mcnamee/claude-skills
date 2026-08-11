@@ -1,7 +1,7 @@
 {
   "name": "ms-outlook",
   "displayName": "MS Outlook (mail + calendar)",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Read-only access to local classic Outlook mail and calendar via COM. Windows only; requires pywin32.",
   "author": {
     "name": "mcnamee"

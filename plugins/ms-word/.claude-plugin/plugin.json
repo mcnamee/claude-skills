@@ -1,7 +1,7 @@
 {
   "name": "ms-word",
   "displayName": "MS Word (.docx)",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Read, edit and create Word .docx files - including Word tracked changes, native styles and filling out templates.",
   "author": {
     "name": "mcnamee"

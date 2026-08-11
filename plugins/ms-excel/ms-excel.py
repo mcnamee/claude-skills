@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r"""
-ms-excel.py (v2.1.0) -- Read-only Excel (.xlsx) MCP server for VSCode
-Continue / Cline.
+ms-excel.py (v2.1.1) -- Read-only Excel (.xlsx) MCP server.
 
 PURPOSE
     A single-file, standard-library-only MCP (Model Context Protocol) stdio
@@ -22,7 +21,7 @@ PURPOSE
     Design mirrors the other servers in this suite: stdout is reserved for
     JSON-RPC only, all diagnostics go to stderr, config lives in one fenced
     block below, and a --check flag validates the environment before wiring
-    into Continue. Workbook names are resolved forgivingly: exact filename,
+    the server in. Workbook names are resolved forgivingly: exact filename,
     then name without extension, then case-insensitive, then a unique
     substring, and finally a FUZZY name match (difflib) - so "budgit q3" or
     "q3 budget" still opens "Budget Q3 2024.xlsx". A genuinely ambiguous name
@@ -56,7 +55,7 @@ CONFIGURATION
     Precedence (suite-wide convention): CLI flag > environment variable >
     constant in this file.
 
-STANDALONE TESTING (before wiring into Continue)
+STANDALONE TESTING (before wiring the server in)
     1) Environment / config sanity check (prints interpreter + folder state):
          python ms-excel.py --check
 
@@ -80,24 +79,22 @@ STANDALONE TESTING (before wiring into Continue)
     4) Call a tool by hand (adjust the workbook/sheet names):
          {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"excel_list_sheets","arguments":{"workbook":"budget"}}}
 
-INTEGRATION WITH CONTINUE (config.yaml)
-    Add under mcpServers. Use the SAME Python interpreter you tested with
-    (match interpreter paths exactly to avoid module-mismatch surprises),
-    and keep PYTHONUTF8=1 so Windows cp1252 does not corrupt output.
+INSTALLING INTO CLAUDE CODE
+    This server ships as the "ms-excel" Claude Code plugin (its manifest is
+    .claude-plugin/plugin.json next to this file), so the normal install is:
 
-      mcpServers:
-        - name: excel
-          command: C:\path\to\python.exe
-          args:
-            - C:\path\to\ms-excel.py
-            - --docs-dir
-            - C:\path\to\your\workbooks
-          env:
-            PYTHONUTF8: "1"
+      /plugin marketplace add C:\path\to\mcp-servers
+      /plugin install ms-excel@mcnamee-mcp-servers
 
-    After editing config.yaml, run "Developer: Reload Window" in VSCode rather
-    than toggling the server, to avoid the "already connected to transport"
-    reconnection bug.
+    Claude Code then prompts for the workbook folder and the Python
+    interpreter - use the SAME interpreter you tested with above. PYTHONUTF8=1
+    is set for you by the manifest, so Windows cp1252 cannot corrupt output.
+
+    To register the server by hand instead:
+
+      claude mcp add excel --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\ms-excel.py --docs-dir C:\path\to\your\workbooks
+
+    See README.md next to this file for the full settings reference.
 
 PROTOCOL NOTE
     Transport is newline-delimited JSON-RPC 2.0 over stdio (one JSON object
@@ -107,7 +104,7 @@ PROTOCOL NOTE
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "2.1.0"
+__version__ = "2.1.1"
 
 import sys
 import os
@@ -1279,7 +1276,7 @@ def serve(folder):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="Read-only Excel (.xlsx) MCP server for VSCode Continue.")
+        description="Read-only Excel (.xlsx) MCP server.")
     parser.add_argument("--docs-dir",
                         default=os.environ.get("EXCEL_DOCS_DIR",
                                                DOCS_DIR),

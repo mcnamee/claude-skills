@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-jira.py (v1.1.0) - A single-file, READ-ONLY MCP (Model Context Protocol)
+jira.py (v1.1.1) - A single-file, READ-ONLY MCP (Model Context Protocol)
 server for querying Jira Data Center (v2 REST API) using only the Python 3
 standard library.
 
-It speaks MCP over stdio (newline-delimited JSON-RPC 2.0), which is what the
-Continue VSCode extension launches for a `type: stdio` server. No third-party
-packages are required.
+It speaks MCP over stdio (newline-delimited JSON-RPC 2.0), the transport an
+MCP client launches for a `type: stdio` server. No third-party packages are
+required.
 
 STRICTLY READ-ONLY: every request is an HTTP GET. There is no code path that
 creates, edits, transitions, comments on, or deletes anything in Jira, and
@@ -26,7 +26,7 @@ Tools exposed (read-only / query):
 
 CONFIGURATION
 -------------
-Read from environment variables (the natural fit for Continue's `env:`
+Read from environment variables (the natural fit for an MCP client's `env`
 block); non-secret settings can be overridden by command-line arguments.
 CREDENTIALS ARE ENV-VAR ONLY - there are no --token/--user/--password flags,
 because command-line arguments are visible to other local users in process
@@ -50,18 +50,19 @@ listings:
                     default 0). Comments are separately capped by the
                     MAX_COMMENTS / COMMENT_MAX_CHARS constants below.
 
-CONTINUE config.yaml ENTRY (copy/paste, adjust paths)
------------------------------------------------------
-    mcpServers:
-      - name: jira
-        command: C:\\path\\to\\python.exe
-        args:
-          - C:\\path\\to\\jira.py
-        env:
-          JIRA_BASE_URL: https://jira.internal.example.com
-          JIRA_TOKEN: your-personal-access-token
-          JIRA_PROJECTS: "ABC,DEF"        # optional allowlist
-          PYTHONUTF8: "1"
+INSTALLING INTO CLAUDE CODE
+---------------------------
+This server ships as the "jira" Claude Code plugin (its manifest is
+.claude-plugin/plugin.json next to this file), so the normal install is:
+
+    /plugin marketplace add C:\\path\\to\\mcp-servers
+    /plugin install jira@mcnamee-mcp-servers
+
+Claude Code prompts for the base URL, the optional project allowlist and the
+Python interpreter. JIRA_TOKEN is NOT stored in the plugin - set it as a
+Windows user environment variable before starting Claude Code, and the plugin
+picks it up from there. See README.md next to this file for the full
+settings reference.
 
 VALIDATE BEFORE WIRING IN (run manually on the endpoint)
 --------------------------------------------------------
@@ -107,7 +108,7 @@ failed transfer" rule):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 
 import argparse
 import base64

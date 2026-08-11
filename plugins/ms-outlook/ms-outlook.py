@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ms-outlook.py (v2.0.0)
+ms-outlook.py (v2.0.1)
 ======================
 
 A single-file MCP (Model Context Protocol) server giving an LLM read-only
@@ -11,8 +11,8 @@ Designed for an airgapped Windows endpoint where Outlook is installed, running,
 and logged into an on-premises Exchange profile. This script makes NO network
 calls; all access is local COM to the already-authenticated Outlook process.
 
-Transport: newline-delimited JSON-RPC 2.0 over stdio (standard MCP stdio
-transport, which the VSCode Continue extension speaks).
+Transport: newline-delimited JSON-RPC 2.0 over stdio (the standard MCP stdio
+transport).
 
 DEPENDENCY
 ----------
@@ -104,7 +104,8 @@ just below this docstring. Edit them there; nothing else needs changing.
      (a) SEARCH_ALL_FOLDERS here in the file;
      (b) the --search-folders launch flag (comma-separated names), if given;
      (c) a per-call "folders" argument to outlook_search_recent.
-   Use (b) to configure the default from config.yaml without editing this file.
+   Use (b) to configure the default from the MCP client config without editing
+   this file.
 
 EXTERNAL BLACKLIST FILE (optional)
 ----------------------------------
@@ -120,21 +121,23 @@ list (they never reduce it). Example file contents:
     CABINET
     CABINET-IN-CONFIDENCE
 
-CONTINUE config.yaml ENTRY (copy/paste, adjust paths)
------------------------------------------------------
-    mcpServers:
-      - name: outlook
-        command: python
-        args:
-          - C:\\path\\to\\outlook_mcp.py
-          - --blacklist-file          # optional
-          - C:\\config\\outlook-blacklist.txt
-          - --search-folders          # optional: default folders for outlook_search_recent
-          - "Inbox,Sent Items,Archive"
-          - --kb-dir                  # optional: mirror each read email to Markdown for RAG
-          - C:\\reference-docs\\outlook
-        env:
-          PYTHONUTF8: "1"
+INSTALLING INTO CLAUDE CODE
+---------------------------
+This server ships as the "ms-outlook" Claude Code plugin (its manifest is
+.claude-plugin/plugin.json next to this file), so the normal install is:
+
+    /plugin marketplace add C:\\path\\to\\mcp-servers
+    /plugin install ms-outlook@mcnamee-mcp-servers
+
+Claude Code prompts for the optional knowledge-base folder, search folders and
+blacklist file, plus the Python interpreter (the one with pywin32 installed).
+PYTHONUTF8=1 is set for you by the manifest.
+
+To register the server by hand instead:
+
+    claude mcp add outlook --scope user -e PYTHONUTF8=1 -- C:\\path\\to\\python.exe C:\\path\\to\\ms-outlook.py --search-folders "Inbox,Sent Items,Archive" --kb-dir C:\\reference-docs\\outlook
+
+See README.md next to this file for the full settings reference.
 
 USAGE / TESTING
 ---------------
@@ -142,7 +145,7 @@ USAGE / TESTING
   arguments (optionally --blacklist-file).
 - Connectivity check (run manually on the endpoint before wiring it in):
 
-      python outlook_mcp.py --check
+      python ms-outlook.py --check
 
   Connects to Outlook and prints mailbox diagnostics + blacklist status to
   stderr, then exits.
@@ -151,13 +154,13 @@ IMPORTANT (stdio-on-Windows pitfalls)
 -------------------------------------
 - ALL diagnostic output goes to stderr. Anything on stdout that is not a
   JSON-RPC message corrupts the protocol stream.
-- Set PYTHONUTF8=1 in the launching environment (see config.yaml above) so
-  stdout is UTF-8 and Unicode subjects do not crash on cp1252.
+- Set PYTHONUTF8=1 in the launching environment (the plugin manifest does this
+  for you) so stdout is UTF-8 and Unicode subjects do not crash on cp1252.
 """
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "2.0.0"
+__version__ = "2.0.1"
 
 import os
 import re
