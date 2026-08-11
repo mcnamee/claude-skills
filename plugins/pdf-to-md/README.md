@@ -5,7 +5,7 @@ local knowledge base built from PDF source material.
 
 | | |
 |---|---|
-| **Server** | `pdf-to-md.py` v4.0.1 |
+| **Server** | `pdf-to-md.py` v4.0.2 |
 | **pip install** | `pymupdf pymupdf4llm` |
 | **Platform** | any |
 | **Writes to disk** | yes — the output folder only |
@@ -16,8 +16,8 @@ OCR of scanned PDFs additionally requires **Tesseract installed on the machine**
 ## Install
 
 ```
-/plugin marketplace add C:\path\to\mcp-servers
-/plugin install pdf-to-md@mcnamee-mcp-servers
+/plugin marketplace add C:\path\to\claude-skills
+/plugin install pdf-to-md@mcnamee-claude-skills
 ```
 
 | Prompt | Required | Env var | Purpose |

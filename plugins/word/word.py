@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r"""
-word.py (v4.0.0) - A single-file MCP (Model Context Protocol) stdio server
+word.py (v4.0.1) - A single-file MCP (Model Context Protocol) stdio server
 that gives an AI agent read/search/edit/generate access to Word .docx files.
 
 It follows a simple open -> edit -> save workflow (msword_open ... msword_save),
@@ -144,8 +144,8 @@ WHAT IT CANNOT DO
     This server ships as the "word" Claude Code plugin (its manifest is
     .claude-plugin/plugin.json next to this file), so the normal install is:
 
-        /plugin marketplace add C:\path\to\mcp-servers
-        /plugin install word@mcnamee-mcp-servers
+        /plugin marketplace add C:\path\to\claude-skills
+        /plugin install word@mcnamee-claude-skills
 
     Claude Code then prompts for each setting below and for the Python
     interpreter - use the SAME python.exe you installed the wheels with.
@@ -192,7 +192,7 @@ failed transfer" rule):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "4.0.0"
+__version__ = "4.0.1"
 
 # =============================================================================
 # CONFIGURATION  (all user-editable settings live here, nothing scattered below)

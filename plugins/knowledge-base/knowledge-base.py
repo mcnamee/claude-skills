@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-knowledge-base.py (v2.0.1)
+knowledge-base.py (v2.0.2)
 ==========================
 
 A single-file MCP (Model Context Protocol) server providing true RAG
@@ -160,8 +160,8 @@ INSTALLING INTO CLAUDE CODE
 This server ships as the "knowledge-base" Claude Code plugin (its manifest is
 .claude-plugin/plugin.json next to this file), so the normal install is:
 
-    /plugin marketplace add C:\\path\\to\\mcp-servers
-    /plugin install knowledge-base@mcnamee-mcp-servers
+    /plugin marketplace add C:\\path\\to\\claude-skills
+    /plugin install knowledge-base@mcnamee-claude-skills
 
 Claude Code prompts for the documents folder, the embeddings URL, the model
 name and the Python interpreter. KB_EMBED_API_KEY is NOT stored in the plugin
@@ -214,7 +214,7 @@ NOTES
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "2.0.1"
+__version__ = "2.0.2"
 
 import os
 import re

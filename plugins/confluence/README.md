@@ -5,7 +5,7 @@ Markdown so it feeds a local RAG knowledge base.
 
 | | |
 |---|---|
-| **Server** | `confluence.py` v1.3.1 |
+| **Server** | `confluence.py` v1.3.2 |
 | **pip install** | _none_ — standard library only (HTTP via stdlib `urllib`) |
 | **Platform** | any |
 | **Writes to disk** | only if the knowledge-base folder is set |
@@ -13,8 +13,8 @@ Markdown so it feeds a local RAG knowledge base.
 ## Install
 
 ```
-/plugin marketplace add C:\path\to\mcp-servers
-/plugin install confluence@mcnamee-mcp-servers
+/plugin marketplace add C:\path\to\claude-skills
+/plugin install confluence@mcnamee-claude-skills
 ```
 
 | Prompt | Required | Env var | Purpose |

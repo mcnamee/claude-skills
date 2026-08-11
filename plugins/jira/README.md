@@ -6,7 +6,7 @@ comments on, or deletes anything.
 
 | | |
 |---|---|
-| **Server** | `jira.py` v1.1.1 |
+| **Server** | `jira.py` v1.1.2 |
 | **pip install** | _none_ — standard library only (HTTP via stdlib `urllib`) |
 | **Platform** | any |
 | **Writes to disk** | no |
@@ -17,8 +17,8 @@ comments on, or deletes anything.
 ## Install
 
 ```
-/plugin marketplace add C:\path\to\mcp-servers
-/plugin install jira@mcnamee-mcp-servers
+/plugin marketplace add C:\path\to\claude-skills
+/plugin install jira@mcnamee-claude-skills
 ```
 
 | Prompt | Required | Env var | Purpose |

@@ -1,12 +1,12 @@
 {
   "name": "excel",
   "displayName": "Excel (.xlsx)",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Read and analyse Excel workbooks. Read-only; parses .xlsx directly so Excel is not required.",
   "author": {
     "name": "mcnamee"
   },
-  "repository": "https://github.com/mcnamee/mcp-servers",
+  "repository": "https://github.com/mcnamee/claude-skills",
   "license": "MIT",
   "keywords": [
     "excel",

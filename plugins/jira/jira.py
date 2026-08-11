@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-jira.py (v1.1.1) - A single-file, READ-ONLY MCP (Model Context Protocol)
+jira.py (v1.1.2) - A single-file, READ-ONLY MCP (Model Context Protocol)
 server for querying Jira Data Center (v2 REST API) using only the Python 3
 standard library.
 
@@ -55,8 +55,8 @@ INSTALLING INTO CLAUDE CODE
 This server ships as the "jira" Claude Code plugin (its manifest is
 .claude-plugin/plugin.json next to this file), so the normal install is:
 
-    /plugin marketplace add C:\\path\\to\\mcp-servers
-    /plugin install jira@mcnamee-mcp-servers
+    /plugin marketplace add C:\\path\\to\\claude-skills
+    /plugin install jira@mcnamee-claude-skills
 
 Claude Code prompts for the base URL, the optional project allowlist and the
 Python interpreter. JIRA_TOKEN is NOT stored in the plugin - set it as a
@@ -108,7 +108,7 @@ failed transfer" rule):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "1.1.1"
+__version__ = "1.1.2"
 
 import argparse
 import base64

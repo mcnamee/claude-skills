@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-outlook.py (v3.0.0)
+outlook.py (v3.0.1)
 ======================
 
 A single-file MCP (Model Context Protocol) server giving an LLM read-only
@@ -126,8 +126,8 @@ INSTALLING INTO CLAUDE CODE
 This server ships as the "outlook" Claude Code plugin (its manifest is
 .claude-plugin/plugin.json next to this file), so the normal install is:
 
-    /plugin marketplace add C:\\path\\to\\mcp-servers
-    /plugin install outlook@mcnamee-mcp-servers
+    /plugin marketplace add C:\\path\\to\\claude-skills
+    /plugin install outlook@mcnamee-claude-skills
 
 Claude Code prompts for the optional knowledge-base folder, search folders and
 blacklist file, plus the Python interpreter (the one with pywin32 installed).
@@ -160,7 +160,7 @@ IMPORTANT (stdio-on-Windows pitfalls)
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "3.0.0"
+__version__ = "3.0.1"
 
 import os
 import re

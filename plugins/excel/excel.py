@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r"""
-excel.py (v3.0.0) -- Read-only Excel (.xlsx) MCP server.
+excel.py (v3.0.1) -- Read-only Excel (.xlsx) MCP server.
 
 PURPOSE
     A single-file, standard-library-only MCP (Model Context Protocol) stdio
@@ -83,8 +83,8 @@ INSTALLING INTO CLAUDE CODE
     This server ships as the "excel" Claude Code plugin (its manifest is
     .claude-plugin/plugin.json next to this file), so the normal install is:
 
-      /plugin marketplace add C:\path\to\mcp-servers
-      /plugin install excel@mcnamee-mcp-servers
+      /plugin marketplace add C:\path\to\claude-skills
+      /plugin install excel@mcnamee-claude-skills
 
     Claude Code then prompts for the workbook folder and the Python
     interpreter - use the SAME interpreter you tested with above. PYTHONUTF8=1
@@ -104,7 +104,7 @@ PROTOCOL NOTE
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "3.0.0"
+__version__ = "3.0.1"
 
 import sys
 import os

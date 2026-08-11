@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 r"""
-pdf-to-md.py (v4.0.1) - Self-contained MCP (Model Context Protocol) stdio
+pdf-to-md.py (v4.0.2) - Self-contained MCP (Model Context Protocol) stdio
 server that converts PDFs in a folder to Markdown, including tables (both
 bordered and borderless).
 
@@ -41,8 +41,8 @@ Notes:
 This server ships as the "pdf-to-md" Claude Code plugin (its manifest is
 .claude-plugin/plugin.json next to this file), so the normal install is:
 
-    /plugin marketplace add C:\path\to\mcp-servers
-    /plugin install pdf-to-md@mcnamee-mcp-servers
+    /plugin marketplace add C:\path\to\claude-skills
+    /plugin install pdf-to-md@mcnamee-claude-skills
 
 Claude Code then prompts for the PDF folder, the output folder and the Python
 interpreter. PYTHONUTF8=1 (which prevents stdout encoding crashes on Windows)
@@ -120,7 +120,7 @@ A quick Python conversion check (no MCP) can be done with:
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "4.0.1"
+__version__ = "4.0.2"
 
 import argparse
 import contextlib

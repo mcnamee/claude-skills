@@ -5,7 +5,7 @@ native Word styles, and filling out templates.
 
 | | |
 |---|---|
-| **Server** | `word.py` v4.0.0 |
+| **Server** | `word.py` v4.0.1 |
 | **pip install** | `python-docx` (pulls in `lxml` and `typing_extensions`) |
 | **Platform** | any (Word itself is not required) |
 | **Writes to disk** | yes — the only write-capable server in the suite |
@@ -13,8 +13,8 @@ native Word styles, and filling out templates.
 ## Install
 
 ```
-/plugin marketplace add C:\path\to\mcp-servers
-/plugin install word@mcnamee-mcp-servers
+/plugin marketplace add C:\path\to\claude-skills
+/plugin install word@mcnamee-claude-skills
 ```
 
 Claude Code prompts for the settings below; the `/word:word` skill is
