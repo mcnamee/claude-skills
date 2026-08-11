@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-knowledge-base.py (v2.0.0)
+knowledge-base.py (v2.0.1)
 ==========================
 
 A single-file MCP (Model Context Protocol) server providing true RAG
@@ -22,7 +22,7 @@ documents, with real vector retrieval:
                 either way.
 
 Transport: newline-delimited JSON-RPC 2.0 over stdio (the standard MCP stdio
-transport, and what the VSCode Continue extension speaks).
+transport).
 
 DEPENDENCY
 ----------
@@ -155,22 +155,20 @@ Endpoint formats ("where you have unknowns"):
   Generation POSTs OpenAI chat-completions JSON and falls back to Ollama
   /api/chat ("message"."content") and /api/generate ("response") shapes.
 
-In Continue's config.yaml:
+INSTALLING INTO CLAUDE CODE
+---------------------------
+This server ships as the "knowledge-base" Claude Code plugin (its manifest is
+.claude-plugin/plugin.json next to this file), so the normal install is:
 
-    mcpServers:
-      - name: kb-rag
-        command: C:\\path\\to\\python.exe
-        args:
-          - C:\\path\\to\\knowledge-base.py
-          - --docs-dir
-          - C:\\Users\\me\\knowledge-base
-          - --embed-url
-          - https://ai-gateway.internal.example.com/v1/embeddings
-          - --embed-model
-          - text-embedding-3-small
-        env:
-          KB_EMBED_API_KEY: your-api-key
-          PYTHONUTF8: "1"
+    /plugin marketplace add C:\\path\\to\\mcp-servers
+    /plugin install knowledge-base@mcnamee-mcp-servers
+
+Claude Code prompts for the documents folder, the embeddings URL, the model
+name and the Python interpreter. KB_EMBED_API_KEY is NOT stored in the plugin
+- set it as a Windows user environment variable before starting Claude Code,
+and the plugin picks it up from there. Every other setting below is available
+as its KB_* environment variable. See README.md next to this file for the full
+settings reference.
 
 FIRST RUN / TESTING (do this before wiring into the MCP client)
 ---------------------------------------------------------------
@@ -216,7 +214,7 @@ NOTES
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "2.0.0"
+__version__ = "2.0.1"
 
 import os
 import re

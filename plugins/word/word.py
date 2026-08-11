@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r"""
-ms-word.py (v3.0.0) - A single-file MCP (Model Context Protocol) stdio server
+word.py (v4.0.0) - A single-file MCP (Model Context Protocol) stdio server
 that gives an AI agent read/search/edit/generate access to Word .docx files.
 
 It follows a simple open -> edit -> save workflow (msword_open ... msword_save),
@@ -114,8 +114,8 @@ WHAT IT CANNOT DO
          Python version if you can:
              python -m pip download python-docx -d .\wheels
       2. Transfer the .\wheels folder to the airgapped endpoint.
-      3. Install with the SAME interpreter Continue will launch (use -m pip so
-         the interpreter and pip cannot drift apart):
+      3. Install with the SAME interpreter the MCP client will launch (use -m
+         pip so the interpreter and pip cannot drift apart):
              "C:\path\to\python.exe" -m pip install --no-index ^
                  --find-links .\wheels python-docx
       4. Confirm the interpreter can see it:
@@ -132,50 +132,42 @@ WHAT IT CANNOT DO
     Run the built-in self-test. It creates a temp .docx, opens/edits/saves/
     reopens it, and prints PASS/FAIL. No arguments, no network, no side files
     left behind:
-        "C:\path\to\python.exe" ms-word.py --check
+        "C:\path\to\python.exe" word.py --check
 
     Expected tail of output on success:
         [check] round-trip: PASS
         [check] ALL CHECKS PASSED
 
 =============================================================================
- WIRE INTO CONTINUE  (config.yaml)
+ INSTALLING INTO CLAUDE CODE
 =============================================================================
-    Add under mcpServers. Use the SAME python.exe you installed the wheels
-    with, and set PYTHONUTF8 so Windows cp1252 cannot corrupt the stdio JSON
-    stream. After editing config.yaml, run "Developer: Reload Window" rather
-    than toggling the server (avoids the "already connected to transport" bug).
+    This server ships as the "word" Claude Code plugin (its manifest is
+    .claude-plugin/plugin.json next to this file), so the normal install is:
 
-        mcpServers:
-          - name: msword-py
-            command: C:\path\to\python.exe
-            args:
-              - C:\path\to\ms-word.py
-              - --author
-              - Matt
-              - --docs-dir
-              - C:\Users\me\Documents\ai_docs
-              - --output-dir
-              - C:\Users\me\Documents\ai_generated
-              - --kb-dir
-              - C:\Users\me\Documents\rag_kb
-            env:
-              PYTHONUTF8: "1"
+        /plugin marketplace add C:\path\to\mcp-servers
+        /plugin install word@mcnamee-mcp-servers
 
-    The --author value is stamped on every tracked change. Omit the two --author
-    lines to fall back to the TRACKED_CHANGE_AUTHOR config constant below.
-    The --docs-dir folder is REQUIRED (here, via MSWORD_DOCS_DIR, or
-    via the DOCS_DIR constant): all open/save paths must be inside it and
-    the server refuses to start without one.
+    Claude Code then prompts for each setting below and for the Python
+    interpreter - use the SAME python.exe you installed the wheels with.
+    PYTHONUTF8=1 (so Windows cp1252 cannot corrupt the stdio JSON stream) is
+    set for you by the manifest.
+
+    To register the server by hand instead:
+
+        claude mcp add word --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\word.py --author Matt --docs-dir C:\Users\me\Documents\ai_docs --output-dir C:\Users\me\Documents\ai_generated --kb-dir C:\Users\me\Documents\rag_kb
+
+    The --author value (MSWORD_AUTHOR) is stamped on every tracked change;
+    omit it to fall back to the TRACKED_CHANGE_AUTHOR config constant below.
+    The --docs-dir folder is REQUIRED (via the flag, MSWORD_DOCS_DIR, or the
+    DOCS_DIR constant): all open/save paths must be inside it and the server
+    refuses to start without one.
     The --output-dir folder (optional; MSWORD_OUTPUT_DIR or the OUTPUT_DIR
     constant) is where msword_create writes NEW documents; it is kept SEPARATE
     from the knowledge-base folder and defaults to the document root if unset.
     The --kb-dir folder (optional; MSWORD_KB_DIR or the KB_DIR constant) turns
     on Markdown mirroring for a local RAG knowledge base; omit it to disable.
 
-    (If your Continue build uses the older command/args-in-one style, match
-    whatever your existing working Python MCP servers use - the launch shape
-    is identical to them.)
+    See README.md next to this file for the full settings reference.
 
 =============================================================================
  PROTOCOL / TRANSPORT NOTES
@@ -200,12 +192,12 @@ failed transfer" rule):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "3.0.0"
+__version__ = "4.0.0"
 
 # =============================================================================
 # CONFIGURATION  (all user-editable settings live here, nothing scattered below)
 # =============================================================================
-SERVER_NAME = "msword-py"          # advertised to the MCP client
+SERVER_NAME = "word"               # advertised to the MCP client
 SERVER_VERSION = __version__
 PROTOCOL_VERSION_FALLBACK = "2024-11-05"  # used if the client sends none
 
@@ -261,9 +253,10 @@ FUZZY_MIN_RATIO = 0.40
 FUZZY_AMBIGUITY_DELTA = 0.05
 
 # Default author name stamped on tracked changes (w:author). Override per
-# launch with:  --author "Matt"  in Continue's args: block. The date on each
-# change is always the current date, computed at edit time.
-TRACKED_CHANGE_AUTHOR = "AI Assistant (Continue)"
+# launch with --author "Matt" (or MSWORD_AUTHOR / the plugin's "Tracked-change
+# author" prompt). The date on each change is always the current date,
+# computed at edit time.
+TRACKED_CHANGE_AUTHOR = "AI Assistant"
 
 # When a tracked edit deletes text that is itself a PENDING INSERTION BY THE
 # SAME AUTHOR, withdraw that insertion outright (Word's behaviour when you
@@ -286,7 +279,7 @@ import traceback
 import datetime
 
 # --- Make stdio UTF-8 regardless of the Windows console codepage. -----------
-# Belt-and-braces alongside PYTHONUTF8=1 in the Continue env: block.
+# Belt-and-braces alongside PYTHONUTF8=1 in the MCP client's env block.
 for _stream in ("stdin", "stdout", "stderr"):
     try:
         getattr(sys, _stream).reconfigure(encoding="utf-8")
@@ -4505,7 +4498,7 @@ def run_check():
 
 def main():
     parser = argparse.ArgumentParser(
-        description="MS Word (.docx) python-docx MCP stdio server. "
+        description="Word (.docx) python-docx MCP stdio server. "
                     "With no arguments it runs as an MCP server on stdin/stdout."
     )
     parser.add_argument(

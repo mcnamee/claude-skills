@@ -1,14 +1,14 @@
 ---
-name: ms-outlook
+name: outlook
 description: Read Outlook mail and calendar via the outlook MCP server (read-only COM automation, Windows). Use when the user asks about their emails, wants mail searched or summarised, asks what's on their calendar, or wants emails saved into the knowledge base.
 ---
 
 # Outlook (via the `outlook` MCP server)
 
-Requires the `ms-outlook.py` MCP server (read-only; Windows + classic
+Requires the `outlook.py` MCP server (read-only; Windows + classic
 Outlook running and logged in). If its tools are not available, tell the
 user to wire it in first (see the repo README) and to verify with
-`python ms-outlook.py --check`.
+`python outlook.py --check`.
 
 ## Tools
 

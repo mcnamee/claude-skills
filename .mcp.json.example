@@ -12,17 +12,17 @@
     "  - Secrets go in 'env', never in 'args': command lines are visible to",
     "    other local users in process listings.",
     "  - Run each server's --check before wiring it in, e.g.",
-    "      \"C:\\path\\to\\python.exe\" C:\\path\\to\\ms-word.py --check",
+    "      \"C:\\path\\to\\python.exe\" C:\\path\\to\\mcp-servers\\plugins\\word\\word.py --check",
     "",
-    "For user-scope install instead (available in every folder), see the",
-    "'claude mcp add --scope user' commands in the README.",
+    "The recommended install is the Claude Code plugin route instead - see the",
+    "root README.md. This file is the manual, project-scoped alternative.",
     "This _comment key is ignored by Claude Code."
   ],
   "mcpServers": {
-    "msword-py": {
+    "word": {
       "command": "C:\\path\\to\\python.exe",
       "args": [
-        "C:\\path\\to\\ms-word.py",
+        "C:\\path\\to\\mcp-servers\\plugins\\word\\word.py",
         "--author", "Matt",
         "--docs-dir", "C:\\Users\\me\\Documents\\ai_docs",
         "--output-dir", "C:\\Users\\me\\Documents\\ai_generated",
@@ -33,7 +33,7 @@
     "excel": {
       "command": "C:\\path\\to\\python.exe",
       "args": [
-        "C:\\path\\to\\ms-excel.py",
+        "C:\\path\\to\\mcp-servers\\plugins\\excel\\excel.py",
         "--docs-dir", "C:\\path\\to\\your\\workbooks"
       ],
       "env": { "PYTHONUTF8": "1" }
@@ -41,7 +41,7 @@
     "outlook": {
       "command": "C:\\path\\to\\python.exe",
       "args": [
-        "C:\\path\\to\\ms-outlook.py",
+        "C:\\path\\to\\mcp-servers\\plugins\\outlook\\outlook.py",
         "--search-folders", "Inbox,Sent Items,Archive",
         "--kb-dir", "C:\\reference-docs\\outlook"
       ],
@@ -50,7 +50,7 @@
     "confluence": {
       "command": "C:\\path\\to\\python.exe",
       "args": [
-        "C:\\path\\to\\confluence.py",
+        "C:\\path\\to\\mcp-servers\\plugins\\confluence\\confluence.py",
         "--max-body", "20000",
         "--kb-dir", "C:\\reference-docs\\confluence"
       ],
@@ -62,7 +62,7 @@
     },
     "jira": {
       "command": "C:\\path\\to\\python.exe",
-      "args": ["C:\\path\\to\\jira.py"],
+      "args": ["C:\\path\\to\\mcp-servers\\plugins\\jira\\jira.py"],
       "env": {
         "JIRA_BASE_URL": "https://jira.internal.example.com",
         "JIRA_TOKEN": "your-personal-access-token",
@@ -73,7 +73,7 @@
     "knowledge-base": {
       "command": "C:\\path\\to\\python.exe",
       "args": [
-        "C:\\path\\to\\knowledge-base.py",
+        "C:\\path\\to\\mcp-servers\\plugins\\knowledge-base\\knowledge-base.py",
         "--docs-dir", "C:\\Users\\me\\knowledge-base",
         "--embed-url", "https://ai-gateway.internal.example.com/v1/embeddings",
         "--embed-model", "text-embedding-3-small"
@@ -86,7 +86,7 @@
     "pdf2md": {
       "command": "C:\\path\\to\\python.exe",
       "args": [
-        "C:\\path\\to\\pdf-to-md.py",
+        "C:\\path\\to\\mcp-servers\\plugins\\pdf-to-md\\pdf-to-md.py",
         "--docs-dir", "C:\\reference-docs\\pdfs",
         "--output-dir", "C:\\reference-docs\\markdown"
       ],

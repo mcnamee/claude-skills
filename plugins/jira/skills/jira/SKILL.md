@@ -30,7 +30,7 @@ REST API). If its tools are not available, tell the user to wire it in first
 4. Deep-dive on one ticket → `jira_get_issue` (add the changelog only when
    the user asks who changed what).
 5. Reports: combine `jira_my_issues`/`jira_search_jql` results, then (if the
-   ms-word server is available) draft the report as a .docx with tracked
+   word server is available) draft the report as a .docx with tracked
    changes.
 
 ## Notes

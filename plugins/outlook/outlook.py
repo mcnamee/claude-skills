@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ms-outlook.py (v2.0.0)
+outlook.py (v3.0.0)
 ======================
 
 A single-file MCP (Model Context Protocol) server giving an LLM read-only
@@ -11,8 +11,8 @@ Designed for an airgapped Windows endpoint where Outlook is installed, running,
 and logged into an on-premises Exchange profile. This script makes NO network
 calls; all access is local COM to the already-authenticated Outlook process.
 
-Transport: newline-delimited JSON-RPC 2.0 over stdio (standard MCP stdio
-transport, which the VSCode Continue extension speaks).
+Transport: newline-delimited JSON-RPC 2.0 over stdio (the standard MCP stdio
+transport).
 
 DEPENDENCY
 ----------
@@ -44,7 +44,7 @@ OPTIONAL: Markdown export for a RAG knowledge base
 --------------------------------------------------
 Set --kb-dir (or OUTLOOK_KB_DIR, or the KB_DIR config constant) to a folder and
 every email read with outlook_get_email is ALSO written out as a Markdown file
-there, the same way confluence.py mirrors pages and ms-word.py mirrors
+there, the same way confluence.py mirrors pages and word.py mirrors
 documents, so the content can feed a local RAG index (e.g. alongside
 knowledge-base.py). Files are named 'Email - <date> - <subject> (<id>).md' and
 overwritten on re-read of the same message. Blocked (blacklisted) messages are
@@ -104,7 +104,8 @@ just below this docstring. Edit them there; nothing else needs changing.
      (a) SEARCH_ALL_FOLDERS here in the file;
      (b) the --search-folders launch flag (comma-separated names), if given;
      (c) a per-call "folders" argument to outlook_search_recent.
-   Use (b) to configure the default from config.yaml without editing this file.
+   Use (b) to configure the default from the MCP client config without editing
+   this file.
 
 EXTERNAL BLACKLIST FILE (optional)
 ----------------------------------
@@ -120,21 +121,23 @@ list (they never reduce it). Example file contents:
     CABINET
     CABINET-IN-CONFIDENCE
 
-CONTINUE config.yaml ENTRY (copy/paste, adjust paths)
------------------------------------------------------
-    mcpServers:
-      - name: outlook
-        command: python
-        args:
-          - C:\\path\\to\\outlook_mcp.py
-          - --blacklist-file          # optional
-          - C:\\config\\outlook-blacklist.txt
-          - --search-folders          # optional: default folders for outlook_search_recent
-          - "Inbox,Sent Items,Archive"
-          - --kb-dir                  # optional: mirror each read email to Markdown for RAG
-          - C:\\reference-docs\\outlook
-        env:
-          PYTHONUTF8: "1"
+INSTALLING INTO CLAUDE CODE
+---------------------------
+This server ships as the "outlook" Claude Code plugin (its manifest is
+.claude-plugin/plugin.json next to this file), so the normal install is:
+
+    /plugin marketplace add C:\\path\\to\\mcp-servers
+    /plugin install outlook@mcnamee-mcp-servers
+
+Claude Code prompts for the optional knowledge-base folder, search folders and
+blacklist file, plus the Python interpreter (the one with pywin32 installed).
+PYTHONUTF8=1 is set for you by the manifest.
+
+To register the server by hand instead:
+
+    claude mcp add outlook --scope user -e PYTHONUTF8=1 -- C:\\path\\to\\python.exe C:\\path\\to\\outlook.py --search-folders "Inbox,Sent Items,Archive" --kb-dir C:\\reference-docs\\outlook
+
+See README.md next to this file for the full settings reference.
 
 USAGE / TESTING
 ---------------
@@ -142,7 +145,7 @@ USAGE / TESTING
   arguments (optionally --blacklist-file).
 - Connectivity check (run manually on the endpoint before wiring it in):
 
-      python outlook_mcp.py --check
+      python outlook.py --check
 
   Connects to Outlook and prints mailbox diagnostics + blacklist status to
   stderr, then exits.
@@ -151,13 +154,13 @@ IMPORTANT (stdio-on-Windows pitfalls)
 -------------------------------------
 - ALL diagnostic output goes to stderr. Anything on stdout that is not a
   JSON-RPC message corrupts the protocol stream.
-- Set PYTHONUTF8=1 in the launching environment (see config.yaml above) so
-  stdout is UTF-8 and Unicode subjects do not crash on cp1252.
+- Set PYTHONUTF8=1 in the launching environment (the plugin manifest does this
+  for you) so stdout is UTF-8 and Unicode subjects do not crash on cp1252.
 """
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "2.0.0"
+__version__ = "3.0.0"
 
 import os
 import re
@@ -205,7 +208,7 @@ SEARCH_ALL_FOLDERS = ["Inbox", "Sent Items", "Archive"]
 # --- 5. KB_DIR  (optional Markdown export for a local RAG knowledge base).
 #        If set, EVERY email read with outlook_get_email is ALSO written out as
 #        a Markdown file into this folder, the same way confluence.py mirrors
-#        pages and ms-word.py mirrors documents, so the content can feed a local
+#        pages and word.py mirrors documents, so the content can feed a local
 #        RAG index (e.g. alongside knowledge-base.py). Files are named
 #        'Email - <date> - <subject> (<id>).md' and overwritten on re-read of
 #        the same message. Blocked (blacklisted) messages are NEVER written -
@@ -706,7 +709,7 @@ def tool_search_emails(args):
 
 
 # ---------------------------------------------------------------------------
-# Markdown export for the RAG knowledge base (mirrors confluence.py / ms-word.py)
+# Markdown export for the RAG knowledge base (mirrors confluence.py / word.py)
 # ---------------------------------------------------------------------------
 
 def safe_filename(name, max_len=120):
@@ -1630,7 +1633,7 @@ def main():
         default=os.environ.get("OUTLOOK_KB_DIR"),
         help="If set, every email read with outlook_get_email is ALSO saved as a "
              "Markdown file into this folder for a local RAG knowledge base (like "
-             "confluence.py / ms-word.py). Files are named "
+             "confluence.py / word.py). Files are named "
              "'Email - <date> - <subject> (<id>).md' and overwritten on re-read. "
              "Blocked (blacklisted) messages are never written. Falls back to the "
              "OUTLOOK_KB_DIR environment variable, then the KB_DIR config constant.",

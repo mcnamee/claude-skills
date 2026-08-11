@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 r"""
-pdf-to-md.py (v4.0.0) - Self-contained MCP (Model Context Protocol) stdio
-server for Continue / Cline that converts PDFs in a folder to Markdown,
-including tables (both bordered and borderless).
+pdf-to-md.py (v4.0.1) - Self-contained MCP (Model Context Protocol) stdio
+server that converts PDFs in a folder to Markdown, including tables (both
+bordered and borderless).
 
 =============================================================================
  DEPENDENCIES
@@ -19,14 +19,14 @@ If your network's pip proxy needs to be named explicitly:
 Notes:
   * pymupdf4llm depends on pymupdf (PyMuPDF), so installing it usually pulls
     pymupdf in automatically; both are listed for clarity.
-  * INTERPRETER MATCH (common gotcha): install into the SAME Python that
-    Continue launches this server with. If you install with one "pip" but
-    Continue runs a different Python, the server reports the package as
+  * INTERPRETER MATCH (common gotcha): install into the SAME Python that the
+    MCP client launches this server with. If you install with one "pip" but
+    the client runs a different Python, the server reports the package as
     missing even though "pip show pymupdf4llm" lists it. The reliable way is
     to use ONE explicit interpreter for both steps:
         "C:\path\to\python.exe" -m pip install pymupdf pymupdf4llm
-    and set that same full path as "command" in the config below (instead of
-    a bare "python"). Verify with:
+    and give that same full path as the interpreter in the config below
+    (instead of a bare "python"). Verify with:
         "C:\path\to\python.exe" -c "import pymupdf4llm, fitz; print(pymupdf4llm.__file__)"
     On startup this server logs its own interpreter path (sys.executable) to
     stderr - compare it against where the packages are installed.
@@ -36,32 +36,31 @@ Notes:
     no text and are reported as a per-file failure.
 
 =============================================================================
- CONTINUE CONFIGURATION  (paste into the "mcpServers" block of config.yaml /
- config.json, adjusting the paths)
+ INSTALLING INTO CLAUDE CODE
 =============================================================================
-    "pdf2md": {
-      "command": "python",
-      "args": [
-        "C:\\path\\to\\pdf-to-md.py",
-        "--docs-dir",  "C:\\Reference\\PDFs",
-        "--output-dir", "C:\\Reference\\Markdown"
-      ],
-      "env": { "PYTHONUTF8": "1" }
-    }
+This server ships as the "pdf-to-md" Claude Code plugin (its manifest is
+.claude-plugin/plugin.json next to this file), so the normal install is:
 
-  * Backslashes in JSON paths must be doubled (or use forward slashes).
-  * Prefer the FULL path to a specific python.exe for "command" (e.g.
-    "C:\\Python311\\python.exe") rather than a bare "python", so Continue
-    launches the exact interpreter that has pymupdf4llm installed.
-  * Add  "--recursive"  to the args list to also process sub-folders
-    (the sub-folder structure is mirrored under the output folder).
-  * PYTHONUTF8=1 in the env block prevents stdout encoding crashes on Windows.
-  * MCP tools are only exposed to the model in Continue's AGENT mode.
-  * After editing the config, run  "Developer: Reload Window"  (a full reload,
-    not the MCP toggle) to avoid the "already connected to transport" bug.
+    /plugin marketplace add C:\path\to\mcp-servers
+    /plugin install pdf-to-md@mcnamee-mcp-servers
+
+Claude Code then prompts for the PDF folder, the output folder and the Python
+interpreter. PYTHONUTF8=1 (which prevents stdout encoding crashes on Windows)
+is set for you by the manifest.
+
+To register the server by hand instead:
+
+    claude mcp add pdf2md --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\pdf-to-md.py --docs-dir C:\Reference\PDFs --output-dir C:\Reference\Markdown
+
+  * Give the FULL path to a specific python.exe (e.g. C:\Python311\python.exe)
+    rather than a bare "python", so the exact interpreter that has pymupdf4llm
+    installed is the one launched.
+  * Add  --recursive  (or set PDF2MD_RECURSIVE=1) to also process sub-folders;
+    the sub-folder structure is mirrored under the output folder.
+  * See README.md next to this file for the full settings reference.
 
 =============================================================================
- MANUAL TESTING (PowerShell, on the target box, outside Continue)
+ MANUAL TESTING (PowerShell, on the target box, outside the MCP client)
 =============================================================================
 Feed newline-delimited JSON-RPC on stdin. Use a here-string (NOT an inline
 echo with nested JSON, which silently drops the "arguments" object):
@@ -121,7 +120,7 @@ A quick Python conversion check (no MCP) can be done with:
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "4.0.0"
+__version__ = "4.0.1"
 
 import argparse
 import contextlib
@@ -156,7 +155,7 @@ def _suppress_fd_stdout():
 # Import the heavy libraries with stdout suppressed (banner safety). Each is
 # imported separately so the error names the EXACT module that is missing -
 # the usual cause is an interpreter mismatch (the package was pip-installed
-# into a different Python than the one Continue launches this server with).
+# into a different Python than the one the MCP client launches this server with).
 fitz = None
 pymupdf4llm = None
 IMPORT_ERROR = None
@@ -314,7 +313,7 @@ def convert_one(pdf_path):
             "Conversion library unavailable: {}\nInterpreter running this server: {}\n"
             "(If pip says the package is installed but you see this, the package "
             "is in a different Python than the one above - install into that "
-            "interpreter, or point Continue's 'command' at the interpreter that "
+            "interpreter, or point the MCP client at the interpreter that "
             "has it.)".format(IMPORT_ERROR, sys.executable),
         )
     try:
@@ -747,7 +746,7 @@ def main(argv=None):
         log("WARNING: {}".format(IMPORT_ERROR))
         log("WARNING: the package is missing from the interpreter above. "
             "Install it into THIS interpreter (\"{}\" -m pip install pymupdf pymupdf4llm) "
-            "or set Continue's 'command' to the interpreter that has it.".format(sys.executable))
+            "or point the MCP client at the interpreter that has it.".format(sys.executable))
 
     for line in sys.stdin:
         line = line.strip()
