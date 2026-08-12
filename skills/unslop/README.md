@@ -43,14 +43,44 @@ Four tiers, applied with decreasing confidence:
    *"In conclusion,"*, and closing paragraphs that only restate the piece.
 2. **Swap for the plain word** — *delve into* → *look at*, *leverage* → *use*,
    *robust* → *reliable*, *myriad* → *many*, *a testament to* → *shows*.
-3. **Restructure** — the stock sentence shapes: *"It's not just X — it's Y"*,
-   participial tails (*", ensuring reliability"*), rhetorical fragments
-   (*"The result? Faster builds."*), empty triads, *"Here's the thing:"*,
-   stacked hedges, and both-sides non-endings.
-4. **Signals, not targets** — em dashes, bullet lists, bold, emoji, and
-   *"However"/"Moreover"*. These are ordinary writing as often as they are
-   slop, so it only acts when they are clearly mechanical, and varies rather
-   than purges.
+3. **Restructure** — the stock shapes: the label-colon list (below),
+   *"It's not just X — it's Y"*, participial tails (*", ensuring
+   reliability"*), rhetorical fragments (*"The result? Faster builds."*),
+   empty triads, *"Here's the thing:"*, stacked hedges, and both-sides
+   non-endings.
+4. **Signals, not targets** — em dashes, bullet lists, bold, raw `<strong>`
+   tags, emoji, and *"However"/"Moreover"*. These are ordinary writing as
+   often as they are slop, so it only acts when they are clearly mechanical,
+   and varies rather than purges.
+
+### The label-colon list
+
+The most recognisable of the structural tells, and the one that survives
+longest in business writing:
+
+```
+The key benefits include:
+- **Better alignment:** Your staff will thrive.
+- **Cross organisational synergy:** Making use of each other's strengths.
+- **De-duplication of effort:** Ensuring best athlete approach.
+```
+
+A stem that praises instead of introducing, labels coined so that there is
+something to bold, fragments for bodies, and three of them. The skill's test
+is to cover the label and see what is lost: if it is a term you would scan or
+search for — a parameter, an option, a product, a date, a step — the list is
+doing real work and is left alone. If it only nominalises the sentence beside
+it, the label goes and the claim stays:
+
+```
+- Staff will thrive
+- Teams make use of each other's strengths
+- Effort is not duplicated
+```
+
+The claims come out as vague as they went in. Stripping the packaging is the
+edit; sharpening the content is not, and the skill will not invent a specific
+to fill a label's place.
 
 ## What it will not do
 

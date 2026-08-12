@@ -196,7 +196,7 @@ plugin. Install one by copying its folder:
 
 | Skill | Invoke | What it does |
 |---|---|---|
-| [**unslop**](skills/unslop) | `/unslop` | Strips AI-slop markers from writing — padding, tell-tale vocabulary, stock LLM sentence shapes — leaving meaning and voice intact |
+| [**unslop**](skills/unslop) | `/unslop` | Strips AI-slop markers from writing — padding, tell-tale vocabulary, stock LLM sentence and list shapes — leaving meaning and voice intact |
 
 ```powershell
 $dest = "$env:USERPROFILE\.claude\skills"

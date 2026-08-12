@@ -1,6 +1,6 @@
 ---
 name: unslop
-description: Strip AI-slop markers from a piece of writing — padding phrases, tell-tale vocabulary, and the stock LLM sentence shapes — without changing the meaning or the author's voice. Use ONLY when explicitly asked to de-slop, unslop, "make this sound less like AI", or clean up AI-sounding text. Do not apply it unasked to your own drafts or to text the user merely shared.
+description: Strip AI-slop markers from a piece of writing — padding phrases, tell-tale vocabulary, and the stock LLM sentence and list shapes — without changing the meaning or the author's voice. Use ONLY when explicitly asked to de-slop, unslop, "make this sound less like AI", or clean up AI-sounding text. Do not apply it unasked to your own drafts or to text the user merely shared.
 ---
 
 # unslop
@@ -50,6 +50,7 @@ Padding that carries no information. Cut the phrase, keep the sentence.
 | "As an AI language model…", "I don't have personal opinions, but…" | |
 | "At the end of the day", "When all is said and done", "Needless to say" | |
 | "In conclusion," / "In summary," | Cut the label; cut the whole paragraph if it only restates what came before and adds nothing |
+| "The key benefits include:", "Here are the key takeaways:", "This offers several advantages:" | List stems that announce a list instead of saying anything — see Tier 3, *the label-colon list* |
 
 A closing paragraph that recaps the piece with no new information is itself
 slop. Delete it — unless it lands a conclusion the body did not state.
@@ -85,10 +86,54 @@ Two cautions. **Terms of art are not slop:** "robust" in statistics,
 actual harnesses. And **do not swap a word the author uses consistently** —
 that is voice.
 
-## 5. Tier 3 — restructure the sentence
+## 5. Tier 3 — restructure the sentence or the list
 
-The stock LLM sentence shapes. These are the strongest tells, and the ones
-worth the most care, because fixing them means rewriting a clause.
+The stock LLM shapes. These are the strongest tells, and the ones worth the
+most care, because fixing them means rewriting a clause.
+
+**The label-colon list.** A stem that announces a list, then bullets of the
+shape `**Abstract Noun Phrase:** fragment` — or
+`<strong>Abstract Noun Phrase:</strong> fragment`, the same pattern in HTML
+clothing:
+
+```
+The key benefits include:
+- **Better alignment:** Your staff will thrive.
+- **Cross organisational synergy:** Making use of each other's strengths.
+- **De-duplication of effort:** Ensuring best athlete approach.
+```
+
+Three markers stacked: a stem that praises rather than introduces, labels
+coined so that there is something to bold, and bodies that are fragments
+instead of sentences. Usually exactly three bullets.
+
+*The test — cover the label and see what is lost.* If it is a term the reader
+would scan or search for — a parameter, an option, a product, a person, a
+date, a numbered step — it is load-bearing and the list is fine. If it is a
+nominalisation of the sentence sitting next to it ("Better alignment:" in
+front of "Your staff will thrive"), it carries nothing, and the colon is
+standing in for a sentence the author never wrote.
+
+Two repairs, in order of preference:
+
+1. **Drop the labels, keep the bullets.** The claims survive; the packaging
+   goes. "**De-duplication of effort:** Ensuring best athlete approach." →
+   "Effort is not duplicated."
+2. **Fold the bullets into prose** when they are one sentence that has been
+   chopped into three — the Tier 4 bullet-list rule, applied with more
+   confidence here, because the labels have already shown you the bullets are
+   not really a list.
+
+Then the stem. Cut it if the sentence before it already introduces the list.
+If the list does need a lead-in, let it name what follows rather than
+advertise it, and strip the empty intensifier: "The key benefits include:" →
+"Benefits:". Never keep "key", "several", "a number of", "a few" in that
+position — they are Tier 1 padding wearing a colon.
+
+Hold the line on content: **the labels are packaging, not claims.** Do not
+invent a specific to replace a vague label, and do not drop a bullet because
+its claim is thin — "Your staff will thrive" comes out exactly as vague as it
+went in.
 
 **Negation-antithesis.** "It's not just a text editor — it's a way of
 thinking." → State the claim: "It's a way of thinking." Keep the contrast
@@ -104,7 +149,10 @@ It's Linux-only." → "The result is faster builds." / "It's Linux-only,
 though."
 
 **Empty triads.** "clear, concise, and compelling" — keep the one or two
-adjectives that are true and load-bearing, drop the one added for rhythm.
+adjectives that are true and load-bearing, drop the one added for rhythm. The
+same instinct sets lists to three items by default. Treat that count as a
+prompt to check whether each item carries its own claim, not as something to
+fix: you can neither add a claim nor drop one.
 
 **Symmetrical scaffolding.** "Firstly… Secondly… Lastly…" where the order
 carries no meaning. Drop the ordinals, or make it a real list.
@@ -131,9 +179,16 @@ when they are clearly mechanical, and prefer varying to purging.
   removing the pauses.
 - **Bullet lists.** Fine when the content is genuinely a list. Convert to
   prose only when each bullet is a fragment of a single argument that has
-  been chopped up.
+  been chopped up — and see Tier 3, *the label-colon list*, for the case where
+  the bullets themselves tell you which one this is.
 - **Bold.** Reduce when whole sentences are bold, or when every other phrase
-  is emphasised. Leave deliberate key-term bolding.
+  is emphasised. Leave deliberate key-term bolding. Bold that opens a bullet
+  and ends in a colon is the Tier 3 pattern, not this one.
+- **Raw HTML emphasis.** `<strong>`, `<b>`, `<em>` sitting in text that is
+  otherwise Markdown or plain is a machine artefact: match the document's own
+  convention (`**bold**`) or, if the emphasis was only there to prop up a
+  label you have just removed, drop it. Leave the tags alone in a file that is
+  genuinely HTML.
 - **Emoji in headings.** Cut if the rest of the document has none. Leave if
   the document is consistently informal.
 - **Headings and structure.** Leave alone. Over-sectioning is a slop signal
@@ -174,6 +229,7 @@ If the user asks what changed, follow the text with a short table:
 | It's important to note that the API is rate-limited | The API is rate-limited | padding |
 | leverage the cache | use the cache | vocabulary |
 | It's not just faster — it's cheaper | It's faster and cheaper | stock construction |
+| **De-duplication of effort:** Ensuring best athlete approach. | Effort is not duplicated | label-colon list |
 
 ## 10. Check before you return
 

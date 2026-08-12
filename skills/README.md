@@ -23,7 +23,7 @@ need nothing installed and work anywhere, including offline.
 
 | Skill | Invoke | What it does |
 |---|---|---|
-| [**unslop**](unslop) | `/unslop` | Strips AI-slop markers from writing — padding, tell-tale vocabulary, stock LLM sentence shapes — leaving meaning and voice intact |
+| [**unslop**](unslop) | `/unslop` | Strips AI-slop markers from writing — padding, tell-tale vocabulary, stock LLM sentence and list shapes — leaving meaning and voice intact |
 
 ## Install
 
