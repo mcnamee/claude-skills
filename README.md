@@ -1,4 +1,4 @@
-# claude-skills
+# Claude Skills
 
 Two things, both for Claude Code, both working **entirely offline**:
 
@@ -11,7 +11,7 @@ Two things, both for Claude Code, both working **entirely offline**:
 
 ## Why this exists
 
-- **Built for an airgapped Windows endpoint.** No internet calls, no telemetry,
+- **Built for Windows endpoints in an Enterprise environment.** No internet calls, no telemetry,
   no registry lookups. Copy the folder across, add it as a local marketplace,
   install.
 - **One file per server.** Every server is a single `.py` — nothing to build, no
@@ -61,7 +61,7 @@ plugins at:
 
 (Drop `pywin32` if you're not on Windows / not using `outlook`. Install only
 what the plugins you want need — see the table above.) `word.py`'s docstring
-walks through sideloading the wheels on an airgapped machine.
+walks through sideloading the wheels.
 
 **2. Add this repo as a marketplace**, then install whichever plugins you want.
 These are slash commands, typed inside Claude Code — not shell commands:
