@@ -99,7 +99,7 @@ server that isn't there.
 | Agent | Assumes | Optional |
 |---|---|---|
 | `researcher` | [`knowledge-base`](../plugins/knowledge-base) and [`confluence`](../plugins/confluence) plugins | Files you point it at |
-| `report-writer` | [`unslop`](../skills/unslop) and [`polish`](../skills/polish) skills | An exemplar in `./context/exemplars` |
+| `report-writer` | [`unslop`](../skills/unslop) and [`polish`](../skills/polish) skills | An exemplar in [`context/exemplars`](../context/exemplars); [`word`](../plugins/word) or [`pdf-to-md`](../plugins/pdf-to-md) to read a `.docx` or PDF one |
 
 `researcher` searches both sources on every question — the knowledge base holds
 the settled documents, Confluence holds the working knowledge that never became
@@ -112,30 +112,28 @@ documents. Hand the finished Markdown to [`word`](../plugins/word) for that,
 which keeps writing and formatting as two jobs you can redo independently — a
 wording change shouldn't mean rebuilding a `.docx`.
 
-### `./context/exemplars`
+### Exemplars
 
-`report-writer` looks here, relative to the folder you are working in, for a
-previous report to copy the shape of. The exemplar supplies **structure and
-emphasis — never content**: section order and headings, how long each section
-runs, what the audience always needs to see. Facts, figures and names come only
-from the material you hand it.
+`report-writer` reads [`context/exemplars`](../context/exemplars) for the shape
+of the document it is writing. The exemplar supplies **structure and emphasis —
+never content**: section order and headings, how long each section runs, what
+that audience always needs to see. Facts, figures and names come only from the
+material you hand it.
 
 It is worth setting up. An exemplar tells the agent what your readers actually
-expect far better than any generic template, and a folder that holds one brief,
-one report and one minute covers most of what gets asked for.
+expect far better than any generic template, and two or three strong ones — a
+brief, a report, a minute — cover most of what gets asked for.
 
-```
-your-project/
-  context/
-    exemplars/
-      brief-to-deputy-secretary.md
-      quarterly-report.md
-```
+Fill in the **index table** in
+[`context/exemplars/README.md`](../context/exemplars/README.md). That one line
+per file is what lets the agent pick the right exemplar without opening every
+document, which matters because a `.docx` or PDF costs a conversion to read.
+`.md` exemplars are the cheapest and the easiest to review, so a Markdown copy
+beside the original earns its keep for anything you reach for often.
 
-Keep them as Markdown or plain text. If your exemplar only exists as a `.docx`,
-convert it once and keep the Markdown copy here — the agent reads it for
-structure, so it needs the headings and the section lengths, not the
-formatting.
+The [`templates`](../context/templates) folder next door is a different thing —
+blank files a document is *built from*, which is the `word` server's business.
+`report-writer` will say so rather than treat one as an exemplar.
 
 ## Adding an agent
 

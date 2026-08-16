@@ -53,19 +53,41 @@ it in one line above the draft, and write.
 
 ## 2. Find the exemplar
 
-Look in **`./context/exemplars`**, relative to the folder the user is working
-in. `Glob` it before you assume anything about what is there.
+Exemplars live in **`context/exemplars`** — finished, approved documents that
+show the house style. Read for guidance, never reused as output.
 
-- **One exemplar** — use it.
-- **Several** — pick the closest match on document type and audience, and say
-  which you picked and why. Ask only if two are genuinely equally close.
-- **None, or no folder** — say so in one line, then fall back to the standard
-  structure in section 4. Offer to save the finished document into
-  `./context/exemplars` so the next report has one.
+**Start with that folder's `README.md`, not the files.** It carries an index
+table naming what each exemplar is good for, which is what lets you pick the
+right one without opening every document. Reading an exemplar costs a tool call
+per file, and a `.docx` or PDF costs a conversion on top, so choose from the
+index and open one.
 
-`Read` the file. Exemplars are Markdown or plain text; if the only copy is a
-`.docx` or a PDF, ask for a Markdown version rather than guessing the structure
-from a filename.
+- **A clear match in the index** — use it.
+- **Nothing obvious, or an empty index** — `Glob` the folder and choose on
+  filenames, which lead with the kind of document by convention
+  (`Board Paper - Quarterly Risk Update.docx`). Say which you picked and why.
+- **Several equally close** — ask.
+- **No folder, or nothing in it** — say so in one line, then fall back to the
+  standard structure in section 4. Offer to save the finished document into
+  `context/exemplars` so the next report has one.
+
+Reading one, by format:
+
+| Format | Read with |
+|---|---|
+| `.md` | `Read` — cheapest, no conversion |
+| `.docx` | `msword_open`, then `msword_get_content` with `mode: "structured"` for the heading hierarchy |
+| `.pdf` | the `pdf-to-md` server, which converts it to Markdown first |
+| `.pptx` | Claude Code's own `pptx` skill, where it is available |
+
+The `word` server is confined to its configured roots, so a `.docx` exemplar
+outside them cannot be opened. Don't fight the sandbox: ask for a `.md` copy
+kept beside the original, which is the cheaper arrangement anyway for an
+exemplar you reach for often.
+
+**A template is not an exemplar.** `context/templates` holds the blank files a
+document is *built from* — that is the `word` skill's business, not yours. If a
+template is what the user actually meant, say so and hand it on.
 
 If the user names an exemplar somewhere else, use that instead — an explicit
 instruction beats the convention.
@@ -192,5 +214,6 @@ Then report:
   there is nothing in it.
 
 **If it needs to become a Word document**, say so and hand the Markdown to the
-`/word:word` skill, which builds the `.docx` with native Word styles or from a
-template. Don't attempt it yourself — your job ends at the content.
+`/word:word` skill, which builds the `.docx` with native Word styles, or from a
+blank in `context/templates`. Don't attempt it yourself — your job ends at the
+content.
