@@ -1,6 +1,6 @@
 # Claude Skills
 
-Two things, both for Claude Code, both working **entirely offline**:
+Three things, all for Claude Code, all working **entirely offline**:
 
 - **[`plugins/`](plugins)** — seven MCP servers that give an agent hands on the
   things enterprise work actually lives in: Word documents, Excel workbooks,
@@ -8,8 +8,10 @@ Two things, both for Claude Code, both working **entirely offline**:
   them together. This repo doubles as a plugin marketplace for them.
 - **[`skills/`](skills)** — standalone skills that need no server and no
   install beyond a folder copy.
+- **[`agents/`](agents)** — subagents that take a whole job away and hand back
+  a finished result, built on top of the servers and skills above.
 
-Plus **[`context/`](context)** — the reference material those two work from:
+Plus **[`context/`](context)** — the reference material they work from:
 **exemplars** (finished documents showing what good looks like) and
 **templates** (the blank `.docx`/`.pptx` new documents are built from).
 
@@ -222,6 +224,36 @@ subprocesses, not scripts a skill shells out to. That matters most for `word`,
 which is session-based (`msword_open` returns a `session_id` and holds the
 document in memory until `msword_save`).
 
+## Agents
+
+**[`agents/`](agents) holds standalone subagents** — a separate context with its
+own instructions that the main session hands a whole job to, and gets a finished
+result back from. Where a skill steers the conversation you are already in, an
+agent goes away and does the work in its own.
+
+| Agent | Invoke | What it does |
+|---|---|---|
+| [**researcher**](agents/researcher.md) | `@agent-researcher` | Researches a topic across the local knowledge base and Confluence, corroborates what it finds, and returns a cited brief with confidence ratings and named gaps |
+| [**report-writer**](agents/report-writer.md) | `@agent-report-writer` | Turns research or notes into the written content of a report or official brief, following the structure of an exemplar in `./context/exemplars`, then runs `/unslop` and `/polish` over it |
+
+They chain: `researcher` produces the cited brief, `report-writer` writes it up.
+Each is one Markdown file, so installing is a file copy:
+
+```powershell
+$dest = "$env:USERPROFILE\.claude\agents"
+New-Item -ItemType Directory -Force -Path $dest | Out-Null
+Copy-Item -Force .\agents\researcher.md $dest
+```
+
+Or into `.claude\agents\` inside a project to scope it there. Both are written
+for this suite rather than as generic agents, and assume it is installed:
+`researcher` searches `knowledge-base` and `confluence` on every question,
+`report-writer` finishes through `unslop` and `polish`. `report-writer`
+produces content and stops there — hand its Markdown to `word` when it needs to
+be a `.docx`, so a wording change doesn't mean rebuilding the document. See
+[`agents/README.md`](agents/README.md) for the details, including how
+`report-writer` picks an exemplar.
+
 ## Context
 
 [`context/`](context) holds what Claude *reads* rather than what it runs:
@@ -236,6 +268,10 @@ the output's first draft. Each folder's README covers naming, conventions and
 how to ask. Document files there are **not committed** — see
 [`context/.gitignore`](context/.gitignore).
 
+`report-writer` reads `context/exemplars` for the shape of the document it is
+writing, so the index table in that folder's README is what lets it pick the
+right one without opening every file.
+
 ## Versioning
 
 Versions follow semver and are bumped on **every** change (see `CLAUDE.md`):
@@ -248,5 +284,5 @@ Versions follow semver and are bumped on **every** change (see `CLAUDE.md`):
 A version appears in five places that must stay in sync: the server's
 `__version__`, its docstring title, its `plugin.json`, its own README header
 and the plugin table above (the marketplace manifest mirrors them too).
-Standalone skills under `skills/` are unversioned — they are prose, not an
-interface anything depends on.
+Standalone skills under `skills/` and agents under `agents/` are unversioned —
+they are prose, not an interface anything depends on.
