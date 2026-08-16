@@ -10,8 +10,10 @@ reader's need first, plain language throughout, and the mechanical conventions o
 the [Australian Government Style Manual](https://www.stylemanual.gov.au) and the
 APSC [Government writing handbook](https://www.stylemanual.gov.au/style-manual-resources/government-writing-handbook).
 
-The Style Manual is the authority for everything below. Where an agency house
-style differs, the house style wins — see [House style overrides](#house-style-overrides).
+Both are the authority for everything below: the handbook covers the craft —
+readers, tone, argument, structure — and the Style Manual covers the mechanics.
+Where an agency house style differs, the house style wins — see
+[House style overrides](#house-style-overrides).
 
 **Meaning is fixed; only the writing changes.** A polish that improves the prose
 and quietly alters a commitment, a figure or an obligation has failed. When the
@@ -80,32 +82,65 @@ skill.
 
 ---
 
-## 3. Format profiles
+## 3. Tone, voice and format profiles
 
-Pick one. It sets structure, paragraph length, person and register. Everything in
+### Tone: three levels of formality
+
+Tone is how formal the writing is. The handbook sets three levels, and picking the
+wrong one is the most common reason a technically correct rewrite still reads
+wrong.
+
+- **Formal** — legal writing, policies, reports, ministerial and Cabinet briefs.
+  Professional, neutral, objective. No contractions, personal pronouns, idioms,
+  metaphors, humour or slang.
+- **Standard** — **the usual tone for APS writing**, and the default when in
+  doubt. Emails, letters, online government services, corporate communications,
+  media releases, articles. Contractions and some personal pronouns are fine.
+  Idioms, metaphors, humour and slang are still out.
+- **Informal** — social media, blogs, some newsletter articles. Contractions,
+  personal pronouns, idioms, metaphors, humour, popular culture and personal
+  anecdotes are all available. Watch the cultural assumptions they carry.
+
+### Voice: the persona underneath
+
+Basic government voice is **clear, direct, objective and impartial**. Shade it to
+the job:
+
+| Writing | Voice |
+|---|---|
+| Instructions, guidance, explanations of policy, external-facing content | Supportive, friendly, positive, empowering |
+| Formal advice, research reports, statutory reports | Expert, factual, balanced |
+| Policy documents, explanations of government decisions, general advice | Reasonable, authoritative, measured |
+| Emergency instructions about personal or national safety | Calm, authoritative, compliance-based |
+
+### Format profiles
+
+Pick one. It sets structure, paragraph length, person and tone. Everything in
 sections 5 to 8 applies to all of them.
 
-| Profile | Opens with | Paragraphs | Person | Register |
+| Profile | Opens with | Paragraphs | Person | Tone |
 |---|---|---|---|---|
-| **Internal email** | The ask or the answer, in the first sentence | 1–3 sentences | "I"/"we" → "you" | Direct, courteous, contractions fine |
-| **External stakeholder email** | Why you are writing and what you need | 2–3 sentences | "we" (the department) → "you" | Professional, no internal acronyms or system names |
-| **Letter or email to a member of the public** | What this means for them | 1–3 sentences | "we" → "you" | Plain, respectful, no conditions buried at the end |
-| **Brief or minute** | The recommendation | 2–4 sentences | Institutional third person ("the department") | Formal, objective, no advocacy adjectives |
-| **Report or report section** | A summary of findings, then detail | Up to 6 sentences | Third person | Formal but plain |
-| **Web or intranet page** | What the reader can do, or needs to know | 2–3 sentences | "you" | Direct, task-focused |
-| **Media release** | Who, what, when, where, why | 1–2 sentences | Third person, plus attributed quotes | Journalistic |
-| **Talking points** | The bottom line in one sentence | 1–2 sentences | Speaker's voice | Spoken, each point self-contained |
+| **Internal email** | The ask or the answer, in the first sentence | 1–3 sentences | "I"/"we" → "you" | Standard |
+| **External stakeholder email** | Why you are writing and what you need | 2–3 sentences | "we" (the department) → "you" | Standard, no internal acronyms or system names |
+| **Letter or email to a member of the public** | What this means for them | 1–3 sentences | "we" → "you" | Standard, no conditions buried at the end |
+| **Brief or minute** | The recommendation | 2–4 sentences | Institutional third person ("the department") | Formal |
+| **Report or report section** | A summary of findings, then detail | Up to 6 sentences | Third person | Formal |
+| **Web or intranet page** | What the reader can do, or needs to know | 2–3 sentences | "you" | Standard |
+| **Media release** | Who, what, when, where, why | 1–2 sentences | Third person, plus attributed quotes | Standard, journalistic conventions |
+| **Talking points** | The bottom line in one sentence | 1–2 sentences | Speaker's voice | Matched to the speaker and setting |
 
-Paragraph lengths come from the Style Manual: one or two sentences for a media
+Paragraph lengths come from the handbook: one or two sentences for a media
 release, two or three for short-form and mobile content, up to six in long-form
-content such as a report.
+content such as a report. A paragraph can be one sentence, but never one long one.
 
 Profile-specific structure:
 
 - **Brief or minute** — recommendation first, then issue, background, key
   considerations, sensitivities. Every recommendation must be actionable by the
   person receiving it, and dates and costings must appear in the recommendation,
-  not buried in the background.
+  not buried in the background. Formal tone avoids personal pronouns, but don't
+  let that turn the recommendation into an agentless passive: `the department
+  recommends` beats `it is recommended`, because someone has to own the advice.
 - **Report** — use `Summary` or `Recommendations` as the heading. The Style Manual
   advises against `Executive summary`. Recommendations state who does what.
 - **Decision letter to a person** — the decision, the reason, what happens next,
@@ -115,8 +150,11 @@ Profile-specific structure:
   first mention (`Minister for X, the Hon Jane Citizen MP, said …`), media contact
   at the end. Media releases follow journalistic convention, so spell out numbers
   below 10 here.
-- **Email** — one subject, front-loaded ("Approval needed: grant round 3 timing").
-  Action and due date in the first three lines, never only in the last paragraph.
+- **Email** — one subject, front-loaded, summarising what you need
+  (`Approval needed: grant round 3 timing`). Action and due date in the first
+  three lines, never only in the last paragraph. Inside the APS, the labels
+  `For action`, `For decision` and `For information` tell the reader what is
+  wanted before they read a word of it — use them where the agency does.
 
 ---
 
@@ -126,12 +164,14 @@ Structure first, mechanics last. Fixing commas in a paragraph you are about to
 delete wastes the effort, and fixing sentences before structure hides the fact
 that the point is in the wrong place.
 
-1. Structure — is the main message first?
-2. Sentences and paragraphs — one idea each, active, short enough
-3. Words — plain, specific, no jargon the reader won't know
-4. Mechanics — spelling, capitals, numbers, dates, punctuation, lists, links
-5. Inclusive and accessible language
-6. Verify against [section 8](#8-before-you-return-it)
+1. Tone and voice — which of the three levels of formality does this need?
+2. Structure — is the main message first?
+3. Argument — if the piece asks for something, are the three parts there?
+4. Sentences and paragraphs — one idea each, active, short enough
+5. Words — plain, specific, no jargon the reader won't know
+6. Mechanics — spelling, capitals, numbers, dates, punctuation, lists, links
+7. Inclusive and accessible language
+8. Verify against [section 8](#8-before-you-return-it)
 
 ---
 
@@ -144,24 +184,66 @@ that the point is in the wrong place.
   a recommendation or the action the reader must take. People may scan only about
   a fifth of the content before deciding whether to read on, so anything that
   arrives after the halfway mark may as well not be there.
+- **Summary, then detail.** Open with a brief summary of the most important
+  information so the reader can decide whether they need the rest. A pattern that
+  works for the detail: the state of things now, the events needed to change it,
+  the outcome you want.
 - **Front-load headings.** Keywords in the first two or three words, because that
   may be all the reader sees. Headings in sentence case, no full stop, and
   informative rather than cute: `Apply for a grant`, not `Getting started`.
-- **Keep the heading hierarchy sound.** No skipped levels, no heading used only to
-  make text big. Screen readers navigate by heading level.
+  Maximum 70 characters including spaces. Avoid questions as headings — they add
+  to the reader's cognitive load. Headings at the same level should be
+  grammatically parallel.
+- **Keep the heading hierarchy sound.** H1 for the title only, H2 for main
+  headings, H3 and H4 for subheadings, and try not to go below H4. Never skip a
+  level. Use the writing software's heading styles rather than bolding and
+  resizing normal text, or assistive technologies and search engines can't see
+  the structure at all.
 - **One topic per paragraph**, opening with a topic sentence or a transition
-  sentence.
+  sentence. A paragraph can be a single sentence, but never a single long one.
+- **Keep the narrative in order.** Once the structure is set, follow it. If
+  something needs to be added, put it where it belongs rather than appending it.
+- **Cut what the reader doesn't need.** Background belongs in the document only
+  if it helps the reader. When in doubt, write less. Detail that is genuinely
+  interesting but not needed goes to an attachment, not the body.
 - **Cut the throat-clearing.** `This email is to advise that`, `I am writing to
   inform you`, `By way of background` and `As you would be aware` all delay the
   point. Start at the point.
 - **Move the action out of the last line.** If the reader has to do something, say
   so early and give the date.
 
+### Making a case
+
+Most APS writing argues for something — funding, people, time, authority, or an
+action by someone outside the APS. A persuasive argument needs three parts, and
+drafts usually arrive carrying only the first. Check for each, and flag what the
+source can't supply:
+
+- **Facts and logic** — the evidence, its relevance, and where it came from. Cite
+  quoted sources.
+- **Emotional appeal** — the effect on actual people, stated as the benefit to
+  them or the problem being solved. This is why case studies earn their space.
+- **Credibility** — demonstrated, not asserted. Cut `we are well placed to` and
+  `the department is a trusted partner`; show the track record instead. Owning a
+  statement in active voice does more for credibility than any adjective.
+
 ### Sentences
 
 - Average **15 words**. Hard ceiling **25**. A sentence over 25 words gets split.
+- Two sanctioned ways to shorten one: start a sentence with `And`, `Or` or `But`
+  (the handbook explicitly allows it), and move the items out of an unavoidably
+  long sentence into a list.
 - Vary the length deliberately — a run of identical short sentences is as hard to
   read as one long one.
+- **Write positively.** A positive sentence is easier to act on and usually
+  shorter: `Enter your email address to receive updates`, not `We can't send
+  updates if you don't enter your email address`. Negative imperatives are for
+  rule-based writing where the agency's research supports them —
+  `Don't accept friend requests from strangers`.
+- **Check the word order.** `I have a meeting that John arranged in the seminar
+  room` has two readings. Fix it by rewriting, splitting it in two, or marking off
+  the extra information with a comma pair — whichever keeps the emphasis where you
+  want it.
 - **Active voice by default.** `The department will assess applications`, not
   `Applications will be assessed`. Passive is not banned: use it when the receiver
   of the action genuinely matters more than the actor, when the actor is unknown,
@@ -172,8 +254,9 @@ that the point is in the wrong place.
 - Keep subject and verb close together. Long qualifying clauses before the verb
   make the reader hold everything in memory.
 - Aim for a lower-secondary reading level for content aimed at the general public,
-  which is the WCAG 2.1 AAA benchmark the Style Manual works to. Readability tools
-  are a diagnostic, not a target to game.
+  which is the WCAG benchmark the Style Manual team writes to. Readability
+  formulas were never meant as writers' guides: use them to find candidates, then
+  exercise judgement. Never make an edit whose only purpose is to move the score.
 
 ### Words
 
@@ -247,6 +330,22 @@ workforce skills`. Unstack them into a phrase with a verb and a preposition.
 agencies`. `Significant savings` becomes the figure, or is cut. If the source
 doesn't have the specific, don't invent one — flag it.
 
+### Grammar traps common in APS drafts
+
+- **`staff`, `committee` and `department` take a singular verb.** They are
+  collective nouns in government writing: `the department is responsible`, `the
+  committee is meeting on Tuesday`, `the staff was made up of more generalists
+  than specialists`. Use a plural verb only when the members are acting
+  independently — `the committee are arriving separately`. For `department`, that
+  is rare; treat it as singular unless you are sure.
+- **`it's` is only ever `it is`.** The possessive is `its`, with no apostrophe,
+  like `hers` and `theirs`. In a formal document, write `it is` anyway.
+- **`you and I` / `you and me`** — remove `you and` and see which survives:
+  `drafted by me` (so `drafted by you and me`), `I attended` (so `you and I
+  attended`). Same test for `the secretary and I`.
+- **No sentence fragments** in flowing prose. `Before I go` and `Where you walk`
+  leave the reader waiting for the rest.
+
 ---
 
 ## 6. Mechanics
@@ -254,7 +353,11 @@ doesn't have the specific, don't invent one — flag it.
 ### Spelling
 
 Australian English. Use the Macquarie Dictionary or the Australian Concise Oxford
-and follow one consistently.
+and follow one consistently. Where a dictionary entry offers more than one
+spelling, take the headword — the first form listed — unless the agency's word
+list says otherwise. Dictionaries also settle capitalisation (`URL`, not `url`),
+hyphenation (`fact-check` the verb but `a fact check` the noun), plurals
+(`appendices` or `appendixes`) and whether something is one word (`webpage`).
 
 - `-ise`, not `-ize`: organise, recognise, prioritise, realise.
 - `-our`: colour, behaviour, labour. (But *Australian Labor Party*.)
@@ -284,7 +387,14 @@ and nothing else. Headings follow the same rule.
 ### Numbers
 
 - Numerals for **2 and above**; words for **zero** and **one**, because `0` and
-  `1` are easily misread as letters.
+  `1` are easily misread as letters in some typefaces.
+- But use `0` and `1` as numerals in a comparison (`1 in 5 people, and 1 in 7
+  young people`), in a series of related numbers (`26 tackles, 3 tackle breaks,
+  1 offload and 0 missed tackles`), and in units of measurement and times of day
+  (`1.05 cm`, `00:45 AEDT`). Never mix a word and a numeral across the same
+  comparison.
+- Large rounded numbers from a million combine numerals and words: `4.5 million`,
+  `107 million`. Use full numerals where precision matters: `3,326,805`.
 - Media releases and other journalistic content: spell out numbers below 10.
 - Start a sentence with a word, not a numeral. Recast the sentence if that gets
   clumsy.
@@ -315,7 +425,13 @@ and nothing else. Headings follow the same rule.
   reserved for interrupted speech and omitted words. Never use a double hyphen.
 - **Quotation marks.** Single quotes for a quotation or a term being defined;
   double quotes only inside a quotation. Punctuation belonging to the quoted words
-  sits inside the marks; punctuation belonging to your sentence sits outside.
+  sits inside the closing mark; punctuation belonging to your sentence sits
+  outside — `Did you hear him say, 'He's a goner'?` Where a quoted sentence is
+  followed by an attribution, its full stop becomes a comma, inside the marks:
+  `'No, that's chicory my dear,' Fiona replied.` Where the quote ends the
+  sentence, its full stop stays inside: `Pete said, 'Well, I like chickadees.'`
+  Where both the quote and the sentence want a mark, use the stronger one and only
+  that one: `The Speaker called, 'Order!'`
 - **Apostrophes.** Possessive only, never a plural: `the 1990s`, `MPs`, `FAQs`.
 - **Semicolons** are rarely needed. Two sentences usually beat one semicolon, and
   they never belong at the end of bullet points.
@@ -339,9 +455,15 @@ and nothing else. Headings follow the same rule.
 
 ### Lists
 
-- Every list needs a lead-in sentence or a heading.
-- Move words repeated in every item up into the lead-in.
-- Keep items grammatically parallel — all noun phrases, or all verb phrases.
+- Every list needs a lead-in — a sentence ending in a colon or a full stop, a
+  phrase ending in a colon, or a heading with no punctuation.
+- Move words repeated in every item up into the lead-in: `I relax by:` /
+  `bushwalking` / `watching movies`, not `by bushwalking` / `by watching movies`.
+- **Parallel structure.** Items match the lead-in, start with the same type of
+  word, hold the same tense, and are the same type of sentence. With a phrase
+  lead-in, the lead-in plus any single item must read as a complete sentence.
+- One item is not a list. Too many lists is an obstacle course — if everything is
+  bulleted, nothing stands out.
 - **Fragment lists** (items complete the lead-in): lower case first letter,
   no punctuation at the end of items, full stop on the final item only.
 - **Sentence lists** (each item is a full sentence): initial capital and a full
@@ -363,6 +485,12 @@ and nothing else. Headings follow the same rule.
 
 ## 7. Inclusive and accessible language
 
+This is not a courtesy. Equal access to government information is an obligation
+under Australian law — the *Disability Discrimination Act 1992* and the *Racial
+Discrimination Act 1975* among others — and WCAG is the baseline accessibility
+standard for all Australian Government digital content. Talk to the person, not
+their difference.
+
 - **People first, condition second**: `a person with disability`, not `the
   disabled`. Don't describe people as `suffering from` or `a victim of` a
   condition.
@@ -375,7 +503,25 @@ and nothing else. Headings follow the same rule.
 - **Gender-neutral by default**: `chair`, `spokesperson`, `workforce`,
   `they/their` for an unknown individual. Never assume a person's pronouns.
 - **Mention age, gender, cultural background or disability only when it is
-  relevant** to the point being made.
+  relevant** to the point being made. `Tom, a student, spoke about using public
+  transport` — his age belongs there only if the piece compares age groups.
+- **Don't assume ability.** `Everyone should visit the outback to experience the
+  landscape and birdlife`, not `to see the landscape and hear the birdlife`.
+
+Concrete swaps the handbook gives:
+
+| Not this | Write this |
+|---|---|
+| old people | older Australians, older people |
+| youths | young people |
+| he/she, s/he | they |
+| ethnic groups, ethnic Australians | people from different cultural backgrounds |
+| the myths and legends of First Australians | the beliefs of First Australians |
+| see the landscape and hear the birdlife | experience the landscape and birdlife |
+
+Language and its usage change, often quickly. Where a term is contested or the
+content is specific to a community, say so in the flags rather than deciding it
+silently.
 - `Culturally and linguistically diverse` is the government term, but avoid the
   acronym `CALD` outside a specialist audience. Where you can, name the specific
   communities instead.
@@ -421,9 +567,13 @@ Then check:
 5. Every acronym is expanded on first use, or removed.
 6. Spelling is Australian throughout, and one dictionary's conventions are used
    consistently.
-7. Headings are sentence case and front-loaded.
-8. The text is shorter than the source. A polish that grows the word count has
-   usually added padding — go back over it.
+7. Headings are sentence case, front-loaded, under 70 characters, and not
+   questions.
+8. The tone is the one the profile calls for, and it holds from first line to
+   last — contractions throughout or none, `you` throughout or not at all.
+9. The text is shorter than the source. A polish that grows the word count has
+   usually added padding — go back over it. Ask the handbook's question of every
+   sentence: do I need all these words to make my meaning clear?
 
 ---
 
@@ -456,7 +606,13 @@ A compliance report and nothing else:
 - **Verdict** — one sentence.
 - **Measures** — word count, sentence count, average sentence length, sentences
   over 25 words, longest sentence, paragraph lengths against the profile, count of
-  passive constructions, count of undefined acronyms.
+  passive constructions (agentless ones counted separately), count of undefined
+  acronyms, headings over 70 characters, headings phrased as questions.
+- **Tics** — the habits the writer repeats, which matter more than any single
+  instance. The handbook's own list is a good start: staccato sentences, idioms
+  and metaphors, assumed technical knowledge, everything grouped in threes, and
+  hedges like `I think` or `would you be able to` in place of saying the thing.
+  Name the tic and count it.
 - **Findings** by severity, each quoting the text and naming the rule and the fix:
   first anything that changes meaning or breaches obligations, then structure, then
   sentences and words, then mechanics.
@@ -470,9 +626,19 @@ Offer to apply the fixes; don't apply them unasked.
 
 Many agencies keep a house style that extends or departs from the Style Manual —
 a preferred dictionary, a set spelling for program names, a fixed brief template,
-an approved terminology list. If the user names one, or points at a file, read it
-and let it win every conflict with this skill. Say in the context line which house
-style you applied.
+an approved terminology list. Many teams also keep a **word list**: an
+alphabetical record of preferred terms, spellings and acronym expansions. If the
+user names one, or points at a file, read it and let it win every conflict with
+this skill. Say in the context line which house style you applied.
+
+Where the user has no word list and you had to make the same call repeatedly —
+which of two spellings, which expansion of an acronym, whether a term is one word
+or two — list those decisions in the flags. That list is the start of their word
+list, and it is what keeps the next document consistent with this one.
+
+Note for the user's own tooling, not for you: in-app grammar and Editor tools
+suggest edits that conflict with Australian Government style. Style Manual
+guidance wins.
 
 Two rules are worth keeping even so: never change a legal obligation to fit a
 style rule, and never change a quotation.
