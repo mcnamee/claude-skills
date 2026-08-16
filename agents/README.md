@@ -27,10 +27,10 @@ already in, an agent goes away and does the work in its own.
 | Agent | Invoke | What it does |
 |---|---|---|
 | [**researcher**](researcher.md) | `@agent-researcher` | Researches a topic across the local knowledge base and Confluence, corroborates what it finds, and returns a cited brief with confidence ratings and named gaps |
-| [**report-writer**](report-writer.md) | `@agent-report-writer` | Turns research or notes into a finished report or official brief, following the structure of an exemplar in `./context/exemplars`, then runs `/unslop` and `/polish` over it |
+| [**report-writer**](report-writer.md) | `@agent-report-writer` | Turns research or notes into the written content of a report or official brief, following the structure of an exemplar in `./context/exemplars`, then runs `/unslop` and `/polish` over it |
 
 They are built to run back to back: `researcher` produces the cited brief,
-`report-writer` turns it into the document. Neither needs the other, though —
+`report-writer` writes it up. Neither needs the other, though —
 `report-writer` will work from any material you give it.
 
 ## Install
@@ -90,16 +90,27 @@ Each agent runs in its own context. It sees the job you hand it, not your whole
 conversation, so give it the material rather than pointing back at something
 you said earlier.
 
-## What they expect to find
+## What they build on
 
-Neither agent requires anything, but both are much more useful with the rest of
-the suite installed. Each one degrades honestly — it says what is missing
-rather than making something up to fill the space.
+These are written for this suite, not as generic agents. They assume the rest
+of it is installed and configured, and they don't carry fallback paths for a
+server that isn't there.
 
-| Agent | Wants | Falls back to |
+| Agent | Assumes | Optional |
 |---|---|---|
-| `researcher` | [`knowledge-base`](../plugins/knowledge-base) and [`confluence`](../plugins/confluence) plugins | Saying which source it couldn't reach, and working from files you point it at |
-| `report-writer` | [`unslop`](../skills/unslop) and [`polish`](../skills/polish) skills, [`word`](../plugins/word) plugin for `.docx` output, an exemplar in `./context/exemplars` | Markdown output, a standard brief or report structure, and its own plain-language pass |
+| `researcher` | [`knowledge-base`](../plugins/knowledge-base) and [`confluence`](../plugins/confluence) plugins | Files you point it at |
+| `report-writer` | [`unslop`](../skills/unslop) and [`polish`](../skills/polish) skills | An exemplar in `./context/exemplars` |
+
+`researcher` searches both sources on every question — the knowledge base holds
+the settled documents, Confluence holds the working knowledge that never became
+one. What it will not do is fill a gap from its own memory: on an airgapped
+network, a search that comes back empty is a finding, and it reports the
+absence and where it looked.
+
+`report-writer` writes content and returns Markdown. It does not produce Word
+documents. Hand the finished Markdown to [`word`](../plugins/word) for that,
+which keeps writing and formatting as two jobs you can redo independently — a
+wording change shouldn't mean rebuilding a `.docx`.
 
 ### `./context/exemplars`
 
@@ -118,12 +129,13 @@ your-project/
   context/
     exemplars/
       brief-to-deputy-secretary.md
-      quarterly-report.docx
+      quarterly-report.md
 ```
 
-Markdown is the easiest format to read. A `.docx` exemplar works too, but the
-`word` server can only open files inside its configured docs folder — keep it
-there, or keep a Markdown copy alongside.
+Keep them as Markdown or plain text. If your exemplar only exists as a `.docx`,
+convert it once and keep the Markdown copy here — the agent reads it for
+structure, so it needs the headings and the section lengths, not the
+formatting.
 
 ## Adding an agent
 

@@ -229,10 +229,10 @@ agent goes away and does the work in its own.
 | Agent | Invoke | What it does |
 |---|---|---|
 | [**researcher**](agents/researcher.md) | `@agent-researcher` | Researches a topic across the local knowledge base and Confluence, corroborates what it finds, and returns a cited brief with confidence ratings and named gaps |
-| [**report-writer**](agents/report-writer.md) | `@agent-report-writer` | Turns research or notes into a finished report or official brief, following the structure of an exemplar in `./context/exemplars`, then runs `/unslop` and `/polish` over it |
+| [**report-writer**](agents/report-writer.md) | `@agent-report-writer` | Turns research or notes into the written content of a report or official brief, following the structure of an exemplar in `./context/exemplars`, then runs `/unslop` and `/polish` over it |
 
-They chain: `researcher` produces the cited brief, `report-writer` turns it into
-the document. Each is one Markdown file, so installing is a file copy:
+They chain: `researcher` produces the cited brief, `report-writer` writes it up.
+Each is one Markdown file, so installing is a file copy:
 
 ```powershell
 $dest = "$env:USERPROFILE\.claude\agents"
@@ -240,12 +240,14 @@ New-Item -ItemType Directory -Force -Path $dest | Out-Null
 Copy-Item -Force .\agents\researcher.md $dest
 ```
 
-Or into `.claude\agents\` inside a project to scope it there. Both agents lean
-on the plugins and skills above — `researcher` on `knowledge-base` and
-`confluence`, `report-writer` on `unslop`, `polish` and `word` — but neither
-requires them: each says what it could not reach rather than filling the gap
-with something invented. See [`agents/README.md`](agents/README.md) for the
-details, including how to set up `./context/exemplars`.
+Or into `.claude\agents\` inside a project to scope it there. Both are written
+for this suite rather than as generic agents, and assume it is installed:
+`researcher` searches `knowledge-base` and `confluence` on every question,
+`report-writer` finishes through `unslop` and `polish`. `report-writer`
+produces content and stops there — hand its Markdown to `word` when it needs to
+be a `.docx`, so a wording change doesn't mean rebuilding the document. See
+[`agents/README.md`](agents/README.md) for the details, including how to set up
+`./context/exemplars`.
 
 ## Versioning
 

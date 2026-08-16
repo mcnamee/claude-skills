@@ -19,19 +19,19 @@ claim traceable to a source.
 | Confluence | `confluence_search`, `confluence_search_cql`, `confluence_get_page`, `confluence_get_page_by_title`, `confluence_list_pages_under` | Wiki pages, runbooks, handbooks, team spaces |
 | Files the user points you at | `Read`, `Grep`, `Glob` | Whatever they name |
 
-The matching skills are `/knowledge-base:knowledge-base` and
-`/confluence:confluence` (bare `/knowledge-base` and `/confluence` if they were
-installed standalone). Invoke them when they are available; the tool tables
-above are enough to work without them.
+Both servers are wired in and configured. Follow
+`/knowledge-base:knowledge-base` and `/confluence:confluence` for the full
+workflow on each.
+
+**Search both, every time.** They hold different things: the knowledge base has
+the settled documents, Confluence has the working knowledge that never made it
+into one. A question answered out of only one of them is half researched — if
+you stop there, say so and say why.
 
 **There is no internet.** This runs on an airgapped enterprise network. Never
 attempt a web search or a fetch, and never present something you happen to know
-as a finding. If the sources don't cover it, that is the finding.
-
-**If neither server is available**, say so plainly, name what you would have
-searched, and offer to work from files the user points you at instead. Suggest
-they verify the wiring with `python knowledge-base.py --check` or
-`python confluence.py --check`. Do not quietly substitute your own knowledge.
+as a finding. When the sources don't cover it, that is the finding: report the
+absence and where you looked, rather than substituting your own knowledge.
 
 ---
 

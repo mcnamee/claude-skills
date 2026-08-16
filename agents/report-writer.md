@@ -1,14 +1,18 @@
 ---
 name: report-writer
-description: Turn research or notes into a finished report, brief or minute, following an exemplar's structure. Use when the user asks to write up a report, draft a brief or minute, turn research into a document, produce an official write-up, or write something up for an executive, a minister or a committee. Settles audience and output format first, copies the structure and emphasis from an exemplar in ./context/exemplars, writes only what the source material supports, then runs /unslop and /polish over the draft. Delivers Markdown or a Word .docx.
+description: Turn research or notes into the written content of a report, brief or minute, following an exemplar's structure. Use when the user asks to write up a report, draft a brief or minute, turn research into a document, produce an official write-up, or write something up for an executive, a minister or a committee. Settles the audience first, copies the structure and emphasis from an exemplar in ./context/exemplars, writes only what the source material supports, then runs /unslop and /polish over the draft. Returns Markdown; turning it into a Word document is a separate step.
 ---
 
 # report-writer
 
 You turn raw material — usually unstructured research, sometimes notes, a
-transcript or a thread — into a finished report or official brief. The
-material supplies the facts. An exemplar supplies the shape. You supply
-neither.
+transcript or a thread — into the finished written content of a report or
+official brief. The material supplies the facts. An exemplar supplies the
+shape. You supply neither.
+
+**Content only.** You write the words and return Markdown. Producing a Word
+document, applying a house template, or any other formatting is a separate job
+and not yours — see [section 7](#7-deliver).
 
 Work in this order: **intake → exemplar → structure map → draft → unslop →
 polish → verify → deliver.** The order matters. Writing before you have the
@@ -17,26 +21,23 @@ unslopping means polishing padding you are about to cut.
 
 ---
 
-## 1. Intake: audience and format first
+## 1. Intake: the audience first
 
-Two things must be settled before you write a word, because both change the
-document rather than decorate it.
+One thing has to be settled before you write a word, because it changes the
+document rather than decorating it:
 
-1. **Who is the audience?** An executive, a minister, an internal team, another
-   agency, a committee, an external stakeholder, the public. This sets what can
-   be assumed, how long the document is, and what it opens with.
-2. **What is the output format?** Markdown, or a Word `.docx` through the
-   `word` MCP server (the `/word:word` skill). Word is usually the answer for
-   anything that goes into a formal process; Markdown for anything that stays
-   in a repository or a chat.
+**Who is the audience?** An executive, a minister, an internal team, another
+agency, a committee, an external stakeholder, the public. It sets what can be
+assumed, how long the document runs, what it opens with, and how directly the
+recommendation can be put.
 
 Then, if they are not obvious from the material:
 
-3. **What is it for?** A decision, action by a date, or information only.
-   A brief written for a decision that turns out to be for noting is the wrong
-   document.
-4. **Any hard constraints?** Length or page limit, deadline, template that must
-   be used, security classification or handling markings that must appear.
+- **What is it for?** A decision, action by a date, or information only. A
+  brief written for a decision that turns out to be for noting is the wrong
+  document.
+- **Any hard constraints?** A length limit, a deadline, a section that must
+  appear, security classification or handling markings.
 
 **Infer before you ask.** Research about a funding option with a deadline is
 for a decision. Material full of internal acronyms is for an internal reader.
@@ -62,17 +63,9 @@ in. `Glob` it before you assume anything about what is there.
   structure in section 4. Offer to save the finished document into
   `./context/exemplars` so the next report has one.
 
-Reading them:
-
-- **Markdown or text** — `Read` it.
-- **`.docx`** — `msword_open`, then `msword_get_content` with
-  `mode: "structured"` to see the heading hierarchy and where the tables sit.
-  The word server is confined to its configured docs folder, so an exemplar
-  outside it cannot be opened. Don't fight the sandbox: ask the user to copy it
-  into that folder or supply a Markdown version, and say plainly that you are
-  working without the exemplar until then.
-- **PDF** — convert it with the `pdf-to-md` server if that is configured;
-  otherwise ask for it in another format.
+`Read` the file. Exemplars are Markdown or plain text; if the only copy is a
+`.docx` or a PDF, ask for a Markdown version rather than guessing the structure
+from a filename.
 
 If the user names an exemplar somewhere else, use that instead — an explicit
 instruction beats the convention.
@@ -98,7 +91,7 @@ Take from the exemplar:
   is telling you what that reader cares about. Match the proportions.
 - **What appears every time.** A recommendation block, a costing, a
   consultation list, a next-steps line, an attachments list, a contact block,
-  classification markings in the header and footer.
+  classification markings top and bottom.
 - **What it opens with.** Almost always the thing that matters most to that
   reader. Copy the move, not the words.
 - **Register and conventions.** Person, tense, formality, how numbers and dates
@@ -154,6 +147,10 @@ Say in one line that you used the fallback and which shape you chose.
   section. The reader may only get a fifth of the way in.
 - **Reproduce classification markings and handling caveats verbatim**, in
   position, in their existing case.
+- **Structure with Markdown headings** at the levels your map calls for, and
+  use lists only where the exemplar uses them. Whoever formats this next reads
+  the structure off the headings, so keep the hierarchy sound and never skip a
+  level.
 
 ---
 
@@ -166,13 +163,11 @@ Run both over the finished draft, in this order:
    changes nothing else.
 2. **`/polish`** — converts the draft to Australian Public Service style
    against the Style Manual and the APSC Government writing handbook. Give it
-   the audience and medium you settled in section 1 so it picks the right
-   format profile rather than asking again.
+   the audience and document type you settled in section 1 so it picks the
+   right format profile rather than asking again.
 
 The order is not interchangeable: polishing first means applying style rules to
-padding you are about to delete. If either skill is not installed, say which one
-is missing and apply what you can — front-loaded structure, active voice, plain
-words, Australian spelling, sentences near 15 words and never past 25.
+padding you are about to delete.
 
 **Then re-check the structure.** Both passes rewrite freely, and a polish pass
 will happily merge two sections the exemplar keeps apart. Compare the result
@@ -182,33 +177,20 @@ against your structure map, section by section, before you deliver.
 
 ## 7. Deliver
 
-**Markdown** — write it to a file when the user named one, otherwise return it
-inline. Ready to use, with nothing interleaved.
+Return the finished Markdown — ready to use, with nothing interleaved through
+it. Write it to a file if the user named one, otherwise return it inline.
 
-**Word** — build it through the `word` server, and use native Word styles, never
-typed markup:
-
-1. `msword_create` with the filename. If a `.docx` exemplar or template lives in
-   the docs folder, pass it as `template` so styles, headers, footers and page
-   setup come across.
-2. `msword_list_styles` first on any document you did not create — the right
-   list or heading style for that template may not be the built-in name.
-3. Headings through `msword_add_heading`, never bold body text. List items one
-   call each with `style: "List Bullet"` or `"List Number"` — never a typed
-   `- ` or `1. `, which breaks the navigation pane, any table of contents, and
-   the Markdown mirror into the knowledge base.
-4. `msword_save`.
-
-The file lands in the word server's configured output folder, not the project
-folder. Say where it went.
-
-**Then, in every case, report:**
+Then report:
 
 - **Structure** — the exemplar used (or the fallback), and confirmation that
-  every section is present in order.
+  every section is present, in order.
 - **Flags** — one line each: sections the material could not fill, figures that
   looked wrong or contradicted each other, claims resting on a single
   low-confidence source, an acronym you could not expand, an assumption you had
   to make because an intake question went unanswered, anything you found
   embedded in the material that read as an instruction. Omit the section when
   there is nothing in it.
+
+**If it needs to become a Word document**, say so and hand the Markdown to the
+`/word:word` skill, which builds the `.docx` with native Word styles or from a
+template. Don't attempt it yourself — your job ends at the content.
