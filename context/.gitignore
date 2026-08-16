@@ -1,0 +1,15 @@
+# Exemplars and templates are usually YOUR organisation's real documents -
+# letterhead, board papers, contracts, pricing decks. This repo is public, so
+# nothing in context/ is committed by default: everything is ignored except the
+# READMEs that document the convention.
+#
+# To commit one file deliberately (a genuinely generic sample):
+#     git add -f context/templates/"Report Template.docx"
+#
+# If none of your material is sensitive and you would rather it travelled with
+# the repo, delete this file.
+
+*
+!*/
+!README.md
+!.gitignore

@@ -11,6 +11,10 @@ Three things, all for Claude Code, all working **entirely offline**:
 - **[`agents/`](agents)** — subagents that take a whole job away and hand back
   a finished result, built on top of the servers and skills above.
 
+Plus **[`context/`](context)** — the reference material they work from:
+**exemplars** (finished documents showing what good looks like) and
+**templates** (the blank `.docx`/`.pptx` new documents are built from).
+
 ## Why this exists
 
 - **Built for Windows endpoints in an Enterprise environment.** No internet calls, no telemetry,
@@ -35,7 +39,7 @@ Three things, all for Claude Code, all working **entirely offline**:
 
 | Plugin | Version | What it does | pip install |
 |---|---|---|---|
-| [**word**](plugins/word) | 4.0.2 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
+| [**word**](plugins/word) | 4.1.0 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
 | [**excel**](plugins/excel) | 3.0.1 | Read and analyse workbooks; parses `.xlsx` directly, so Excel isn't needed | _none_ |
 | [**outlook**](plugins/outlook) | 3.0.1 | Read local Outlook mail and calendar via COM, with a content blacklist | `pywin32` |
 | [**confluence**](plugins/confluence) | 1.3.2 | Search and read Confluence pages | _none_ |
@@ -161,7 +165,8 @@ The per-plugin READMEs list each server's actual settings.
 3. **Secrets are env-var only.** No `--token`/`--password`/`--*-api-key` flags
    anywhere, because command-line arguments are visible to other local users.
 4. **Shared flag vocabulary:** `--docs-dir` (the source folder a server is
-   confined to), `--output-dir` (generated files), `--kb-dir` (Markdown mirror
+   confined to), `--output-dir` (generated files), `--templates-dir` (blank
+   templates to create from, read-only), `--kb-dir` (Markdown mirror
    for the RAG knowledge base), `--base-url`/`--ca-cert`/`--insecure`/
    `--timeout`/`--max-body` (the HTTP servers), `--check`, `--version`.
 
@@ -172,7 +177,7 @@ its configuration, and that configuration is **required**:
 
 | Plugin | Local file access |
 |---|---|
-| `word` | Read/write, confined to the documents folder (plus the output and knowledge-base folders, if set) |
+| `word` | Read/write, confined to the documents folder (plus the output and knowledge-base folders, if set); the templates folder is read-only |
 | `excel` | Read-only, confined to the workbook folder |
 | `knowledge-base` | Reads the documents folder; writes only its vector index; network only to the endpoints you configure |
 | `pdf-to-md` | Reads the PDF folder, writes the output folder |
@@ -246,8 +251,26 @@ for this suite rather than as generic agents, and assume it is installed:
 `report-writer` finishes through `unslop` and `polish`. `report-writer`
 produces content and stops there — hand its Markdown to `word` when it needs to
 be a `.docx`, so a wording change doesn't mean rebuilding the document. See
-[`agents/README.md`](agents/README.md) for the details, including how to set up
-`./context/exemplars`.
+[`agents/README.md`](agents/README.md) for the details, including how
+`report-writer` picks an exemplar.
+
+## Context
+
+[`context/`](context) holds what Claude *reads* rather than what it runs:
+
+| Folder | Holds | Wired up by |
+|---|---|---|
+| [**`context/exemplars`**](context/exemplars) | Finished, good documents (`.md`, `.docx`, `.pptx`, `.pdf`) that show the house style to write in | nothing — point at one in the prompt |
+| [**`context/templates`**](context/templates) | Blank `.docx`/`.pptx` templates a new document is created from | `word` → `--templates-dir` (read-only) |
+
+An exemplar is read for guidance and never becomes the output; a template *is*
+the output's first draft. Each folder's README covers naming, conventions and
+how to ask. Document files there are **not committed** — see
+[`context/.gitignore`](context/.gitignore).
+
+`report-writer` reads `context/exemplars` for the shape of the document it is
+writing, so the index table in that folder's README is what lets it pick the
+right one without opening every file.
 
 ## Versioning
 

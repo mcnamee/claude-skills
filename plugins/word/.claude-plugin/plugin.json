@@ -1,7 +1,7 @@
 {
   "name": "word",
   "displayName": "Word (.docx)",
-  "version": "4.0.2",
+  "version": "4.1.0",
   "description": "Read, edit and create Word .docx files - including Word tracked changes, native styles and filling out templates.",
   "author": {
     "name": "mcnamee"
@@ -25,6 +25,11 @@
       "type": "directory",
       "title": "Output folder",
       "description": "Optional. Where msword_create writes NEW documents. Defaults to the documents folder."
+    },
+    "templates_dir": {
+      "type": "directory",
+      "title": "Templates folder",
+      "description": "Optional. Folder of blank .docx templates new documents are created from, e.g. the context\\templates folder in the claude-skills repo. Read-only: templates can be opened and used as a starting point, never saved over. Must be separate from the documents and output folders."
     },
     "kb_dir": {
       "type": "directory",
@@ -54,6 +59,7 @@
         "PYTHONUTF8": "1",
         "MSWORD_DOCS_DIR": "${user_config.docs_dir}",
         "MSWORD_OUTPUT_DIR": "${user_config.output_dir}",
+        "MSWORD_TEMPLATES_DIR": "${user_config.templates_dir}",
         "MSWORD_KB_DIR": "${user_config.kb_dir}",
         "MSWORD_AUTHOR": "${user_config.author}"
       }
