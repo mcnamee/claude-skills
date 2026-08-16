@@ -27,6 +27,7 @@
         "--author", "Matt",
         "--docs-dir", "C:\\Users\\me\\Documents\\ai_docs",
         "--output-dir", "C:\\Users\\me\\Documents\\ai_generated",
+        "--templates-dir", "C:\\path\\to\\claude-skills\\context\\templates",
         "--kb-dir", "C:\\Users\\me\\Documents\\rag_kb"
       ],
       "env": { "PYTHONUTF8": "1" }

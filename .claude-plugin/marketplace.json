@@ -10,7 +10,7 @@
       "name": "word",
       "source": "./plugins/word",
       "description": "Read, edit and create Word .docx files - including Word tracked changes, native styles and filling out templates.",
-      "version": "4.0.2",
+      "version": "4.1.0",
       "keywords": [
         "word",
         "docx",
