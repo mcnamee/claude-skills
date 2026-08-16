@@ -88,17 +88,26 @@ boilerplate, etc.), pass `template` to `msword_create`:
 
 - `msword_create` with `filename: "Q3 Report.docx"` and
   `template: "Report Template.docx"`. The template is an existing `.docx` in
-  the docs folder, resolved the same forgiving way as `msword_open` (bare name,
-  relative path, or a fuzzy near-miss). Its styles, headers/footers, page setup
-  and boilerplate are inherited into the new file, which is written to the
-  output folder. The template file itself is never modified, and the result
-  includes `template` (the resolved template) so you can confirm the right one
-  was used.
+  the **templates folder** (if one is configured) or the docs folder, resolved
+  the same forgiving way as `msword_open` (bare name, relative path, or a fuzzy
+  near-miss). Its styles, headers/footers, page setup and boilerplate are
+  inherited into the new file, which is written to the output folder. The
+  template file itself is never modified, and the result includes `template`
+  (the resolved template) so you can confirm the right one was used.
 - Then edit and `msword_save` as usual. Omit `title` when the template already
   carries its own title.
-- To discover available templates, use `msword_list_documents` (e.g.
-  `query: "template"`); keep templates in the docs folder (a `templates/`
-  subfolder is a tidy convention). Only `.docx` templates are supported.
+- **To discover templates:** `msword_list_documents` with
+  `location: "templates"` (every entry also carries a `location` of `docs` /
+  `output` / `templates`, so a blank is never mistaken for a real document). If
+  no templates folder is configured, fall back to
+  `msword_list_documents` with `query: "template"` over the docs folder.
+- **The templates folder is read-only.** Open a template to read it or to run
+  `msword_list_styles` on it — that is how you find the corporate bullet/heading
+  style names before drafting — but never try to save into that folder: both
+  save-as and save-in-place are refused. Anything you produce goes to the output
+  folder via `msword_create`.
+- Only `.docx` templates are supported (`.dotx` is not). Any `.pptx` sitting in
+  the templates folder is not readable by this server.
 
 ### Filling out a template (placeholders + example tables)
 
@@ -133,8 +142,9 @@ more values than the row has cells is an error.
 
 ## Notes
 
-- All paths must be inside the configured docs folder (plus the output
-  folder); requests outside it are refused — don't fight the sandbox.
+- All paths must be inside the configured docs folder (plus the output folder,
+  and the read-only templates folder); requests outside it are refused — don't
+  fight the sandbox.
 - Opening a document with `--kb-dir` configured also mirrors it to Markdown
   for the knowledge base.
 - Not supported: comments, tracked moves, formatting-only revisions,

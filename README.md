@@ -9,6 +9,10 @@ Two things, both for Claude Code, both working **entirely offline**:
 - **[`skills/`](skills)** — standalone skills that need no server and no
   install beyond a folder copy.
 
+Plus **[`context/`](context)** — the reference material those two work from:
+**exemplars** (finished documents showing what good looks like) and
+**templates** (the blank `.docx`/`.pptx` new documents are built from).
+
 ## Why this exists
 
 - **Built for Windows endpoints in an Enterprise environment.** No internet calls, no telemetry,
@@ -33,7 +37,7 @@ Two things, both for Claude Code, both working **entirely offline**:
 
 | Plugin | Version | What it does | pip install |
 |---|---|---|---|
-| [**word**](plugins/word) | 4.0.2 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
+| [**word**](plugins/word) | 4.1.0 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
 | [**excel**](plugins/excel) | 3.0.1 | Read and analyse workbooks; parses `.xlsx` directly, so Excel isn't needed | _none_ |
 | [**outlook**](plugins/outlook) | 3.0.1 | Read local Outlook mail and calendar via COM, with a content blacklist | `pywin32` |
 | [**confluence**](plugins/confluence) | 1.3.2 | Search and read Confluence pages | _none_ |
@@ -159,7 +163,8 @@ The per-plugin READMEs list each server's actual settings.
 3. **Secrets are env-var only.** No `--token`/`--password`/`--*-api-key` flags
    anywhere, because command-line arguments are visible to other local users.
 4. **Shared flag vocabulary:** `--docs-dir` (the source folder a server is
-   confined to), `--output-dir` (generated files), `--kb-dir` (Markdown mirror
+   confined to), `--output-dir` (generated files), `--templates-dir` (blank
+   templates to create from, read-only), `--kb-dir` (Markdown mirror
    for the RAG knowledge base), `--base-url`/`--ca-cert`/`--insecure`/
    `--timeout`/`--max-body` (the HTTP servers), `--check`, `--version`.
 
@@ -170,7 +175,7 @@ its configuration, and that configuration is **required**:
 
 | Plugin | Local file access |
 |---|---|
-| `word` | Read/write, confined to the documents folder (plus the output and knowledge-base folders, if set) |
+| `word` | Read/write, confined to the documents folder (plus the output and knowledge-base folders, if set); the templates folder is read-only |
 | `excel` | Read-only, confined to the workbook folder |
 | `knowledge-base` | Reads the documents folder; writes only its vector index; network only to the endpoints you configure |
 | `pdf-to-md` | Reads the PDF folder, writes the output folder |
@@ -215,6 +220,20 @@ isn't a way to run one. These are MCP servers, launched as long-running stdio
 subprocesses, not scripts a skill shells out to. That matters most for `word`,
 which is session-based (`msword_open` returns a `session_id` and holds the
 document in memory until `msword_save`).
+
+## Context
+
+[`context/`](context) holds what Claude *reads* rather than what it runs:
+
+| Folder | Holds | Wired up by |
+|---|---|---|
+| [**`context/exemplars`**](context/exemplars) | Finished, good documents (`.md`, `.docx`, `.pptx`, `.pdf`) that show the house style to write in | nothing — point at one in the prompt |
+| [**`context/templates`**](context/templates) | Blank `.docx`/`.pptx` templates a new document is created from | `word` → `--templates-dir` (read-only) |
+
+An exemplar is read for guidance and never becomes the output; a template *is*
+the output's first draft. Each folder's README covers naming, conventions and
+how to ask. Document files there are **not committed** — see
+[`context/.gitignore`](context/.gitignore).
 
 ## Versioning
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r"""
-word.py (v4.0.2) - A single-file MCP (Model Context Protocol) stdio server
+word.py (v4.1.0) - A single-file MCP (Model Context Protocol) stdio server
 that gives an AI agent read/search/edit/generate access to Word .docx files.
 
 It follows a simple open -> edit -> save workflow (msword_open ... msword_save),
@@ -19,6 +19,11 @@ WHAT IT CAN DO
       build it up with the add_/insert_ tools and save it. Optionally base it on
       an existing document via 'template' - its styles, headers/footers and
       boilerplate are inherited and the template file is left untouched.
+    - Keep those blank templates in a folder of their own with --templates-dir
+      (e.g. the repo's context\templates). It is a READ-ONLY third root: its
+      .docx files can be listed, opened and used as the base for msword_create,
+      but every attempt to SAVE over one is refused, so a template cannot be
+      turned into someone's half-finished report.
     - On open, optionally MIRROR the document to Markdown into a knowledge-base
       folder for a local RAG index (the same idea as confluence.py's --kb-dir):
       headings, bullet/numbered lists and tables are converted; files are named
@@ -156,7 +161,7 @@ WHAT IT CANNOT DO
 
     To register the server by hand instead:
 
-        claude mcp add word --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\word.py --author Matt --docs-dir C:\Users\me\Documents\ai_docs --output-dir C:\Users\me\Documents\ai_generated --kb-dir C:\Users\me\Documents\rag_kb
+        claude mcp add word --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\word.py --author Matt --docs-dir C:\Users\me\Documents\ai_docs --output-dir C:\Users\me\Documents\ai_generated --templates-dir C:\path\to\claude-skills\context\templates --kb-dir C:\Users\me\Documents\rag_kb
 
     The --author value (MSWORD_AUTHOR) is stamped on every tracked change;
     omit it to fall back to the TRACKED_CHANGE_AUTHOR config constant below.
@@ -166,6 +171,10 @@ WHAT IT CANNOT DO
     The --output-dir folder (optional; MSWORD_OUTPUT_DIR or the OUTPUT_DIR
     constant) is where msword_create writes NEW documents; it is kept SEPARATE
     from the knowledge-base folder and defaults to the document root if unset.
+    The --templates-dir folder (optional; MSWORD_TEMPLATES_DIR or the
+    TEMPLATES_DIR constant) holds blank .docx templates. It is readable like the
+    document root but NEVER writable - point it at the context\templates folder
+    that ships with this repo, or at your own copy of it.
     The --kb-dir folder (optional; MSWORD_KB_DIR or the KB_DIR constant) turns
     on Markdown mirroring for a local RAG knowledge base; omit it to disable.
 
@@ -194,7 +203,7 @@ failed transfer" rule):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "4.0.2"
+__version__ = "4.1.0"
 
 # =============================================================================
 # CONFIGURATION  (all user-editable settings live here, nothing scattered below)
@@ -227,6 +236,22 @@ DOCS_DIR = None
 # left unset, msword_create falls back to writing inside DOCS_DIR.
 #   e.g. OUTPUT_DIR = r"C:\Users\you\Documents\ai_generated"
 OUTPUT_DIR = None
+
+# OPTIONAL folder of blank .docx TEMPLATES (letterhead, report layout, contract
+# boilerplate ...) - the 'context/templates' folder that ships with this repo is
+# exactly this. Set it here, or at launch with --templates-dir or the
+# MSWORD_TEMPLATES_DIR environment variable (which take priority over this
+# constant). It is a READ-ONLY third root:
+#   - its .docx files can be listed (msword_list_documents), opened
+#     (msword_open) and used as the base for a new document
+#     (msword_create template="..."), exactly like the document root;
+#   - every SAVE whose target lands inside it is REFUSED, so a template cannot
+#     be overwritten with a filled-in copy of itself. New documents always go to
+#     OUTPUT_DIR (or DOCS_DIR).
+# Keeping templates out of DOCS_DIR is the point: the folder stays a clean set
+# of blanks that the model can start from but can never edit in place.
+#   e.g. TEMPLATES_DIR = r"C:\path\to\claude-skills\context\templates"
+TEMPLATES_DIR = None
 
 # OPTIONAL knowledge-base (RAG) folder. If set, EVERY document opened with
 # msword_open is ALSO written out as a Markdown file into this folder, the same
@@ -378,17 +403,80 @@ def _require(args, key):
 
 def _permitted_roots():
     """
-    Folders the server is allowed to open/save inside: the DOCS_DIR
-    sandbox, plus the OUTPUT_DIR for created documents (when configured and
-    distinct). The knowledge-base folder is deliberately NOT included - the
-    model never supplies a path into it; the server writes there itself.
+    Folders the server is allowed to READ inside: the DOCS_DIR sandbox, plus the
+    OUTPUT_DIR for created documents and the TEMPLATES_DIR of blank templates
+    (each when configured). The knowledge-base folder is deliberately NOT
+    included - the model never supplies a path into it; the server writes there
+    itself.
+
+    Order matters: a relative name that could live in more than one root is
+    resolved against these in turn, and a not-yet-existing file (a save-as
+    target) falls back to the FIRST one, which must stay the document root.
+    Writes are further restricted - see _read_only_root().
     """
     roots = []
     if DOCS_DIR:
         roots.append(DOCS_DIR)
     if OUTPUT_DIR:
         roots.append(OUTPUT_DIR)
+    if TEMPLATES_DIR:
+        roots.append(TEMPLATES_DIR)
     return roots
+
+
+def _read_only_root(rp):
+    """
+    Return the READ-ONLY root containing resolved path `rp`, or None.
+
+    Only TEMPLATES_DIR is read-only: templates are a library of blanks to start
+    from, so they are readable everywhere a document is, but nothing may be
+    saved over them.
+    """
+    if not TEMPLATES_DIR:
+        return None
+    real_root = os.path.realpath(os.path.expanduser(TEMPLATES_DIR))
+    try:
+        # Different drives on Windows raise ValueError from commonpath.
+        if os.path.commonpath([real_root, rp]) == real_root:
+            return real_root
+    except ValueError:
+        return None
+    return None
+
+
+def _refuse_if_read_only(rp, what="Saving"):
+    """Guard every write: refuse a target inside the read-only templates folder
+    and say where the file should go instead."""
+    root = _read_only_root(rp)
+    if root is not None:
+        raise ToolError(
+            "{} into the templates folder is not allowed - it is read-only so "
+            "templates stay blank ({}). Use msword_create (which writes to the "
+            "output folder) to start a new document from a template, or save-as "
+            "to a path inside the documents/output folder.".format(what, root)
+        )
+
+
+def _root_label(rp):
+    """
+    Which configured folder a resolved path lives in: 'docs', 'output' or
+    'templates' (None if somehow outside them all). The MOST SPECIFIC root wins,
+    so a templates folder nested inside the document root is still reported as
+    'templates'.
+    """
+    label, best_len = None, -1
+    for name, root in (("docs", DOCS_DIR), ("output", OUTPUT_DIR),
+                       ("templates", TEMPLATES_DIR)):
+        if not root:
+            continue
+        real_root = os.path.realpath(os.path.expanduser(root))
+        try:
+            if os.path.commonpath([real_root, rp]) == real_root and \
+                    len(real_root) > best_len:
+                label, best_len = name, len(real_root)
+        except ValueError:
+            continue
+    return label
 
 
 def _contained_in_root(rp):
@@ -448,6 +536,7 @@ def _resolve_path(path):
         raise ToolError(
             "Path is outside the permitted folder(s) (DOCS_DIR"
             + (" / OUTPUT_DIR" if OUTPUT_DIR else "")
+            + (" / TEMPLATES_DIR" if TEMPLATES_DIR else "")
             + ") and was refused."
         )
     # Prefer a candidate that already exists (matters when a relative name
@@ -2237,17 +2326,27 @@ def tool_list_styles(args):
 
 def tool_list_documents(args):
     """
-    List the .docx files available under the permitted roots (document root, and
-    output folder if configured), so the model can find a file by name instead
-    of guessing its path. Optional 'query' filters by filename substring.
+    List the .docx files available under the permitted roots (document root,
+    plus the output and templates folders if configured), so the model can find
+    a file by name instead of guessing its path. Each entry carries a 'location'
+    ('docs' / 'output' / 'templates') so a blank template is never mistaken for
+    a real document. Optional 'query' filters by filename substring, and
+    'location' narrows the list to one folder (e.g. 'templates' to see what a
+    new document can be based on).
     """
     query = (args.get("query") or "").strip().lower()
+    want_location = (args.get("location") or "").strip().lower()
+    if want_location and want_location not in ("docs", "output", "templates"):
+        raise ToolError("location must be one of: docs, output, templates")
     docs = []
     for p in _all_docx_files():
         name = os.path.basename(p)
         if query and query not in name.lower():
             continue
-        entry = {"name": name, "path": _display_path(p)}
+        location = _root_label(p)
+        if want_location and location != want_location:
+            continue
+        entry = {"name": name, "path": _display_path(p), "location": location}
         try:
             st = os.stat(p)
             entry["size_bytes"] = st.st_size
@@ -2261,9 +2360,14 @@ def tool_list_documents(args):
         "count": len(docs),
         "docs_dir": DOCS_DIR,
         "output_dir": OUTPUT_DIR,
+        "templates_dir": TEMPLATES_DIR,
         "documents": docs,
         "note": "Open any of these by passing its 'path' (or just its name) to "
-                "msword_open.",
+                "msword_open." + (
+                    " Entries with location 'templates' are blank templates: "
+                    "read-only, so start a new document from one with "
+                    "msword_create(template=...) rather than editing it."
+                    if TEMPLATES_DIR else ""),
     }
 
 
@@ -2274,10 +2378,11 @@ def tool_create(args):
     persists it with msword_save (in place, or save-as elsewhere).
 
     With no 'template', the new document is blank. With 'template' set to an
-    existing document's name/path (resolved within the document root exactly as
-    msword_open resolves it), that document is loaded as the starting point -
-    inheriting its styles, headers/footers, page setup and any boilerplate - and
-    the new file is saved to the OUTPUT folder, leaving the template untouched.
+    existing document's name/path (resolved within the permitted roots - the
+    templates folder and the document root - exactly as msword_open resolves
+    it), that document is loaded as the starting point - inheriting its styles,
+    headers/footers, page setup and any boilerplate - and the new file is saved
+    to the OUTPUT folder, leaving the template untouched.
     """
     filename = _require(args, "filename")
     if not isinstance(filename, str) or not filename.strip():
@@ -2304,6 +2409,9 @@ def tool_create(args):
         raise ToolError("Could not create output folder {}: {}".format(out_dir, e))
 
     target = os.path.join(os.path.realpath(os.path.expanduser(out_dir)), name)
+    # The output folder must never be (or sit inside) the read-only templates
+    # folder - creating there would grow the library of blanks with real work.
+    _refuse_if_read_only(target, what="Creating a document")
 
     if len(SESSIONS) >= MAX_SESSIONS:
         raise ToolError(
@@ -3004,6 +3112,10 @@ def tool_save(args):
     else:
         target = session["path"]
 
+    # Checked for BOTH save-as and save-in-place: a session opened straight from
+    # a template would otherwise write the edited document back over the blank.
+    _refuse_if_read_only(target)
+
     try:
         doc.save(target)
     except PermissionError:
@@ -3117,12 +3229,13 @@ TOOLS = [
     },
     {
         "name": "msword_list_documents",
-        "description": "List the .docx files available under the document root (and the output folder, if configured), with each file's path (relative to its root), size and last-modified time. Use this to find a document by name before calling msword_open, instead of guessing paths. Optional 'query' filters the list by filename substring.",
+        "description": "List the .docx files available under the document root (and the output and templates folders, if configured), with each file's path (relative to its root), 'location' ('docs' / 'output' / 'templates'), size and last-modified time. Use this to find a document by name before calling msword_open, instead of guessing paths - and with location='templates' to see the blank templates a new document can be based on. Files in the templates folder are READ-ONLY: base a new document on one with msword_create(template=...) rather than opening and saving it. Optional 'query' filters the list by filename substring.",
         "handler": tool_list_documents,
         "inputSchema": {
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Optional case-insensitive filename substring filter, e.g. 'policy'."},
+                "location": {"type": "string", "enum": ["docs", "output", "templates"], "description": "Optional: list only the files in one folder - 'docs' (the document root), 'output' (generated documents) or 'templates' (blank templates)."},
             },
         },
     },
@@ -3142,13 +3255,13 @@ TOOLS = [
     },
     {
         "name": "msword_create",
-        "description": "Create a NEW .docx in the server's output folder (set with --output-dir, separate from the knowledge-base folder; falls back to the document root) and open it as a session. Supply just a 'filename' (a '.docx' extension is added if missing; any folder part is ignored so files always land in the output folder). Pass 'template' to base the new document on an existing one (a document name/path resolved within the document root, matched the same forgiving way as msword_open): its styles, headers/footers, page setup and boilerplate are inherited and the template file itself is never modified. Optionally pass 'title' to seed a Title heading (usually omitted when using a template that already has its own title). Then build the document with msword_add_heading/msword_add_paragraph/msword_add_table etc. and persist it with msword_save (omit its 'path' to save in place in the output folder).",
+        "description": "Create a NEW .docx in the server's output folder (set with --output-dir, separate from the knowledge-base folder; falls back to the document root) and open it as a session. Supply just a 'filename' (a '.docx' extension is added if missing; any folder part is ignored so files always land in the output folder). Pass 'template' to base the new document on an existing one (a name/path resolved within the templates folder and the document root, matched the same forgiving way as msword_open): its styles, headers/footers, page setup and boilerplate are inherited and the template file itself is never modified. Call msword_list_documents with location='templates' to see what blanks are available. Optionally pass 'title' to seed a Title heading (usually omitted when using a template that already has its own title). Then build the document with msword_add_heading/msword_add_paragraph/msword_add_table etc. and persist it with msword_save (omit its 'path' to save in place in the output folder).",
         "handler": tool_create,
         "inputSchema": {
             "type": "object",
             "properties": {
                 "filename": {"type": "string", "description": "Name for the new file, e.g. 'status-report.docx'. Any directory part is stripped; the file is created in the configured output folder."},
-                "template": {"type": "string", "description": "Optional: name or path of an existing .docx (in the document root) to use as the starting template, e.g. 'Report Template.docx'. Resolved like msword_open (relative to the document root, with fuzzy matching). The template is only read; the new file is saved to the output folder."},
+                "template": {"type": "string", "description": "Optional: name or path of an existing .docx to use as the starting template, e.g. 'Report Template.docx'. Looked up in the configured templates folder and the document root, resolved like msword_open (bare name, relative path or fuzzy match). The template is only read; the new file is saved to the output folder."},
                 "title": {"type": "string", "description": "Optional text for a Title heading added to the new document."},
                 "overwrite": {"type": "boolean", "default": False, "description": "Replace the file if it already exists (default false = error out)."},
             },
@@ -3556,6 +3669,10 @@ def serve():
     if DOCS_DIR:
         log("path sandbox DOCS_DIR = {}".format(DOCS_DIR))
     log("new-document output folder = {}".format(OUTPUT_DIR or DOCS_DIR))
+    if TEMPLATES_DIR:
+        log("templates folder (read-only) = {}".format(TEMPLATES_DIR))
+    else:
+        log("no templates folder configured (set --templates-dir to add one)")
     if KB_DIR:
         log("knowledge-base mirroring enabled -> {}".format(KB_DIR))
     else:
@@ -3591,13 +3708,16 @@ def serve():
 # =============================================================================
 def run_check():
     import tempfile
-    global DOCS_DIR, OUTPUT_DIR, KB_DIR
+    global DOCS_DIR, OUTPUT_DIR, TEMPLATES_DIR, KB_DIR
     docx_ver, lxml_ver = _versions()
     print("[check] interpreter : {}".format(sys.executable))
     print("[check] python-docx : {}".format(docx_ver))
     print("[check] lxml        : {}".format(lxml_ver))
 
     tmpdir = tempfile.mkdtemp(prefix="msword_check_")
+    # A SEPARATE temp folder for the templates-root test, so that root is a
+    # sibling of the document root exactly as it is on an endpoint.
+    tmpl_root = tempfile.mkdtemp(prefix="msword_check_tmpl_")
     # The self-test sandboxes itself to its own temp folder so it can run
     # before the endpoint's real DOCS_DIR exists.
     DOCS_DIR = tmpdir
@@ -4067,6 +4187,78 @@ def run_check():
         OUTPUT_DIR = None
         print("[check] create-new-document: PASS")
 
+        # --- Templates folder (--templates-dir): readable, never writable ----
+        # Configured as a root of its own, the way an endpoint points it at
+        # context\templates.
+        TEMPLATES_DIR = tmpl_root
+        OUTPUT_DIR = out_dir
+        lib_path = os.path.join(tmpl_root, "Blank Report Template.docx")
+        libdoc = docx.Document()
+        libdoc.add_heading("ACME REPORT", level=0)
+        libdoc.add_paragraph("TEMPLATE-LIBRARY-MARKER")
+        libdoc.save(lib_path)
+
+        # It is listed as a TEMPLATE, and the location filter does not leak
+        # files from the other roots (the most specific root wins, so the
+        # generated/ subfolder of the docs root still reads as 'output').
+        listed = tool_list_documents({"location": "templates"})
+        assert listed["count"] == 1 and \
+            listed["documents"][0]["name"] == "Blank Report Template.docx" and \
+            listed["documents"][0]["location"] == "templates", listed
+        assert all(d["location"] == "docs"
+                   for d in tool_list_documents({"location": "docs"})["documents"]), \
+            "location filter leaked files from another root"
+        assert any(d["location"] == "output"
+                   for d in tool_list_documents({"location": "output"})["documents"]), \
+            "output folder nested in the docs root was not labelled 'output'"
+
+        # A new document can be based on a template by bare (even fuzzy) name.
+        lcre = tool_create({"filename": "Q3 Report.docx",
+                            "template": "blank report template"})
+        assert os.path.dirname(lcre["path"]) == os.path.realpath(out_dir), \
+            "document from a library template did not land in the output folder"
+        ltext = tool_get_content({"session_id": lcre["session_id"],
+                                  "mode": "text"})["content"]
+        assert "TEMPLATE-LIBRARY-MARKER" in ltext, \
+            "template content was not inherited from the templates folder"
+        tool_save({"session_id": lcre["session_id"]})   # into the output folder: fine
+        # ... but it must not be saveable back over the template.
+        try:
+            tool_save({"session_id": lcre["session_id"], "path": lib_path})
+            raise AssertionError("expected save-as into the templates folder to be refused")
+        except ToolError:
+            pass
+        tool_close({"session_id": lcre["session_id"]})
+
+        # A template may be OPENED (to read it or list its styles), but saving
+        # that session in place is refused, so the blank stays blank.
+        lopen = tool_open({"path": "Blank Report Template.docx"})
+        tool_add_paragraph({"session_id": lopen["session_id"], "text": "Edited!"})
+        try:
+            tool_save({"session_id": lopen["session_id"]})
+            raise AssertionError("expected save-in-place over a template to be refused")
+        except ToolError:
+            pass
+        tool_close({"session_id": lopen["session_id"]})
+        reo2 = tool_open({"path": lib_path})
+        assert "Edited!" not in tool_get_content(
+            {"session_id": reo2["session_id"], "mode": "text"})["content"], \
+            "the template file was modified!"
+        tool_close({"session_id": reo2["session_id"]})
+
+        # A misconfigured output folder pointing INTO the templates folder is
+        # refused rather than filling the library with real documents.
+        OUTPUT_DIR = tmpl_root
+        try:
+            tool_create({"filename": "oops.docx"})
+            raise AssertionError("expected create-into-templates to be refused")
+        except ToolError:
+            pass
+
+        TEMPLATES_DIR = None
+        OUTPUT_DIR = None
+        print("[check] templates folder (read-only): PASS")
+
         # --- Markdown export / knowledge-base mirror on open ----------------
         kb_dir = os.path.join(tmpdir, "kb")
         KB_DIR = kb_dir
@@ -4484,10 +4676,12 @@ def run_check():
         traceback.print_exc()
     finally:
         # Clean up temp files; leave nothing behind. rmtree handles the
-        # subfolders the test creates (generated/, kb/, policies/).
+        # subfolders the test creates (generated/, kb/, policies/), and the
+        # separate templates root.
         try:
             import shutil
             shutil.rmtree(tmpdir, ignore_errors=True)
+            shutil.rmtree(tmpl_root, ignore_errors=True)
         except Exception:
             pass
 
@@ -4537,6 +4731,15 @@ def main():
              "location so created documents can be reopened and edited."
     )
     parser.add_argument(
+        "--templates-dir", default=os.environ.get("MSWORD_TEMPLATES_DIR"),
+        metavar="DIR",
+        help="Optional folder of blank .docx templates (e.g. the repo's "
+             "context\\templates). READ-ONLY: its files can be listed, opened "
+             "and passed as msword_create's 'template', but nothing can be "
+             "saved over them. Falls back to the MSWORD_TEMPLATES_DIR "
+             "environment variable, then the TEMPLATES_DIR config value."
+    )
+    parser.add_argument(
         "--kb-dir", default=os.environ.get("MSWORD_KB_DIR"), metavar="DIR",
         help="If set, every document opened with msword_open is ALSO written as "
              "a Markdown file into this folder for a local RAG knowledge base "
@@ -4546,13 +4749,15 @@ def main():
     )
     args = parser.parse_args()
 
-    global AUTHOR, DOCS_DIR, OUTPUT_DIR, KB_DIR
+    global AUTHOR, DOCS_DIR, OUTPUT_DIR, TEMPLATES_DIR, KB_DIR
     if args.author:
         AUTHOR = args.author
     if args.docs_dir:
         DOCS_DIR = args.docs_dir
     if args.output_dir:
         OUTPUT_DIR = args.output_dir
+    if args.templates_dir:
+        TEMPLATES_DIR = args.templates_dir
     if args.kb_dir:
         KB_DIR = args.kb_dir
 
@@ -4570,6 +4775,25 @@ def main():
         log("FATAL: the configured document root does not exist or is not a "
             "directory: {}".format(DOCS_DIR))
         sys.exit(2)
+
+    # The templates folder is optional, but a typo in it would silently mean
+    # "no templates", so a configured-but-missing folder fails loudly instead.
+    if TEMPLATES_DIR:
+        if not os.path.isdir(TEMPLATES_DIR):
+            log("FATAL: the configured templates folder does not exist or is "
+                "not a directory: {}".format(TEMPLATES_DIR))
+            sys.exit(2)
+        # Templates are read-only, so the folder must not be - or contain - the
+        # folders documents are saved into; that would refuse every save.
+        for label, folder in (("document root", DOCS_DIR),
+                              ("output folder", OUTPUT_DIR or DOCS_DIR)):
+            real_folder = os.path.realpath(os.path.expanduser(folder))
+            if _read_only_root(real_folder) is not None:
+                log("FATAL: the templates folder ({}) is the same as - or "
+                    "contains - the {} ({}). Templates are read-only, so every "
+                    "save would be refused. Point --templates-dir at a folder "
+                    "of its own.".format(TEMPLATES_DIR, label, folder))
+                sys.exit(2)
 
     try:
         serve()
