@@ -1,8 +1,8 @@
 {
   "name": "confluence",
   "displayName": "Confluence (read-only)",
-  "version": "1.3.2",
-  "description": "Search and read Confluence pages, optionally mirroring them to Markdown for a local RAG knowledge base.",
+  "version": "1.4.0",
+  "description": "Search and read Confluence pages across one or two instances, optionally mirroring them to Markdown for a local RAG knowledge base.",
   "author": {
     "name": "mcnamee"
   },
@@ -17,13 +17,28 @@
     "base_url": {
       "type": "string",
       "title": "Confluence base URL",
-      "description": "e.g. https://confluence.internal.example.com - no trailing slash. REQUIRED.",
+      "description": "e.g. https://confluence.internal.example.com - no trailing slash. REQUIRED. This is the DEFAULT server: prompts that do not name a server use it.",
       "required": true
+    },
+    "name": {
+      "type": "string",
+      "title": "Name for this Confluence server",
+      "description": "Optional, e.g. Green. Only needed if you configure a second server below - it is how a prompt picks between them. Defaults to 'Primary'."
+    },
+    "base_url_2": {
+      "type": "string",
+      "title": "Second Confluence base URL",
+      "description": "Optional. Leave blank if you only have one Confluence. If set, it also needs its own token in the CONFLUENCE_TOKEN_2 environment variable."
+    },
+    "name_2": {
+      "type": "string",
+      "title": "Name for the second Confluence server",
+      "description": "Optional, e.g. Blue. Say it in a prompt ('...on Blue') to query the second server. Defaults to 'Secondary'."
     },
     "kb_dir": {
       "type": "directory",
       "title": "Knowledge-base folder",
-      "description": "Optional. Every page read is also saved as Markdown here."
+      "description": "Optional. Every page read is also saved as Markdown here (shared by both servers)."
     },
     "python": {
       "type": "string",
@@ -41,9 +56,13 @@
       ],
       "env": {
         "PYTHONUTF8": "1",
+        "CONFLUENCE_NAME": "${user_config.name}",
         "CONFLUENCE_BASE_URL": "${user_config.base_url}",
-        "CONFLUENCE_KB_DIR": "${user_config.kb_dir}",
-        "CONFLUENCE_TOKEN": "${CONFLUENCE_TOKEN}"
+        "CONFLUENCE_TOKEN": "${CONFLUENCE_TOKEN}",
+        "CONFLUENCE_NAME_2": "${user_config.name_2}",
+        "CONFLUENCE_BASE_URL_2": "${user_config.base_url_2}",
+        "CONFLUENCE_TOKEN_2": "${CONFLUENCE_TOKEN_2}",
+        "CONFLUENCE_KB_DIR": "${user_config.kb_dir}"
       }
     }
   }

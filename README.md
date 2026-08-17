@@ -42,7 +42,7 @@ Plus **[`context/`](context)** — the reference material they work from:
 | [**word**](plugins/word) | 4.1.0 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
 | [**excel**](plugins/excel) | 3.0.1 | Read and analyse workbooks; parses `.xlsx` directly, so Excel isn't needed | _none_ |
 | [**outlook**](plugins/outlook) | 3.0.1 | Read local Outlook mail and calendar via COM, with a content blacklist | `pywin32` |
-| [**confluence**](plugins/confluence) | 1.3.2 | Search and read Confluence pages | _none_ |
+| [**confluence**](plugins/confluence) | 1.4.0 | Search and read Confluence pages, across one or two instances | _none_ |
 | [**jira**](plugins/jira) | 1.1.3 | Query issues, sprints and projects (Jira Data Center v2 API) | _none_ |
 | [**knowledge-base**](plugins/knowledge-base) | 2.0.3 | True RAG over your own Markdown: local ChromaDB index + your embeddings API | `chromadb` |
 | [**pdf-to-md**](plugins/pdf-to-md) | 4.0.3 | Convert PDFs to Markdown with tables preserved | `pymupdf pymupdf4llm` |
@@ -98,7 +98,7 @@ setx KB_EMBED_API_KEY "your-api-key"
 
 | Plugin | Environment variable |
 |---|---|
-| `confluence` | `CONFLUENCE_TOKEN` |
+| `confluence` | `CONFLUENCE_TOKEN`, plus `CONFLUENCE_TOKEN_2` if you point it at a second Confluence instance |
 | `jira` | `JIRA_TOKEN` |
 | `knowledge-base` | `KB_EMBED_API_KEY` |
 

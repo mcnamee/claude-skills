@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-confluence.py (v1.3.2) - A single-file MCP (Model Context Protocol) server
-for querying Confluence Data Center (tested against the 9.x v1 REST API)
-using only the Python 3 standard library.
+confluence.py (v1.4.0) - A single-file MCP (Model Context Protocol) server
+for querying ONE OR TWO Confluence Data Center instances (tested against the
+9.x v1 REST API) using only the Python 3 standard library.
 
 It speaks MCP over stdio (newline-delimited JSON-RPC 2.0), the transport an
 MCP client launches for a `type: stdio` server. No third-party packages are
@@ -13,29 +13,76 @@ Tools exposed (read-only / query):
   - confluence_search_cql       : advanced search using raw CQL
   - confluence_get_page         : fetch one page by numeric ID (with body text)
   - confluence_get_page_by_title: fetch one page by exact title + space key
+  - confluence_list_pages_under : list pages beneath a parent page
 
-Configuration is read from environment variables (the natural fit for an
-MCP client's `env` block); non-secret settings can be overridden by
-command-line arguments. CREDENTIALS ARE ENV-VAR ONLY - there are no
---token/--user/--password flags, because command-line arguments are visible
-to other local users in process listings:
+TWO CONFLUENCE SERVERS
+----------------------
+A second Confluence instance is optional. Configure it and each server gets a
+friendly name (e.g. Green and Blue); every tool then takes an extra optional
+'server' argument:
 
+  - 'server' omitted        -> the FIRST server is used. This is the default,
+                               so ordinary prompts need not mention a server.
+  - 'server': "Blue"        -> the SECOND server is used. Claude passes this
+                               when the user names it, e.g. "find content
+                               about X on Blue". Matching is case-insensitive.
+
+With two servers configured, output is labelled with the server it came from,
+and knowledge-base files are named 'Confluence <name> - <title>.md' so the two
+instances cannot overwrite each other. Configure only one server and the
+behaviour is exactly as it was before: no 'server' argument, no labels, and
+files stay named 'Confluence - <title>.md'.
+
+Content IDs are NOT shared between instances: page 393217 on Green is a
+different page from 393217 on Blue.
+
+CONFIGURATION
+-------------
+Read from environment variables (the natural fit for an MCP client's `env`
+block); non-secret settings can be overridden by command-line arguments.
+Precedence is CLI flag > environment variable > default.
+
+CREDENTIALS ARE ENV-VAR ONLY - there are no --token/--user/--password flags,
+because command-line arguments are visible to other local users in process
+listings.
+
+  First server (required):
+  CONFLUENCE_NAME       friendly name used to select it in a prompt
+                        (--name, default "Primary")
   CONFLUENCE_BASE_URL   e.g. https://confluence.internal.example.com
-                        (include any context path, no trailing slash)
+                        (--base-url; include any context path, no trailing slash)
   CONFLUENCE_TOKEN      Personal Access Token (preferred; sent as Bearer)
   CONFLUENCE_USER       username   } basic-auth fallback if no token is given
   CONFLUENCE_PASSWORD   password   }
-  CONFLUENCE_VERIFY_SSL "false" to disable TLS verification (default: verify)
-  CONFLUENCE_CA_CERT    path to a PEM CA bundle for an internal CA
-  CONFLUENCE_TIMEOUT    request timeout in seconds (default: 30)
-  CONFLUENCE_MAX_BODY   truncate page bodies to N chars (0 = unlimited, default 0)
-                        (this limit applies only to the text returned to the
-                        model; files saved to CONFLUENCE_KB_DIR are never truncated)
+  CONFLUENCE_VERIFY_SSL "false" to disable TLS verification (--insecure;
+                        default: verify)
+  CONFLUENCE_CA_CERT    path to a PEM CA bundle for an internal CA (--ca-cert)
+
+  Second server (optional - set CONFLUENCE_BASE_URL_2 to enable it):
+  CONFLUENCE_NAME_2       friendly name (--name-2, default "Secondary")
+  CONFLUENCE_BASE_URL_2   base URL of the second instance (--base-url-2)
+  CONFLUENCE_TOKEN_2      its own Personal Access Token
+  CONFLUENCE_USER_2       username   } basic-auth fallback for the second server
+  CONFLUENCE_PASSWORD_2   password   }
+  CONFLUENCE_VERIFY_SSL_2 TLS verification for the second server (--insecure-2);
+                          falls back to the first server's setting
+  CONFLUENCE_CA_CERT_2    CA bundle for the second server (--ca-cert-2);
+                          falls back to CONFLUENCE_CA_CERT
+
+  Shared by both servers:
+  CONFLUENCE_TIMEOUT    request timeout in seconds (--timeout, default: 30)
+  CONFLUENCE_MAX_BODY   truncate page bodies to N chars (--max-body,
+                        0 = unlimited, default 0). This limit applies only to
+                        the text returned to the model; files saved to
+                        CONFLUENCE_KB_DIR are never truncated.
   CONFLUENCE_KB_DIR     if set, every page that is read is also saved as a
                         Markdown file into this folder, for feeding a local RAG
-                        knowledge base. Files are named 'Confluence - <title>.md'
-                        and overwritten if they already exist. Leave unset to
-                        disable saving.
+                        knowledge base (--kb-dir). Files are overwritten if they
+                        already exist. Leave unset to disable saving.
+
+The second server is all-or-nothing: if CONFLUENCE_BASE_URL_2 is set without
+credentials, the server refuses to start rather than quietly answering "Blue"
+questions from the first instance.
 
 INSTALLING INTO CLAUDE CODE
 ---------------------------
@@ -45,22 +92,43 @@ This server ships as the "confluence" Claude Code plugin (its manifest is
     /plugin marketplace add C:\path\to\claude-skills
     /plugin install confluence@mcnamee-claude-skills
 
-Claude Code prompts for the base URL, the optional knowledge-base folder and
-the Python interpreter. CONFLUENCE_TOKEN is NOT stored in the plugin - set it
-as a Windows user environment variable before starting Claude Code, and the
-plugin picks it up from there. See README.md next to this file for the full
+Claude Code prompts for each server's name and base URL, the optional
+knowledge-base folder and the Python interpreter. Tokens are NOT stored in the
+plugin - set them as Windows user environment variables before starting Claude
+Code, and the plugin picks them up from there:
+
+    setx CONFLUENCE_TOKEN   "token-for-the-first-server"
+    setx CONFLUENCE_TOKEN_2 "token-for-the-second-server"
+
+(`setx` does not affect processes that are already running - quit VS Code
+completely and reopen it.) See README.md next to this file for the full
 settings reference.
 
+TESTING
+-------
 Diagnostic output goes ONLY to stderr. stdout is reserved for the JSON-RPC
 stream - writing anything else there would corrupt the protocol.
 
-Run `--check` to connect once, print who you are authenticated as and how
-many spaces are visible (to stderr), then exit without starting the server.
+`--check` connects to EVERY configured server, prints who you are
+authenticated as and how many spaces are visible (to stderr), then exits
+without starting the server. It exits non-zero if any server fails, so it is
+the fastest way to prove a two-server setup before wiring it in:
+
+    & "C:\path\to\python.exe" confluence.py --check
+
+A quick two-server smoke test from PowerShell, without touching the plugin
+config (note the tokens go in the environment, never in the arguments):
+
+    $env:CONFLUENCE_TOKEN   = "green-token"
+    $env:CONFLUENCE_TOKEN_2 = "blue-token"
+    & "C:\path\to\python.exe" confluence.py `
+        --name Green --base-url https://green.confluence.example.com `
+        --name-2 Blue --base-url-2 https://blue.confluence.example.com --check
 """
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "1.3.2"
+__version__ = "1.4.0"
 
 import argparse
 import base64
@@ -77,6 +145,10 @@ import urllib.request
 
 SERVER_NAME = "confluence-mcp"
 SERVER_VERSION = __version__
+# Friendly names used when the user does not supply one. They only ever show up
+# in output (or in a tool's 'server' enum) when a second server is configured.
+DEFAULT_NAME_1 = "Primary"
+DEFAULT_NAME_2 = "Secondary"
 # Protocol version we default to if the client does not send one. We echo the
 # client's requested version when possible (see handle_initialize) so that we
 # stay compatible with whatever the host negotiated.
@@ -413,16 +485,23 @@ class ConfluenceError(Exception):
 
 
 class ConfluenceClient:
-    def __init__(self, base_url, token=None, user=None, password=None,
+    def __init__(self, name, base_url, token=None, user=None, password=None,
                  verify_ssl=True, ca_cert=None, timeout=30, max_body=0,
                  kb_dir=None):
+        if not name:
+            raise ValueError("name is required")
         if not base_url:
             raise ValueError("base_url is required")
+        self.name = name
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.max_body = max_body
         # Folder to mirror pages into as Markdown; None/empty disables saving.
         self.kb_dir = kb_dir or None
+        # Whether output should say which server it came from. ConfluenceServers
+        # turns this on when more than one server is configured; with a single
+        # server the output stays exactly as it was before multi-server support.
+        self.label_output = False
 
         # Build auth header. Prefer a Personal Access Token (Bearer) if given.
         self.headers = {"Accept": "application/json"}
@@ -432,14 +511,16 @@ class ConfluenceClient:
             raw = "{}:{}".format(user, password).encode("utf-8")
             self.headers["Authorization"] = "Basic " + base64.b64encode(raw).decode("ascii")
         else:
+            # main() validates credentials first and prints the exact env-var
+            # names for the server in question; this is the backstop.
             raise ValueError(
-                "No credentials: set CONFLUENCE_TOKEN, or CONFLUENCE_USER and "
-                "CONFLUENCE_PASSWORD."
+                "No credentials for Confluence server {!r}.".format(name)
             )
 
         # Build the TLS context. Only relevant for https:// URLs; ignored for
         # plain http. A custom CA bundle takes precedence; otherwise we either
         # verify normally or, if explicitly asked, disable verification.
+        self.verify_ssl = bool(verify_ssl) or bool(ca_cert)
         if ca_cert:
             self.ssl_context = ssl.create_default_context(cafile=ca_cert)
         elif not verify_ssl:
@@ -448,6 +529,18 @@ class ConfluenceClient:
             self.ssl_context.verify_mode = ssl.CERT_NONE
         else:
             self.ssl_context = ssl.create_default_context()
+
+    def _on_server(self):
+        """' on <name>' when more than one server is configured, else ''."""
+        return " on {}".format(self.name) if self.label_output else ""
+
+    def _fail(self, message):
+        """
+        Raise a ConfluenceError, prefixed with this server's name when more than
+        one server is configured (so the user can see WHICH instance failed).
+        """
+        prefix = "[{}] ".format(self.name) if self.label_output else ""
+        raise ConfluenceError(prefix + message)
 
     def _get(self, path, params=None):
         """Perform a GET against the REST API and return parsed JSON."""
@@ -467,18 +560,18 @@ class ConfluenceClient:
                 detail = e.read().decode("utf-8", "replace")[:500]
             except Exception:
                 pass
-            raise ConfluenceError(
+            self._fail(
                 "HTTP {} from Confluence for {}{}".format(
                     e.code, url, (": " + detail) if detail else ""
                 )
             )
         except urllib.error.URLError as e:
-            raise ConfluenceError(
+            self._fail(
                 "Could not reach Confluence at {} ({}). Check the base URL, "
                 "network reachability and TLS settings.".format(url, e.reason)
             )
         except ssl.SSLError as e:
-            raise ConfluenceError(
+            self._fail(
                 "TLS error talking to Confluence ({}). For an internal CA, set "
                 "CONFLUENCE_CA_CERT, or CONFLUENCE_VERIFY_SSL=false to disable "
                 "verification.".format(e)
@@ -486,7 +579,7 @@ class ConfluenceClient:
         try:
             return json.loads(body.decode("utf-8"))
         except (ValueError, UnicodeDecodeError) as e:
-            raise ConfluenceError("Confluence returned a non-JSON response: {}".format(e))
+            self._fail("Confluence returned a non-JSON response: {}".format(e))
 
     def _abs_link(self, data, link):
         """Build an absolute web URL from a result's webui link."""
@@ -509,6 +602,10 @@ class ConfluenceClient:
         }
         data = self._get("/rest/api/content/search", params)
         results = data.get("results", []) or []
+        # With two servers configured, every result carries the server it came
+        # from: content IDs are per-instance, so the follow-up read has to be
+        # aimed at the same one.
+        server_field = "  server={}".format(self.name) if self.label_output else ""
         lines = []
         for item in results:
             space = (item.get("space") or {}).get("key", "?")
@@ -519,14 +616,22 @@ class ConfluenceClient:
                 data, (item.get("_links") or {}).get("webui", "")
             )
             lines.append(
-                "- id={id}  type={type}  space={space}\n  title: {title}\n  url: {url}".format(
-                    id=cid, type=ctype, space=space, title=title, url=link
+                "- id={id}{server}  type={type}  space={space}\n  title: {title}\n  url: {url}".format(
+                    id=cid, server=server_field, type=ctype, space=space,
+                    title=title, url=link
                 )
             )
-        header = "Found {} result(s) for CQL: {}".format(len(lines), cql)
+        header = "Found {} result(s){} for CQL: {}".format(
+            len(lines), self._on_server(), cql)
         if not lines:
             return header + "\n(no matching content)"
-        return header + "\n\n" + "\n\n".join(lines)
+        footer = ""
+        if self.label_output:
+            footer = (
+                '\n\n(These content IDs exist on {0} only - pass server="{0}" '
+                "when reading or listing them.)".format(self.name)
+            )
+        return header + "\n\n" + "\n\n".join(lines) + footer
 
     def _render_page(self, page):
         """Format a single content object (with body.storage) as text."""
@@ -542,13 +647,17 @@ class ConfluenceClient:
         if self.max_body and len(text) > self.max_body:
             text = text[: self.max_body]
             truncated_note = "\n\n[...body truncated to {} characters...]".format(self.max_body)
-        meta = (
-            "Title: {title}\nID: {id}\nType: {type}\nSpace: {space}\n"
-            "Version: {version}\nURL: {url}\n\n--- Content ---\n".format(
-                title=title, id=cid, type=ctype, space=space,
-                version=version, url=link,
-            )
-        )
+        fields = [
+            ("Title", title),
+            ("ID", cid),
+            ("Type", ctype),
+            ("Space", space),
+        ]
+        # Only name the server when there is more than one to tell apart.
+        if self.label_output:
+            fields.append(("Server", self.name))
+        fields.extend([("Version", version), ("URL", link)])
+        meta = "".join("{}: {}\n".format(k, v) for k, v in fields) + "\n--- Content ---\n"
         rendered = meta + (text if text else "(this page has no readable body content)") + truncated_note
 
         # If a knowledge-base folder is configured, mirror the page to Markdown.
@@ -569,26 +678,35 @@ class ConfluenceClient:
         Write the page to '<kb_dir>/Confluence - <title>.md', overwriting any
         existing file. Returns the path written; raises OSError on failure.
 
+        With two servers configured the filename becomes
+        'Confluence <server> - <title>.md', so a page with the same title on
+        both instances produces two files instead of one overwriting the other.
+
         The FULL body is always saved (the CONFLUENCE_MAX_BODY limit only trims
         what is returned to the model, not what is stored for RAG).
         """
         md_body = html_to_markdown(storage)
         stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        server_line = "- Server: {}\n".format(self.name) if self.label_output else ""
         header = (
             "# {title}\n\n"
             "- Source: {url}\n"
+            "{server_line}"
             "- Space: {space}\n"
             "- Version: {version}\n"
             "- Fetched: {stamp}\n\n"
             "---\n\n"
-        ).format(title=title, url=link or "(unknown)", space=space,
-                 version=version, stamp=stamp)
+        ).format(title=title, url=link or "(unknown)", server_line=server_line,
+                 space=space, version=version, stamp=stamp)
         content = header + (md_body if md_body else "(no readable body content)\n")
 
         # Create the folder if needed, then write. newline="\n" keeps endings
         # consistent and avoids CRLF doubling on Windows.
         os.makedirs(self.kb_dir, exist_ok=True)
-        filename = "Confluence - " + safe_filename(title) + ".md"
+        prefix = "Confluence - "
+        if self.label_output:
+            prefix = "Confluence {} - ".format(safe_filename(self.name, 40))
+        filename = prefix + safe_filename(title) + ".md"
         path = os.path.join(self.kb_dir, filename)
         with open(path, "w", encoding="utf-8", newline="\n") as fh:
             fh.write(content)
@@ -614,7 +732,8 @@ class ConfluenceClient:
         data = self._get("/rest/api/content", params)
         results = data.get("results", []) or []
         if not results:
-            return "No page titled {!r} found in space {!r}.".format(title, space)
+            return "No page titled {!r} found in space {!r}{}.".format(
+                title, space, self._on_server())
         return self._render_page(results[0])
 
     def resolve_page_id(self, title, space):
@@ -630,7 +749,8 @@ class ConfluenceClient:
         results = data.get("results", []) or []
         if not results:
             raise ConfluenceError(
-                "No page titled {!r} found in space {!r}.".format(title, space)
+                "No page titled {!r} found in space {!r}{}.".format(
+                    title, space, self._on_server())
             )
         return str(results[0].get("id"))
 
@@ -667,11 +787,86 @@ class ConfluenceClient:
         return self.search(cql, limit)
 
 
+class ConfluenceServers:
+    """
+    The one or two configured Confluence instances, in configuration order.
+
+    The FIRST entry is the default: a tool call that does not name a server
+    goes there, which is what keeps ordinary prompts ("search Confluence for
+    X") working without the user thinking about instances.
+    """
+
+    def __init__(self, clients):
+        if not clients:
+            raise ValueError("at least one Confluence server is required")
+        self.clients = list(clients)
+        # Output is only labelled with a server name when there is more than
+        # one server to tell apart - a single-server setup looks exactly as it
+        # did before multi-server support was added.
+        multi = len(self.clients) > 1
+        for client in self.clients:
+            client.label_output = multi
+
+    @property
+    def multi(self):
+        return len(self.clients) > 1
+
+    @property
+    def default(self):
+        return self.clients[0]
+
+    def names(self):
+        return [client.name for client in self.clients]
+
+    def resolve(self, selector):
+        """
+        Return the client for a tool call's 'server' argument.
+
+        Accepts the server's name (case-insensitive), an unambiguous part of it
+        ("blue" for "Blue Wiki"), or its 1-based position ("1"/"2"). An empty or
+        missing selector means the default server. Anything else is an error
+        naming the servers that ARE configured, so the agent can retry - never
+        a silent fall back to the default, which would answer a question about
+        one instance with content from the other.
+        """
+        if selector is None:
+            return self.default
+        want = str(selector).strip()
+        if not want:
+            return self.default
+
+        for client in self.clients:
+            if client.name.lower() == want.lower():
+                return client
+
+        # 1-based position, so 'server: "2"' works even without the name.
+        if want.isdigit():
+            index = int(want)
+            if 1 <= index <= len(self.clients):
+                return self.clients[index - 1]
+
+        # Last resort: a unique partial match, e.g. "blue" -> "Blue Wiki".
+        partial = [c for c in self.clients if want.lower() in c.name.lower()]
+        if len(partial) == 1:
+            return partial[0]
+
+        raise ConfluenceError(
+            "Unknown Confluence server {!r}. Configured server(s): {}. Omit "
+            "'server' to use {}.".format(
+                want, ", ".join(repr(n) for n in self.names()), self.default.name
+            )
+        )
+
+
 # ---------------------------------------------------------------------------
 # Tool definitions and dispatch
 # ---------------------------------------------------------------------------
-def tool_definitions():
-    """Return the list advertised via tools/list (JSON-Schema input specs)."""
+def base_tool_definitions():
+    """
+    The tools as advertised when a single server is configured (JSON-Schema
+    input specs). tool_definitions() adds the 'server' argument on top when a
+    second server is configured.
+    """
     return [
         {
             "name": "confluence_search",
@@ -811,6 +1006,47 @@ def tool_definitions():
     ]
 
 
+def tool_definitions(servers):
+    """
+    Return the tool list for this configuration.
+
+    With one server it is base_tool_definitions() untouched. With two, every
+    tool grows an optional 'server' argument whose enum lists the configured
+    names, which is what lets a prompt like "find X on Blue" reach the right
+    instance - and, just as importantly, lets Claude see that a second instance
+    exists at all.
+    """
+    tools = base_tool_definitions()
+    if not servers.multi:
+        return tools
+
+    names = servers.names()
+    default_name = servers.default.name
+    others = [n for n in names if n != default_name]
+    example = others[0] if others else default_name
+    server_property = {
+        "type": "string",
+        "enum": names,
+        "description": (
+            "Which Confluence server to query. Omit this for the default "
+            "server ('{default}'). Set it only when the user names a server, "
+            "e.g. \"...on {example}\" -> server=\"{example}\". Content IDs are "
+            "NOT shared between servers, so read a page from the same server "
+            "the search that found it used."
+        ).format(default=default_name, example=example),
+    }
+    suffix = (
+        " Queries the '{default}' server unless 'server' names another one "
+        "({names})."
+    ).format(default=default_name, names=", ".join(names))
+
+    for tool in tools:
+        tool["description"] += suffix
+        schema = tool.setdefault("inputSchema", {})
+        schema.setdefault("properties", {})["server"] = dict(server_property)
+    return tools
+
+
 def clamp_limit(value, default=25, lo=1, hi=50):
     """Coerce a user-supplied limit into a sane integer range."""
     try:
@@ -820,13 +1056,17 @@ def clamp_limit(value, default=25, lo=1, hi=50):
     return max(lo, min(hi, n))
 
 
-def call_tool(client, name, arguments):
+def call_tool(servers, name, arguments):
     """
     Execute a named tool. Returns the text payload on success.
     Raises ConfluenceError (or ValueError) on a tool-domain failure, which the
     caller reports back as an MCP tool error (isError=true).
+
+    The optional 'server' argument picks the Confluence instance; without it
+    the call goes to the first configured server.
     """
     arguments = arguments or {}
+    client = servers.resolve(arguments.get("server"))
     if name == "confluence_search":
         query = arguments.get("query")
         if not query:
@@ -895,7 +1135,7 @@ def handle_initialize(params):
     }
 
 
-def handle_message(client, msg):
+def handle_message(servers, msg):
     """
     Process one JSON-RPC message object.
     Returns a response dict, or None for notifications (which get no reply).
@@ -923,7 +1163,7 @@ def handle_message(client, msg):
 
     # --- tools ---
     if method == "tools/list":
-        return make_result(msg_id, {"tools": tool_definitions()})
+        return make_result(msg_id, {"tools": tool_definitions(servers)})
 
     if method == "tools/call":
         params = msg.get("params") or {}
@@ -936,7 +1176,7 @@ def handle_message(client, msg):
                 "isError": True,
             })
         try:
-            text = call_tool(client, name, arguments)
+            text = call_tool(servers, name, arguments)
             return make_result(msg_id, {
                 "content": [{"type": "text", "text": text}],
                 "isError": False,
@@ -960,7 +1200,7 @@ def handle_message(client, msg):
     return None
 
 
-def serve(client):
+def serve(servers):
     """
     Main stdio loop. MCP stdio framing is newline-delimited JSON: one JSON-RPC
     message per line, no embedded newlines, responses written the same way.
@@ -985,13 +1225,13 @@ def serve(client):
         if isinstance(incoming, list):
             responses = []
             for item in incoming:
-                resp = handle_message(client, item)
+                resp = handle_message(servers, item)
                 if resp is not None:
                     responses.append(resp)
             if responses:
                 _write(responses)
         else:
-            resp = handle_message(client, incoming)
+            resp = handle_message(servers, incoming)
             if resp is not None:
                 _write(resp)
 
@@ -1020,11 +1260,57 @@ def _write(obj):
 # ---------------------------------------------------------------------------
 # Entry point / configuration
 # ---------------------------------------------------------------------------
-def env_bool(name, default=True):
+def env_str(name):
+    """
+    Read an environment variable, treating blank as unset.
+
+    A blank value is what an MCP client substitutes for an optional setting the
+    user left empty (e.g. "${user_config.base_url_2}" with no second server), so
+    it must mean "not configured" rather than "configured as empty". An
+    unexpanded "${...}" placeholder - what a client leaves behind when the
+    variable it refers to does not exist - means the same thing.
+    """
     val = os.environ.get(name)
     if val is None:
+        return None
+    val = val.strip()
+    if val.startswith("${") and val.endswith("}"):
+        return None
+    return val or None
+
+
+def env_bool_opt(name):
+    """Tri-state boolean env var: True, False, or None when unset/blank."""
+    val = env_str(name)
+    if val is None:
+        return None
+    return val.lower() not in ("0", "false", "no", "off")
+
+
+def env_bool(name, default=True):
+    val = env_bool_opt(name)
+    return default if val is None else val
+
+
+def env_int(name, default):
+    """Integer env var, falling back to the default if unset or not a number."""
+    val = env_str(name)
+    if val is None:
         return default
-    return val.strip().lower() not in ("0", "false", "no", "off", "")
+    try:
+        return int(val)
+    except ValueError:
+        log("WARNING: {} is not a whole number ({!r}); using {}.".format(
+            name, val, default))
+        return default
+
+
+def clean(value):
+    """Strip a CLI/env string value, mapping blank (and None) to None."""
+    if value is None:
+        return None
+    value = str(value).strip()
+    return value or None
 
 
 def build_arg_parser():
@@ -1032,44 +1318,79 @@ def build_arg_parser():
         description="MCP server for querying Confluence Data Center (stdio transport).",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    p.add_argument("--base-url", default=os.environ.get("CONFLUENCE_BASE_URL"),
+    # --- first server (the default one) ---------------------------------
+    p.add_argument("--name", default=env_str("CONFLUENCE_NAME"),
+                   help="Friendly name for the first Confluence server, used to "
+                        "pick it in a prompt (env CONFLUENCE_NAME, default "
+                        "'{}'). Only shown when a second server is "
+                        "configured.".format(DEFAULT_NAME_1))
+    p.add_argument("--base-url", default=env_str("CONFLUENCE_BASE_URL"),
                    help="Confluence base URL incl. any context path, no trailing slash "
                         "(env CONFLUENCE_BASE_URL).")
     # SECURITY: credentials are deliberately env-var ONLY (CONFLUENCE_TOKEN, or
-    # CONFLUENCE_USER + CONFLUENCE_PASSWORD). Command-line arguments are visible
-    # to other local users in process listings, so no --token/--user/--password
-    # flags are offered.
-    p.add_argument("--ca-cert", default=os.environ.get("CONFLUENCE_CA_CERT"),
+    # CONFLUENCE_USER + CONFLUENCE_PASSWORD; add the _2 suffix for the second
+    # server). Command-line arguments are visible to other local users in
+    # process listings, so no --token/--user/--password flags are offered.
+    p.add_argument("--ca-cert", default=env_str("CONFLUENCE_CA_CERT"),
                    help="Path to a PEM CA bundle for an internal CA "
                         "(env CONFLUENCE_CA_CERT).")
     p.add_argument("--insecure", action="store_true",
                    default=not env_bool("CONFLUENCE_VERIFY_SSL", True),
                    help="Disable TLS certificate verification "
                         "(env CONFLUENCE_VERIFY_SSL=false).")
+
+    # --- second server (optional) ---------------------------------------
+    p.add_argument("--name-2", default=env_str("CONFLUENCE_NAME_2"),
+                   help="Friendly name for the second Confluence server, e.g. "
+                        "'Blue' - say it in a prompt to query that server "
+                        "(env CONFLUENCE_NAME_2, default '{}').".format(DEFAULT_NAME_2))
+    p.add_argument("--base-url-2", default=env_str("CONFLUENCE_BASE_URL_2"),
+                   help="Base URL of a SECOND Confluence instance (env "
+                        "CONFLUENCE_BASE_URL_2). Setting this enables the second "
+                        "server, which then needs its own CONFLUENCE_TOKEN_2 (or "
+                        "CONFLUENCE_USER_2 + CONFLUENCE_PASSWORD_2). Leave unset "
+                        "for a single-server setup.")
+    p.add_argument("--ca-cert-2", default=env_str("CONFLUENCE_CA_CERT_2"),
+                   help="CA bundle for the second server (env "
+                        "CONFLUENCE_CA_CERT_2). Falls back to --ca-cert.")
+    # default=None so we can tell 'flag not given' from 'flag given': the second
+    # server inherits the first server's TLS setting unless told otherwise.
+    p.add_argument("--insecure-2", action="store_true", default=None,
+                   help="Disable TLS certificate verification for the second "
+                        "server only (env CONFLUENCE_VERIFY_SSL_2=false). "
+                        "Defaults to whatever the first server uses.")
+
+    # --- shared by both servers ------------------------------------------
     p.add_argument("--timeout", type=int,
-                   default=int(os.environ.get("CONFLUENCE_TIMEOUT", "30")),
-                   help="HTTP request timeout in seconds (env CONFLUENCE_TIMEOUT).")
+                   default=env_int("CONFLUENCE_TIMEOUT", 30),
+                   help="HTTP request timeout in seconds, both servers "
+                        "(env CONFLUENCE_TIMEOUT).")
     p.add_argument("--max-body", type=int,
-                   default=int(os.environ.get("CONFLUENCE_MAX_BODY", "0")),
+                   default=env_int("CONFLUENCE_MAX_BODY", 0),
                    help="Truncate page bodies to N characters, 0 = unlimited "
                         "(env CONFLUENCE_MAX_BODY). Applies to returned text "
                         "only, not to saved knowledge-base files.")
-    p.add_argument("--kb-dir", default=os.environ.get("CONFLUENCE_KB_DIR"),
+    p.add_argument("--kb-dir", default=env_str("CONFLUENCE_KB_DIR"),
                    help="If set, every page read is also saved as a Markdown "
                         "file into this folder for a local RAG knowledge base "
                         "(env CONFLUENCE_KB_DIR). Files are named "
-                        "'Confluence - <title>.md' and overwritten each time.")
+                        "'Confluence - <title>.md' and overwritten each time; "
+                        "with two servers, 'Confluence <server> - <title>.md'.")
     p.add_argument("--check", action="store_true",
-                   help="Connect to Confluence, print who you are "
-                        "authenticated as and how many spaces are visible "
-                        "(to stderr), then exit (no server).")
+                   help="Connect to every configured Confluence server, print "
+                        "who you are authenticated as and how many spaces are "
+                        "visible (to stderr), then exit (no server).")
     p.add_argument("--version", action="version",
                    version="{0} {1}".format(SERVER_NAME, __version__))
     return p
 
 
-def run_check(client):
-    """Connectivity check: authenticate and count visible spaces."""
+def check_one(client, servers):
+    """Connectivity check for one server: authenticate and count visible spaces."""
+    if servers.multi:
+        log("--- {}{} ---".format(
+            client.name, " (default)" if client is servers.default else ""))
+    log("Base URL         : {}".format(client.base_url))
     try:
         me = client._get("/rest/api/user/current")
         log("Authenticated as : {} ({})".format(
@@ -1079,13 +1400,27 @@ def run_check(client):
         visible = len(results) if isinstance(results, list) else "?"
         log("Spaces visible   : {}{}".format(
             visible, "+" if spaces.get("_links", {}).get("next") else ""))
-        if client.kb_dir:
-            log("KB mirror folder : {}".format(client.kb_dir))
-        log("CHECK OK")
-        return 0
+        return True
     except ConfluenceError as e:
-        log("CHECK FAILED: {}".format(e))
+        log("FAILED: {}".format(e))
+        return False
+
+
+def run_check(servers):
+    """
+    Connectivity check across every configured server. Each one is reported
+    separately, and the exit code is non-zero if ANY of them failed - a
+    two-server setup where only one instance answers is not a working setup.
+    """
+    failed = [c.name for c in servers.clients if not check_one(c, servers)]
+    if servers.default.kb_dir:
+        log("KB mirror folder : {}".format(servers.default.kb_dir))
+    if failed:
+        log("CHECK FAILED for {} of {} server(s): {}".format(
+            len(failed), len(servers.clients), ", ".join(failed)))
         return 1
+    log("CHECK OK")
+    return 0
 
 
 def main(argv=None):
@@ -1103,46 +1438,110 @@ def main(argv=None):
 
     args = build_arg_parser().parse_args(argv)
 
-    # Credentials come from the environment ONLY (never argv - see build_arg_parser).
-    token = os.environ.get("CONFLUENCE_TOKEN")
-    user = os.environ.get("CONFLUENCE_USER")
-    password = os.environ.get("CONFLUENCE_PASSWORD")
+    # Credentials come from the environment ONLY (never argv - see
+    # build_arg_parser). The second server uses the same names with a _2 suffix.
+    token = env_str("CONFLUENCE_TOKEN")
+    user = env_str("CONFLUENCE_USER")
+    password = env_str("CONFLUENCE_PASSWORD")
+    token_2 = env_str("CONFLUENCE_TOKEN_2")
+    user_2 = env_str("CONFLUENCE_USER_2")
+    password_2 = env_str("CONFLUENCE_PASSWORD_2")
 
-    if not args.base_url:
-        log("FATAL: no base URL. Set CONFLUENCE_BASE_URL or pass --base-url.")
+    base_url = clean(args.base_url)
+    base_url_2 = clean(args.base_url_2)
+    name = clean(args.name) or DEFAULT_NAME_1
+    name_2 = clean(args.name_2) or DEFAULT_NAME_2
+
+    if not base_url:
+        log("FATAL: no base URL. Set CONFLUENCE_BASE_URL or pass --base-url. "
+            "(The first server is always the default one; a second server is "
+            "configured on top of it with CONFLUENCE_BASE_URL_2.)")
         return 2
     if not token and not (user and password):
         log("FATAL: no credentials. Set the CONFLUENCE_TOKEN environment "
             "variable, or CONFLUENCE_USER and CONFLUENCE_PASSWORD.")
         return 2
 
+    # A second server is enabled by its base URL alone. If the rest of its
+    # settings are present without it, say so - silently ignoring them would
+    # send "on Blue" questions to the first server and answer them with the
+    # wrong wiki's content.
+    if not base_url_2 and (token_2 or user_2 or password_2 or clean(args.name_2)):
+        log("WARNING: second-server settings are present but "
+            "CONFLUENCE_BASE_URL_2 is not set, so only one server is "
+            "configured. Set CONFLUENCE_BASE_URL_2 to enable the second one.")
+
+    # spec = (name, base_url, token, user, password, verify_ssl, ca_cert)
+    specs = [(name, base_url, token, user, password,
+              not args.insecure, clean(args.ca_cert))]
+
+    if base_url_2:
+        if not token_2 and not (user_2 and password_2):
+            log("FATAL: the second Confluence server ({}) has no credentials. "
+                "Set CONFLUENCE_TOKEN_2, or CONFLUENCE_USER_2 and "
+                "CONFLUENCE_PASSWORD_2 (each instance needs its own token). "
+                "Unset CONFLUENCE_BASE_URL_2 to run with one server."
+                .format(name_2))
+            return 2
+        if name_2.lower() == name.lower():
+            log("FATAL: both Confluence servers are named {!r}. Give them "
+                "different names via CONFLUENCE_NAME and CONFLUENCE_NAME_2 "
+                "(e.g. Green and Blue) so a prompt can pick one.".format(name))
+            return 2
+        # TLS settings for the second server: flag, then its own env var, then
+        # whatever the first server resolved to (usually the same internal CA).
+        insecure_2 = args.insecure_2
+        if insecure_2 is None:
+            verify_env_2 = env_bool_opt("CONFLUENCE_VERIFY_SSL_2")
+            insecure_2 = (not verify_env_2) if verify_env_2 is not None else args.insecure
+        specs.append((name_2, base_url_2, token_2, user_2, password_2,
+                      not insecure_2, clean(args.ca_cert_2) or clean(args.ca_cert)))
+
     try:
-        client = ConfluenceClient(
-            base_url=args.base_url,
-            token=token,
-            user=user,
-            password=password,
-            verify_ssl=not args.insecure,
-            ca_cert=args.ca_cert,
-            timeout=args.timeout,
-            max_body=args.max_body,
-            kb_dir=args.kb_dir,
-        )
+        clients = [
+            ConfluenceClient(
+                name=spec_name,
+                base_url=spec_url,
+                token=spec_token,
+                user=spec_user,
+                password=spec_password,
+                verify_ssl=spec_verify,
+                ca_cert=spec_ca,
+                timeout=args.timeout,
+                max_body=args.max_body,
+                kb_dir=args.kb_dir,
+            )
+            for (spec_name, spec_url, spec_token, spec_user, spec_password,
+                 spec_verify, spec_ca) in specs
+        ]
+        servers = ConfluenceServers(clients)
     except (ValueError, ssl.SSLError, OSError) as e:
         log("FATAL: could not initialise client: {}".format(e))
         return 2
 
-    if args.insecure:
-        log("WARNING: TLS verification is disabled (--insecure).")
-    if client.kb_dir:
-        log("knowledge-base mirroring enabled -> {}".format(client.kb_dir))
-    log("configured for base URL {}".format(client.base_url))
+    for client in servers.clients:
+        if not client.verify_ssl:
+            log("WARNING: TLS verification is disabled for {} ({}).".format(
+                client.name, client.base_url))
+    if servers.default.kb_dir:
+        log("knowledge-base mirroring enabled -> {}".format(servers.default.kb_dir))
+    if servers.multi:
+        for position, client in enumerate(servers.clients, start=1):
+            log("server {}: {} -> {}{}".format(
+                position, client.name, client.base_url,
+                "  (default)" if position == 1 else ""))
+        if not clean(args.name) or not clean(args.name_2):
+            log("TIP: set CONFLUENCE_NAME and CONFLUENCE_NAME_2 to memorable "
+                "names (e.g. Green and Blue) so a prompt can say which server "
+                "to use; currently {}.".format(" and ".join(servers.names())))
+    else:
+        log("configured for base URL {}".format(servers.default.base_url))
 
     if args.check:
-        return run_check(client)
+        return run_check(servers)
 
     try:
-        serve(client)
+        serve(servers)
     except KeyboardInterrupt:
         pass
     return 0

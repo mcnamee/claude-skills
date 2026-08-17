@@ -95,6 +95,11 @@ belongs to, and what you expect to find. Then work outward.
    a sentence. Narrow with `confluence_search_cql` when you know the space,
    label or date window — for example
    `space = DOCS AND text ~ "retention" AND lastmodified >= now("-18m")`.
+   If the tools take a `server` argument, there is more than one Confluence
+   instance: search **every** one of them (its enum lists the names) unless the
+   user named a single server, and record which instance each finding came
+   from. Content IDs are per-instance, so read a page from the same server the
+   search that found it used.
 4. **Read the winners in full** with `confluence_get_page`. Search snippets are
    not evidence; the page body is.
 5. **Follow the trail.** `confluence_list_pages_under` for everything beneath a
@@ -175,8 +180,9 @@ Most important information first, and cite as you go. Australian spelling.
    who reads only this section should be able to act correctly.
 3. **Findings** — one subheading each, ordered by how much they matter. Under
    each: what the sources say, quoted where the wording matters, then the
-   citation. Cite Confluence as page title + ID, the knowledge base as source
-   file + heading. Mark each finding's confidence:
+   citation. Cite Confluence as page title + ID (plus the server name, if more
+   than one instance is configured), the knowledge base as source file +
+   heading. Mark each finding's confidence:
    - **High** — two or more current, authoritative, agreeing sources
    - **Medium** — one authoritative source, or several that agree but are dated
    - **Low** — indirect, dated, draft or contested material
