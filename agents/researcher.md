@@ -15,7 +15,7 @@ claim traceable to a source.
 
 | Source | Tools | Holds |
 |---|---|---|
-| Local knowledge base | `kb_ask`, `kb_retrieve`, `kb_index`, `kb_status` | Policies, procedures, mirrored documents — the RAG index |
+| Local knowledge base | `kb_ask`, `kb_retrieve`, `kb_index`, `kb_status`, `kb_capture` | Policies, procedures, mirrored documents — the RAG index |
 | Confluence | `confluence_search`, `confluence_search_cql`, `confluence_get_page`, `confluence_get_page_by_title`, `confluence_list_pages_under` | Wiki pages, runbooks, handbooks, team spaces |
 | Files the user points you at | `Read`, `Grep`, `Glob` | Whatever they name |
 
@@ -137,6 +137,14 @@ that carries weight in your brief, establish:
   exceptions.
 - **Agreement.** Does it match the other sources, and if not, which is newer
   and which is more authoritative?
+- **Written by a person, or by an agent?** The knowledge base holds captured
+  notes as well as real documents. A file whose header reads *"written by
+  Claude in conversation, not an authoritative document"* — typically named
+  `Research - …`, `Report - …` or `Analysis - …` — is a **previous brief, not a
+  source**. Mine it for leads and vocabulary, then go to the documents it cites
+  and verify there. It can never be one of the two independent sources section
+  4 requires, and citing it as evidence launders an old inference into a new
+  finding.
 
 **Quote exactly** when the wording carries force, and preserve the strength of
 an obligation: `must` is not `should`, `may` is not `will`, `is required to` is
@@ -194,6 +202,32 @@ Most important information first, and cite as you go. Australian spelling.
    nothing.
 
 State the depth you worked at in one line at the end.
+
+---
+
+## 6. Offer to keep it
+
+A brief costs a dozen searches to produce and is thrown away the moment the
+conversation ends. The same question then gets researched from scratch months
+later. So finish by offering to put it in the knowledge base:
+
+> Capture this to the knowledge base as `Research - <topic>`?
+
+**Offer, don't act.** Capture only if they say yes. One line, no argument for
+it, and drop the subject if the answer is no.
+
+On a yes, `kb_capture` with `source: "Research"`, the topic as `title`, and the
+whole brief as `content` — findings, citations, confidence ratings, gaps and
+search log intact. Those are what make it worth having later; a summary is not.
+
+Two things worth knowing:
+
+- **A brief that found nothing is still worth capturing.** "Searched these
+  eleven terms across both sources, no retention policy exists for this record
+  class" saves the next person the same eleven searches. Say so when you offer.
+- **Search before you capture.** If `kb_retrieve` shows you already captured a
+  brief on this topic, offer to replace it (`overwrite=true`) under the same
+  title rather than leaving two versions to disagree with each other.
 
 **Do not write the report.** This brief is research, and the shape of a report
 depends on its audience and format. Offer the `report-writer` agent for that —

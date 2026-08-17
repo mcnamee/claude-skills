@@ -5,10 +5,10 @@ local ChromaDB vector index plus your own embeddings API.
 
 | | |
 |---|---|
-| **Server** | `knowledge-base.py` v2.0.3 |
+| **Server** | `knowledge-base.py` v2.1.0 |
 | **pip install** | `chromadb` (HTTP to your endpoints is stdlib `urllib` — no `requests`) |
 | **Platform** | any |
-| **Writes to disk** | yes — the vector index folder only |
+| **Writes to disk** | yes — the vector index folder, plus captured notes under `<docs-dir>\captures` |
 
 ## How it works
 
@@ -24,6 +24,10 @@ local ChromaDB vector index plus your own embeddings API.
    With no chat endpoint configured, `kb_ask` returns the retrieved context and
    the agent you're already talking to writes the answer — so generation works
    either way.
+4. **Capture** — `kb_capture` writes a new Markdown note into the knowledge base
+   and indexes it on the spot, so something worked out in a conversation is
+   searchable next time instead of disappearing with the chat. See
+   [Growing it](#growing-it).
 
 > Retrieved document text **is** sent to the endpoints you configure — that is
 > what RAG is — so point it only at material appropriate for those APIs.
@@ -41,6 +45,7 @@ local ChromaDB vector index plus your own embeddings API.
 | Documents folder | **yes** | `KB_DOCS_DIR` | Folder of `.md`/`.markdown`/`.txt` documents to index |
 | Embeddings endpoint URL | **yes** | `KB_EMBED_URL` | Full URL of your embeddings API |
 | Embeddings model | no | `KB_EMBED_MODEL` | Model name sent in embed requests; omit if the endpoint fixes one |
+| Captures folder | no | `KB_OUTPUT_DIR` | Where `kb_capture` writes new notes. Defaults to `<documents folder>\captures`; leave blank unless you want them elsewhere |
 | Python interpreter | **yes** | — | Absolute path to the `python.exe` that has `chromadb` installed |
 
 **Your API key is not stored in the plugin.** Set `KB_EMBED_API_KEY` as a
@@ -80,7 +85,8 @@ differ between models.
 | `kb_index` | Build/update the vector index (incremental; `force=true` rebuilds — needed after changing embedding model) |
 | `kb_retrieve` | Semantic vector search: top-k most similar chunks, with source file, heading and similarity score |
 | `kb_ask` | Full RAG: retrieve, then generate a grounded cited answer (or return context for the agent, if no chat endpoint) |
-| `kb_status` | Documents vs index freshness + configuration summary (never shows keys) |
+| `kb_capture` | Save a new Markdown note into the knowledge base and index it immediately |
+| `kb_status` | Documents, captured notes, index freshness + configuration summary (never shows keys) |
 
 ## Configuration reference
 
@@ -90,6 +96,7 @@ Precedence is **CLI flag > environment variable > constant in the file**.
 |---|---|---|
 | `KB_DOCS_DIR` | `--docs-dir` | **Required.** Folder of `.md`/`.markdown`/`.txt` docs, searched recursively |
 | `KB_INDEX_DIR` | `--index-dir` | ChromaDB folder (default `<docs-dir>\.kb-rag-index`) |
+| `KB_OUTPUT_DIR` | `--output-dir` | Folder `kb_capture` writes new notes into (default `<docs-dir>\captures`, created on demand). Must resolve **inside** `--docs-dir`, and must not be a dot-folder or sit inside the index folder — all three are pruned from indexing, so a note written there would never be searchable. The server refuses to start rather than let that happen |
 | `KB_COLLECTION` | `--collection` | ChromaDB collection name (default `kb-rag`) |
 | `KB_EMBED_URL` | `--embed-url` | **Required.** Full URL of the embeddings endpoint |
 | `KB_EMBED_MODEL` | `--embed-model` | Model name sent in embed requests (omit if the endpoint fixes one) |
@@ -120,7 +127,7 @@ Precedence is **CLI flag > environment variable > constant in the file**.
 | `KB_CHUNK_CHARS` | `--chunk-chars` | Soft max characters per chunk (default 1500) |
 | `KB_CHUNK_OVERLAP` | `--chunk-overlap` | Overlap between adjacent chunks (default 200) |
 | `KB_TOP_K` | `--top-k` | Default chunks retrieved (default 5) |
-| — | `--check` | Validate config, call the endpoint(s) once, report index status, then exit |
+| — | `--check` | Validate config, self-test the capture path, confirm the captures folder is writable, call the endpoint(s) once, report index status, then exit. The capture checks run first and need no network, so they still tell you something on a machine that can't reach the endpoint |
 | — | `--reindex` | Build/update the vector index, then exit (add `--force` to rebuild from scratch) |
 | — | `--search QUERY` | Test retrieval from the command line, then exit |
 | — | `--ask QUESTION` | Test full RAG (retrieve + generate) from the command line, then exit |
@@ -128,9 +135,15 @@ Precedence is **CLI flag > environment variable > constant in the file**.
 
 ## File access
 
-Reads only inside the documents folder; writes only the vector-index folder
-(default `<docs-dir>\.kb-rag-index`); network only to the endpoint(s) you
-configure.
+Reads only inside the documents folder. Writes the vector-index folder (default
+`<docs-dir>\.kb-rag-index`) and captured notes (default `<docs-dir>\captures`);
+network only to the endpoint(s) you configure.
+
+Existing documents are never modified or deleted — the only file the server
+creates is a new note from `kb_capture`, and the caller supplies a **title, not
+a path**. The filename is derived from that title, illegal and separator
+characters are stripped, and the resolved path is checked to be inside the
+captures folder before anything is written, so no title can reach outside it.
 
 ## Usage examples
 
@@ -139,6 +152,8 @@ configure.
 3. "I've added some new documents to the knowledge base folder — pick them up." → `kb_index` (incremental: only new/changed files are embedded)
 4. "Is the knowledge base index up to date? What's actually indexed?" → `kb_status`
 5. "Rebuild the whole knowledge base index from scratch (we switched embedding model)." → `kb_index` with `force=true`
+6. "Save that as a note in my knowledge base — call it 'Records retention thresholds'." → `kb_capture`
+7. "Remember how we worked out the leave accrual calculation, I'll want it again." → `kb_capture` with `source: "Procedure"`
 
 ## Feeding it
 
@@ -146,4 +161,46 @@ The `confluence`, `outlook` and `word` plugins each take a
 **knowledge-base folder** setting. Point all of them at this plugin's documents
 folder and everything you read — wiki pages, emails, Word documents — is
 mirrored to Markdown there, ready for `kb_index`. The `pdf-to-md` plugin fills
-the same folder from PDFs.
+the same folder from PDFs. `word` also mirrors on **create and save**, so a
+document written for you lands there too.
+
+## Growing it
+
+Mirroring captures what you **read**. `kb_capture` captures what you **write** —
+the analysis, the research brief, the decision and its reasoning, the procedure
+worked out across half an hour of conversation. Without it that work ends with
+the chat, and the same question gets researched again in three months.
+
+```
+"Save that comparison as a note called 'Retention thresholds by record type'."
+  → captures\Analysis - Retention thresholds by record type.md, indexed
+```
+
+Notes are written into the captures folder as `<Source> - <Title>.md`, with the
+same header block the mirrors use:
+
+```markdown
+# Retention thresholds by record type
+
+- Source: Analysis (written by Claude in conversation, not an authoritative document)
+- Captured: 2026-08-17 14:32
+- Tags: retention, records
+
+---
+```
+
+Four things to know:
+
+- **Capture is explicit.** Claude captures when you ask for something to be kept,
+  or when you accept an offer to keep it — never on its own initiative. The
+  `researcher` and `report-writer` agents finish by *offering* to capture their
+  output, naming the title they'd use.
+- **That header stamp matters.** Captured notes come back from later searches
+  sitting alongside real policy documents. The stamp is how you — and Claude —
+  tell a working note from an authoritative source. Follow a note to the sources
+  it cites rather than treating it as evidence in its own right.
+- **Re-capturing the same title replaces the note** (with `overwrite=true`);
+  without it the call is refused and the existing file reported. That keeps a
+  revised brief as one file instead of five near-duplicates.
+- **It only ever adds.** No tool here edits or deletes a document you put in the
+  folder yourself.

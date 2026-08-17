@@ -1,8 +1,8 @@
 {
   "name": "knowledge-base",
   "displayName": "Knowledge base (RAG)",
-  "version": "2.0.3",
-  "description": "True RAG over your own Markdown docs: a local ChromaDB vector index plus your embeddings API. Requires chromadb.",
+  "version": "2.1.0",
+  "description": "True RAG over your own Markdown docs: a local ChromaDB vector index plus your embeddings API. Captures new notes back into it. Requires chromadb.",
   "author": {
     "name": "mcnamee"
   },
@@ -32,6 +32,11 @@
       "title": "Embeddings model",
       "description": "Optional. Model name sent in embed requests; omit if the endpoint fixes one."
     },
+    "output_dir": {
+      "type": "directory",
+      "title": "Captures folder",
+      "description": "Optional. Where kb_capture writes new notes. Must sit INSIDE the documents folder, or captured notes would never be indexed. Defaults to a 'captures' subfolder of it, created on demand - leave blank unless you want them somewhere else."
+    },
     "python": {
       "type": "string",
       "title": "Python interpreter",
@@ -49,6 +54,7 @@
       "env": {
         "PYTHONUTF8": "1",
         "KB_DOCS_DIR": "${user_config.docs_dir}",
+        "KB_OUTPUT_DIR": "${user_config.output_dir}",
         "KB_EMBED_URL": "${user_config.embed_url}",
         "KB_EMBED_MODEL": "${user_config.embed_model}",
         "KB_EMBED_API_KEY": "${KB_EMBED_API_KEY}"

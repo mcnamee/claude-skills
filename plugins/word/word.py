@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r"""
-word.py (v4.1.0) - A single-file MCP (Model Context Protocol) stdio server
+word.py (v4.2.0) - A single-file MCP (Model Context Protocol) stdio server
 that gives an AI agent read/search/edit/generate access to Word .docx files.
 
 It follows a simple open -> edit -> save workflow (msword_open ... msword_save),
@@ -24,10 +24,12 @@ WHAT IT CAN DO
       .docx files can be listed, opened and used as the base for msword_create,
       but every attempt to SAVE over one is refused, so a template cannot be
       turned into someone's half-finished report.
-    - On open, optionally MIRROR the document to Markdown into a knowledge-base
-      folder for a local RAG index (the same idea as confluence.py's --kb-dir):
-      headings, bullet/numbered lists and tables are converted; files are named
-      'Word - <name>.md' and overwritten each open. Enabled with --kb-dir.
+    - On open, create AND save, optionally MIRROR the document to Markdown into
+      a knowledge-base folder for a local RAG index (the same idea as
+      confluence.py's --kb-dir): headings, bullet/numbered lists and tables are
+      converted; files are named 'Word - <name>.md' and overwritten each time.
+      Mirroring on save is what puts a document you WROTE into the knowledge
+      base, without anyone having to re-open it. Enabled with --kb-dir.
     - Read full content (linear text, or a structured block list).
     - Search text (body paragraphs and table cells).
     - Replace text, correctly handling matches that span multiple runs.
@@ -176,7 +178,8 @@ WHAT IT CANNOT DO
     document root but NEVER writable - point it at the context\templates folder
     that ships with this repo, or at your own copy of it.
     The --kb-dir folder (optional; MSWORD_KB_DIR or the KB_DIR constant) turns
-    on Markdown mirroring for a local RAG knowledge base; omit it to disable.
+    on Markdown mirroring for a local RAG knowledge base, on open, create and
+    save; omit it to disable.
 
     See README.md next to this file for the full settings reference.
 
@@ -203,7 +206,7 @@ failed transfer" rule):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "4.1.0"
+__version__ = "4.2.0"
 
 # =============================================================================
 # CONFIGURATION  (all user-editable settings live here, nothing scattered below)
@@ -2131,6 +2134,26 @@ def _save_to_kb(doc, source_path):
     return path
 
 
+def _mirror_to_kb(doc, source_path, result):
+    """
+    Mirror a document to the knowledge-base folder if one is configured, and
+    record the outcome on the tool's result dict. No-op when --kb-dir is unset.
+
+    Called on open (what you READ enters the knowledge base) and on create and
+    save (so does what you WRITE). Mirroring is always a side effect of the real
+    operation and must never break it, so failures are logged and swallowed.
+    """
+    if not KB_DIR:
+        return
+    try:
+        kb_path = _save_to_kb(doc, source_path)
+        log("saved to knowledge base: {}".format(kb_path))
+        result["knowledge_base"] = kb_path
+    except OSError as e:
+        log("knowledge-base save failed: {}".format(e))
+        result["knowledge_base_error"] = str(e)
+
+
 # =============================================================================
 # TOOL HANDLERS  (each takes an `args` dict, returns a JSON-serialisable object)
 # =============================================================================
@@ -2218,16 +2241,8 @@ def tool_open(args):
         result["requested"] = raw
 
     # If a knowledge-base folder is configured, mirror the document to Markdown
-    # for RAG ingestion. This is a side effect of reading a document and must
-    # never break the open, so any failure is reported but swallowed.
-    if KB_DIR:
-        try:
-            kb_path = _save_to_kb(doc, path)
-            log("saved to knowledge base: {}".format(kb_path))
-            result["knowledge_base"] = kb_path
-        except OSError as e:
-            log("knowledge-base save failed: {}".format(e))
-            result["knowledge_base_error"] = str(e)
+    # for RAG ingestion.
+    _mirror_to_kb(doc, path, result)
     return result
 
 
@@ -2474,6 +2489,11 @@ def tool_create(args):
     }
     if template_used:
         result["template"] = template_used
+    # A new document is usually near-empty at this point; the mirror is
+    # refreshed on every save, so the useful content lands there as it is
+    # written. Mirroring here means even a create-then-never-save document
+    # leaves a trace.
+    _mirror_to_kb(doc, target, result)
     return result
 
 
@@ -3128,7 +3148,12 @@ def tool_save(args):
     if save_as:
         session["path"] = target  # rebind session to the new file
     log("saved session {} -> {}".format(args.get("session_id"), target))
-    return {"saved": target}
+    result = {"saved": target}
+    # Mirror on save as well as on open, so a document written here reaches the
+    # knowledge base without anyone having to re-open it afterwards. The mirror
+    # is named from the SAVED path, so a save-as lands under the new name.
+    _mirror_to_kb(doc, target, result)
+    return result
 
 
 def tool_list_changes(args):
@@ -4290,9 +4315,41 @@ def run_check():
         assert "| alpha | 1 |" in kb_text, "table body not rendered"
         assert os.path.basename(kb_written) == "Word - mirror me.md", \
             "unexpected kb filename: {}".format(kb_written)
+
+        # --- Mirror on SAVE: content written here must reach the KB without
+        # anyone re-opening the file, and a save-as must mirror under the new
+        # name (this is what captures documents you AUTHOR, not just read).
+        tool_add_paragraph({"session_id": mres["session_id"],
+                            "text": "Added after opening."})
+        sres = tool_save({"session_id": mres["session_id"]})
+        assert sres.get("knowledge_base"), "no knowledge-base mirror on save"
+        with open(sres["knowledge_base"], encoding="utf-8") as fh:
+            assert "Added after opening." in fh.read(), \
+                "save-mirror did not pick up the edit"
+        saveas = os.path.join(tmpdir, "renamed by save as.docx")
+        ares = tool_save({"session_id": mres["session_id"], "path": saveas})
+        assert os.path.basename(ares.get("knowledge_base", "")) == \
+            "Word - renamed by save as.md", \
+            "save-as did not mirror under the new name: {}".format(ares)
         tool_close({"session_id": mres["session_id"]})
+
+        # --- Mirror on CREATE ------------------------------------------------
+        OUTPUT_DIR = tmpdir
+        cres = tool_create({"filename": "brand new.docx", "title": "Brand New"})
+        assert os.path.basename(cres.get("knowledge_base", "")) == \
+            "Word - brand new.md", \
+            "create did not mirror to the knowledge base: {}".format(cres)
+        tool_close({"session_id": cres["session_id"]})
+        OUTPUT_DIR = None
+
         KB_DIR = None
-        print("[check] markdown-export / kb-mirror: PASS")
+        # With no --kb-dir, saving must still work and mirror nothing.
+        nres = tool_open({"path": mdpath})
+        qres = tool_save({"session_id": nres["session_id"]})
+        assert "knowledge_base" not in qres and "knowledge_base_error" not in qres, \
+            "mirrored with --kb-dir unset: {}".format(qres)
+        tool_close({"session_id": nres["session_id"]})
+        print("[check] markdown-export / kb-mirror (open, create, save): PASS")
 
         # --- Template fill: set_cell / add_table_row / delete_table_row ------
         # A template with a {{TITLE}} placeholder and an example agenda table

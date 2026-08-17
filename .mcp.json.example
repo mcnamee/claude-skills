@@ -86,6 +86,7 @@
       "args": [
         "C:\\path\\to\\claude-skills\\plugins\\knowledge-base\\knowledge-base.py",
         "--docs-dir", "C:\\Users\\me\\knowledge-base",
+        "--output-dir", "C:\\Users\\me\\knowledge-base\\captures",
         "--embed-url", "https://ai-gateway.internal.example.com/v1/embeddings",
         "--embed-model", "text-embedding-3-small"
       ],
