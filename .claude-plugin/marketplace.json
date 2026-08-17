@@ -10,7 +10,7 @@
       "name": "word",
       "source": "./plugins/word",
       "description": "Read, edit and create Word .docx files - including Word tracked changes, native styles and filling out templates.",
-      "version": "4.1.0",
+      "version": "4.2.0",
       "keywords": [
         "word",
         "docx",
@@ -66,8 +66,8 @@
     {
       "name": "knowledge-base",
       "source": "./plugins/knowledge-base",
-      "description": "True RAG over your own Markdown docs: a local ChromaDB vector index plus your embeddings API. Requires chromadb.",
-      "version": "2.0.3",
+      "description": "True RAG over your own Markdown docs: a local ChromaDB vector index plus your embeddings API. Captures new notes back into it. Requires chromadb.",
+      "version": "2.1.0",
       "keywords": [
         "rag",
         "knowledge-base",

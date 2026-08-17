@@ -5,7 +5,7 @@ native Word styles, and filling out templates.
 
 | | |
 |---|---|
-| **Server** | `word.py` v4.1.0 |
+| **Server** | `word.py` v4.2.0 |
 | **pip install** | `python-docx` (pulls in `lxml` and `typing_extensions`) |
 | **Platform** | any (Word itself is not required) |
 | **Writes to disk** | yes — the only write-capable server in the suite |
@@ -43,7 +43,7 @@ Precedence is **CLI flag > environment variable > constant in the file**.
 | `--docs-dir` | `MSWORD_DOCS_DIR` | **Required.** Path sandbox: every open/save must be inside this directory tree, and the server refuses to start without one (`--check` is exempt — the self-test sandboxes itself to its own temp folder). Falls back to the `DOCS_DIR` config value. This is the only write-capable server in the suite, and the model chooses the open/save paths |
 | `--output-dir` | `MSWORD_OUTPUT_DIR` | Optional folder where `msword_create` writes **new** `.docx` files, kept **separate** from the knowledge-base folder. Falls back to the `OUTPUT_DIR` config value, and finally to the document root. Also treated as a permitted open/save location so created documents can be reopened and edited |
 | `--templates-dir` | `MSWORD_TEMPLATES_DIR` | Optional folder of blank `.docx` templates — point it at [`context/templates`](../../context/templates) or your own copy. Falls back to the `TEMPLATES_DIR` config value. A **read-only** third root: its files can be listed, opened and passed as `msword_create`'s `template`, but **every save into it is refused**, so templates stay blank. Must exist, and must be separate from the documents and output folders — the server refuses to start otherwise |
-| `--kb-dir` | `MSWORD_KB_DIR` | Optional. If set, **every document opened** with `msword_open` is *also* written out as a Markdown file into this folder for a local RAG knowledge base. Falls back to the `KB_DIR` config value. Files are named `Word - <name>.md` and overwritten each open; the folder is created if missing. Omit to disable mirroring |
+| `--kb-dir` | `MSWORD_KB_DIR` | Optional. If set, **every document opened, created or saved** is *also* written out as a Markdown file into this folder for a local RAG knowledge base. Falls back to the `KB_DIR` config value. Files are named `Word - <name>.md` and overwritten each time; the folder is created if missing. A mirror failure is logged and reported on the result, never allowed to fail the open or the save. Omit to disable mirroring |
 | `--author` | `MSWORD_AUTHOR` | Author name stamped on Word tracked changes. Falls back to the `TRACKED_CHANGE_AUTHOR` config value. Can also be overridden per-call via the `author` argument on the editing tools |
 | `--check` | — | Run an offline open/edit/save/reopen self-test and exit (no server) |
 | `--version` | — | Print version and exit (works even without `python-docx` installed) |
@@ -130,16 +130,23 @@ first, since indices shift). These table edits are plain (untracked); a table
 row/cell change can't be a Word tracked change.
 
 **Building a RAG knowledge base.** Point `--kb-dir` at the same folder your
-`knowledge-base` server indexes. Each time a `.docx` is opened, a Markdown copy
-is dropped there — headings become `#`/`##`, `List Bullet`/`List Number`
-paragraphs become `-`/`1.` lists, and tables become GitHub-style pipe tables —
-so Word content lands alongside your Confluence pages in the same RAG index.
+`knowledge-base` server indexes. Each time a `.docx` is opened, created or
+saved, a Markdown copy is dropped there — headings become `#`/`##`, `List
+Bullet`/`List Number` paragraphs become `-`/`1.` lists, and tables become
+GitHub-style pipe tables — so Word content lands alongside your Confluence pages
+in the same RAG index.
+
+Mirroring on **save** is what captures a document you *wrote*: the copy is
+refreshed with every save and named from the saved path, so a save-as lands
+under the new name. Without it, a report drafted here would only reach the
+knowledge base if somebody later re-opened the `.docx`.
 
 ## File access
 
 Open/save only inside the documents folder (and the output folder, if set); the
 templates folder is **readable but never writable**; new documents written to
-the output folder; Markdown mirrored to the knowledge-base folder. Paths are
+the output folder; Markdown mirrored to the knowledge-base folder on open,
+create and save. Paths are
 resolved (symlinks included) before the containment check, so a symlink dropped
 inside a configured folder cannot reach files outside it.
 
@@ -149,7 +156,7 @@ inside a configured folder cannot reach files outside it.
 2. "Open the budget policy doc." (name not exact) → `msword_open` with `path: "budget policy"` (fuzzy-matches `Budget Policy 2024.docx`; the result flags `fuzzy_matched` so you can confirm)
 3. "What Word documents do I have?" / "I'm not sure of the exact file name." / "What templates can I start from?" → `msword_list_documents` (optionally with a `query`, or `location: "templates"` for just the blanks), then `msword_open` on the one you want
 4. "Open the proposal.docx and show me its full text." → `msword_open` + `msword_get_content`
-5. "Open every .docx in my docs folder so it gets mirrored into the RAG knowledge base as Markdown." → `msword_open` with `--kb-dir` set (each open writes `Word - <name>.md`)
+5. "Open every .docx in my docs folder so it gets mirrored into the RAG knowledge base as Markdown." → `msword_open` with `--kb-dir` set (each open writes `Word - <name>.md`; so does each create and save)
 6. "Create a new status report document and draft it with a title, headings and a summary table, then save it to my generated-docs folder." → `msword_create` (writes to `--output-dir`) + `msword_add_heading` + `msword_add_paragraph` + `msword_add_table` + `msword_save`
 7. "Create a Q3 report from my report template." → `msword_create` with `template: "Report Template.docx"` (found in the templates folder or the docs folder; inherits the template's styles/headers/boilerplate into a new file, which lands in the output folder — the template is left untouched) + the add_* tools + `msword_save`
 8. "Use my agenda template and fill it out for Monday's meeting — one row per item." → `msword_create` with `template: "Agenda Template.docx"` + `msword_replace_text` (placeholders) + `msword_add_table_row` (with `copy_from_row` to clone the example row) per item + `msword_set_cell` + `msword_delete_table_row` (drop leftover example rows) + `msword_save`

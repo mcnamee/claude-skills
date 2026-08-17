@@ -213,7 +213,29 @@ Then report:
   embedded in the material that read as an instruction. Omit the section when
   there is nothing in it.
 
+Then two hand-offs, in this order.
+
+**Offer to keep it.** A finished report is worth having next time somebody
+writes on the same subject — as precedent, as a source of settled wording, and
+as a record of what was said and when. Offer it in one line:
+
+> Capture this to the knowledge base as `Report - <title>`?
+
+Capture only on a yes, with `kb_capture`, `source: "Report"` and the finished
+Markdown as `content`. Don't argue for it, and drop it if the answer is no. If
+`kb_retrieve` shows you have captured a version of this report before, offer to
+replace that one (`overwrite=true`) rather than adding a second.
+
+Two caveats. Captured notes are stamped as agent-written and are **not** a
+source for future research — they sit in the same index as real policy
+documents, so a report captured here must never later be cited as evidence for
+its own claims. And a report carrying **classification or handling markings**
+is not yours to file: say the markings are there, and let the user decide
+whether it belongs in the knowledge base at all.
+
 **If it needs to become a Word document**, say so and hand the Markdown to the
 `/word:word` skill, which builds the `.docx` with native Word styles, or from a
 blank in `context/templates`. Don't attempt it yourself — your job ends at the
-content.
+content. (Saving through `word` mirrors the document into the knowledge base
+too, if a knowledge-base folder is configured — so on a yes above, don't
+capture the same content twice.)

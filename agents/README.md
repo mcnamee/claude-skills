@@ -26,8 +26,8 @@ already in, an agent goes away and does the work in its own.
 
 | Agent | Invoke | What it does |
 |---|---|---|
-| [**researcher**](researcher.md) | `@agent-researcher` | Researches a topic across the local knowledge base and Confluence, corroborates what it finds, and returns a cited brief with confidence ratings and named gaps |
-| [**report-writer**](report-writer.md) | `@agent-report-writer` | Turns research or notes into the written content of a report or official brief, following the structure of an exemplar in `./context/exemplars`, then runs `/unslop` and `/polish` over it |
+| [**researcher**](researcher.md) | `@agent-researcher` | Researches a topic across the local knowledge base and Confluence, corroborates what it finds, and returns a cited brief with confidence ratings and named gaps — then offers to capture the brief back into the knowledge base |
+| [**report-writer**](report-writer.md) | `@agent-report-writer` | Turns research or notes into the written content of a report or official brief, following the structure of an exemplar in `./context/exemplars`, then runs `/unslop` and `/polish` over it, and offers to capture the result |
 
 They are built to run back to back: `researcher` produces the cited brief,
 `report-writer` writes it up. Neither needs the other, though —
@@ -111,6 +111,20 @@ absence and where it looked.
 documents. Hand the finished Markdown to [`word`](../plugins/word) for that,
 which keeps writing and formatting as two jobs you can redo independently — a
 wording change shouldn't mean rebuilding a `.docx`.
+
+### Capturing what they produce
+
+Both agents finish by **offering** to put their output into the knowledge base
+with `kb_capture` — the brief as `Research - <topic>`, the report as
+`Report - <title>`. They ask; they don't file things on their own. Say yes and
+the next person to ask that question finds the work instead of redoing it.
+
+One thing to watch. A captured note lands in the same index as your real policy
+documents and comes back from the same searches, so both agents stamp theirs as
+agent-written and `researcher` is told to treat any such file as a **prior brief
+rather than a source** — it mines it for leads, then verifies against the
+documents it cites. Without that rule a guess captured in March becomes a
+citation in June.
 
 ### Exemplars
 

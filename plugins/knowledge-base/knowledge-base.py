@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-knowledge-base.py (v2.0.3)
+knowledge-base.py (v2.1.0)
 ==========================
 
 A single-file MCP (Model Context Protocol) server providing true RAG
@@ -20,6 +20,13 @@ documents, with real vector retrieval:
                 returns the retrieved context and the agent you're already
                 talking to writes the answer instead - so generation works
                 either way.
+  4. CAPTURE  : kb_capture writes a new markdown note into the knowledge
+                base and indexes it immediately, so work produced in a
+                conversation (a research brief, a decision, a procedure)
+                is searchable next time instead of being lost with the
+                chat. The other servers mirror what you READ; this is how
+                what you WRITE gets in. Capture only ever adds a file - it
+                never edits or deletes an existing document.
 
 Transport: newline-delimited JSON-RPC 2.0 over stdio (the standard MCP stdio
 transport).
@@ -47,6 +54,9 @@ ONLY (command lines are visible to other local users in process listings).
 |-------------------------|----------------------|-------------------------------------------------------------|
 | KB_DOCS_DIR             | --docs-dir           | REQUIRED. Folder of .md/.markdown/.txt docs (recursive)     |
 | KB_INDEX_DIR            | --index-dir          | ChromaDB folder (default: <docs-dir>/.kb-rag-index)         |
+| KB_OUTPUT_DIR           | --output-dir         | Folder kb_capture writes new notes into (default:           |
+|                         |                      | <docs-dir>/captures). MUST resolve inside --docs-dir, or    |
+|                         |                      | captured notes would never be indexed                       |
 | KB_COLLECTION           | --collection         | ChromaDB collection name (default: kb-rag; 3-512 chars of   |
 |                         |                      | [a-zA-Z0-9._-], starting/ending alphanumeric)               |
 | KB_EMBED_URL            | --embed-url          | REQUIRED. Full URL of the embeddings endpoint               |
@@ -189,6 +199,8 @@ TOOLS EXPOSED
 - kb_ask      : full RAG - retrieve, then generate a grounded, cited answer
                 (or return the context for the agent to answer from, if no
                 chat endpoint is configured)
+- kb_capture  : write a new markdown note into the knowledge base and index
+                it - for keeping something produced in the conversation
 - kb_status   : index freshness + configuration summary (never shows keys)
 
 NOTES
@@ -199,6 +211,13 @@ NOTES
 - File access is confined to --docs-dir (paths are resolved, symlinks
   included, before the containment check). The index folder and dot-folders
   are never indexed. The only network calls are to the endpoints you set.
+- Existing documents are never modified or deleted. The ONLY file the server
+  writes outside its vector index is a new note created by kb_capture, and
+  the caller supplies a TITLE, never a path: the filename is derived from it
+  and the result is checked to be inside --output-dir before anything is
+  written. Captured notes are the agent's own output, so they are stamped as
+  such in their header - treat them as prior working notes when they come
+  back from a search, not as an authoritative source.
 - Retrieved document text IS sent to the configured endpoints (that's what
   RAG is) - point the server only at material appropriate for those APIs.
 - If you change embedding model, the vector dimensions change: run
@@ -214,7 +233,7 @@ NOTES
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "2.0.3"
+__version__ = "2.1.0"
 
 import os
 import re
@@ -222,8 +241,11 @@ import ssl
 import sys
 import json
 import time
+import shutil
 import hashlib
 import argparse
+import datetime
+import tempfile
 import traceback
 import urllib.error
 import urllib.request
@@ -258,6 +280,7 @@ class Config(object):
     """All runtime settings in one place. Filled in by main()."""
     docs_dir = None            # absolute, real path of the documents folder
     index_dir = None           # absolute path of the ChromaDB folder
+    output_dir = None          # absolute path kb_capture writes notes into
     collection = "kb-rag"
     embed_url = None
     embed_model = ""
@@ -315,8 +338,15 @@ def is_within(path, base):
 
 
 def to_rel(path):
-    """Relative path from docs_dir, using forward slashes for stable display."""
-    return os.path.relpath(path, CFG.docs_dir).replace("\\", "/")
+    """
+    Relative path from docs_dir, using forward slashes for stable display.
+    Falls back to the absolute path when the two are on different Windows
+    drives, where os.path.relpath raises rather than returning something.
+    """
+    try:
+        return os.path.relpath(path, CFG.docs_dir).replace("\\", "/")
+    except ValueError:
+        return path.replace("\\", "/")
 
 
 def scan_documents():
@@ -345,6 +375,92 @@ def scan_documents():
                 continue
             found[to_rel(full)] = full
     return found
+
+
+def safe_filename(name, max_len=150):
+    """
+    Turn a caller-supplied title into a filesystem-safe filename component (no
+    extension). Same helper the confluence/outlook/word mirrors use, so captured
+    notes and mirrored documents are named consistently.
+
+    Strips characters that are illegal on Windows (< > : " / \\ | ? * and control
+    chars), collapses whitespace, removes trailing dots/spaces (also illegal on
+    Windows), and caps the length. Returns '' if nothing usable is left - the
+    caller decides what to do about that.
+
+    Because the separators are stripped rather than escaped, a title such as
+    "..\\..\\secrets" collapses to "secrets": there is no way to walk out of the
+    folder with a title. The containment check in capture_note() is the belt to
+    this braces.
+    """
+    if not name:
+        return ""
+    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', " ", name)
+    cleaned = " ".join(cleaned.split()).strip(" .")
+    if len(cleaned) > max_len:
+        cleaned = cleaned[:max_len].rstrip(" .")
+    return cleaned
+
+
+def capture_note(title, content, source, tags, overwrite):
+    """
+    Write a new markdown note into the capture folder and return its absolute
+    path. Raises RagError with a caller-facing message on any refusal.
+
+    The header block matches the one the confluence/outlook/word mirrors write,
+    so a captured note and a mirrored document read the same way once indexed.
+    The "written by Claude" stamp is deliberate: these notes come back from
+    later searches, and the reader has to be able to tell agent output from an
+    authoritative document.
+    """
+    stem = safe_filename(title)
+    if not stem:
+        raise RagError(
+            "'title' has no characters usable in a filename. Give a short "
+            "descriptive title, e.g. 'Records retention thresholds'.")
+    prefix = safe_filename(source, max_len=40) or "Note"
+
+    path = os.path.join(CFG.output_dir, "{0} - {1}.md".format(prefix, stem))
+    try:
+        os.makedirs(CFG.output_dir, exist_ok=True)
+    except OSError as exc:
+        raise RagError("Could not create the capture folder {0}: {1}".format(
+            CFG.output_dir, exc))
+
+    # Belt and braces: the title cannot contain a separator by the time it gets
+    # here, but resolve the path and confirm it really is inside the capture
+    # folder before writing. This also catches a pre-existing symlink of that
+    # name pointing somewhere else.
+    if not is_within(path, CFG.output_dir):
+        raise RagError("Refused: {0} resolves outside the capture folder.".format(
+            os.path.basename(path)))
+    if os.path.exists(path) and not overwrite:
+        raise RagError(
+            "A note already exists at {0}. Pass overwrite=true to replace it, "
+            "or use a different title.".format(to_rel(path)))
+
+    stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    header = [
+        # Collapse whitespace: a newline in the title would otherwise split the
+        # H1 in two and push the rest of the header into the body.
+        "# {0}".format(" ".join(title.split())),
+        "",
+        "- Source: {0} (written by Claude in conversation, not an "
+        "authoritative document)".format(prefix),
+        "- Captured: {0}".format(stamp),
+    ]
+    if tags:
+        header.append("- Tags: {0}".format(", ".join(tags)))
+    header += ["", "---", ""]
+
+    try:
+        # newline="\n" keeps line endings consistent and avoids CRLF doubling
+        # on Windows, matching the other servers' mirrors.
+        with open(path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write("\n".join(header) + "\n" + content.strip() + "\n")
+    except OSError as exc:
+        raise RagError("Could not write the note to {0}: {1}".format(path, exc))
+    return path
 
 
 def read_text(path):
@@ -1098,11 +1214,64 @@ def tool_kb_ask(args):
         answer, used, "\n".join("- " + s for s in sources))
 
 
+def _arg_str_list(args, name):
+    """Read an optional list-of-strings argument, tolerating a single string."""
+    raw = args.get(name)
+    if not raw:
+        return []
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, list):
+        return []
+    return [str(item).strip() for item in raw if str(item).strip()]
+
+
+def tool_kb_capture(args):
+    title = (args.get("title") or "").strip()
+    content = (args.get("content") or "").strip()
+    if not title:
+        return "Error: 'title' is required."
+    if not content:
+        return "Error: 'content' is required - there is nothing to capture."
+
+    source = (args.get("source") or "Note").strip() or "Note"
+    tags = _arg_str_list(args, "tags")
+    overwrite = bool(args.get("overwrite", False))
+    do_index = args.get("index", True)
+    do_index = True if do_index is None else bool(do_index)
+
+    path = capture_note(title, content, source, tags, overwrite)
+    rel = to_rel(path)
+    lines = ["Captured to the knowledge base: {0}".format(rel)]
+
+    if not do_index:
+        lines.append("Not indexed - run kb_index to make it searchable.")
+        return "\n".join(lines)
+
+    # Index straight away so the note is retrievable in this same conversation.
+    # A failure here is worth reporting but must not read as "nothing saved":
+    # the file is on disk either way, and kb_index will pick it up later.
+    try:
+        stats = index_sync(force=False)
+        lines.append(
+            "Indexed. The knowledge base now holds {0} chunk(s) across {1} "
+            "document(s).".format(stats["index_chunks"], stats["documents"]))
+    except RagError as exc:
+        lines.append("Saved, but indexing FAILED ({0}). The file is on disk - "
+                     "run kb_index once the endpoint is reachable.".format(exc))
+    return "\n".join(lines)
+
+
 def tool_kb_status(_args):
     documents = scan_documents()
+    captured = 0
+    if CFG.output_dir and os.path.isdir(CFG.output_dir):
+        captured = len([name for name in os.listdir(CFG.output_dir)
+                        if os.path.splitext(name)[1].lower() in DOC_EXTENSIONS])
     lines = [
         "Knowledge base folder : {0}".format(CFG.docs_dir),
         "Vector index folder   : {0}".format(CFG.index_dir),
+        "Captures folder       : {0} ({1} note(s))".format(CFG.output_dir, captured),
         "Documents in folder   : {0}".format(len(documents)),
     ]
     try:
@@ -1218,12 +1387,80 @@ TOOLS = [
         },
     },
     {
+        "name": "kb_capture",
+        "description": (
+            "Save something into the knowledge base as a new markdown note, and "
+            "index it so it is searchable immediately. This is how work produced "
+            "in a conversation - a research brief, an analysis, a decision and "
+            "its reasoning, a procedure worked out with the user - survives past "
+            "the chat. Use it when the user asks for something to be remembered, "
+            "saved, kept or added to the knowledge base, or when they accept an "
+            "offer to capture something. Do NOT capture unasked, and do not "
+            "capture what is already in the knowledge base (search first with "
+            "kb_retrieve; if a near-duplicate note exists, re-capture under the "
+            "same title with overwrite=true rather than adding a second copy). "
+            "The server names the file from the title - you cannot choose a path, "
+            "and no existing document is ever modified or deleted."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": (
+                        "Short descriptive title, used as the heading and the "
+                        "filename. Make it a searchable noun phrase, e.g. "
+                        "'Records retention thresholds', not a sentence."
+                    ),
+                },
+                "content": {
+                    "type": "string",
+                    "description": (
+                        "The note body, in Markdown. Write it to be understood "
+                        "months later by someone without the conversation: keep "
+                        "the citations, the figures and the reasoning, and drop "
+                        "the chat scaffolding."
+                    ),
+                },
+                "source": {
+                    "type": "string",
+                    "description": (
+                        "What kind of note this is - becomes the filename prefix "
+                        "and appears in the header. Use one of: Note, Research, "
+                        "Report, Analysis, Decision, Procedure. Default: Note."
+                    ),
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional keywords, written into the note header.",
+                },
+                "index": {
+                    "type": "boolean",
+                    "description": (
+                        "Index the note immediately so it is searchable now "
+                        "(default true). Set false only when capturing several "
+                        "notes in a row, then call kb_index once at the end."
+                    ),
+                },
+                "overwrite": {
+                    "type": "boolean",
+                    "description": (
+                        "Replace an existing note with the same title (default "
+                        "false, which refuses and reports the existing file)."
+                    ),
+                },
+            },
+            "required": ["title", "content"],
+        },
+    },
+    {
         "name": "kb_status",
         "description": (
             "Report the state of the knowledge base: documents in the folder, "
-            "files/chunks in the vector index, whether the index is stale, and "
-            "which endpoints are configured (never shows keys). Use to diagnose "
-            "empty or odd retrieval results."
+            "captured notes, files/chunks in the vector index, whether the index "
+            "is stale, and which endpoints are configured (never shows keys). Use "
+            "to diagnose empty or odd retrieval results."
         ),
         "inputSchema": {"type": "object", "properties": {}},
     },
@@ -1233,6 +1470,7 @@ TOOL_DISPATCH = {
     "kb_index": tool_kb_index,
     "kb_retrieve": tool_kb_retrieve,
     "kb_ask": tool_kb_ask,
+    "kb_capture": tool_kb_capture,
     "kb_status": tool_kb_status,
 }
 
@@ -1250,7 +1488,12 @@ SERVER_INSTRUCTIONS = (
     "cited answer) and ground your reply in the returned chunks, citing source "
     "files. If retrieval reports an empty or stale index, call kb_index first "
     "(it embeds only new/changed files). kb_status shows index freshness and "
-    "configuration. Document access is read-only."
+    "configuration. kb_capture adds a new note to the knowledge base - use it "
+    "only when the user asks for something to be saved or accepts an offer to "
+    "save it, never on your own initiative. Existing documents are read-only: "
+    "nothing here modifies or deletes them. A retrieved file whose header says "
+    "it was written by Claude is a previous note, not an authoritative source - "
+    "follow it to the sources it cites."
 )
 
 
@@ -1340,10 +1583,80 @@ def run_server():
 # CLI modes (--check / --reindex / --search / --ask)
 # ---------------------------------------------------------------------------
 
+def check_capture():
+    """
+    Self-test the capture path against a temporary folder: write a note, assert
+    the filename and header, assert a traversal-flavoured title is neutralised,
+    then clean up. Runs BEFORE the endpoint calls so it still proves the capture
+    half of the server on a machine that cannot reach the embeddings API.
+
+    Returns True on success. CFG.output_dir is restored either way.
+    """
+    real_output = CFG.output_dir
+    tmpdir = tempfile.mkdtemp(prefix="kb-capture-check-")
+    try:
+        CFG.output_dir = tmpdir
+        path = capture_note("Capture self test", "Body line.", "Note", ["a", "b"], False)
+        if os.path.basename(path) != "Note - Capture self test.md":
+            log("Capture self-test     : FAILED - unexpected filename {0}".format(
+                os.path.basename(path)))
+            return False
+        with open(path, "r", encoding="utf-8") as handle:
+            written = handle.read()
+        for expected in ("# Capture self test", "- Source: Note", "- Captured: ",
+                         "- Tags: a, b", "\n---\n", "Body line."):
+            if expected not in written:
+                log("Capture self-test     : FAILED - missing {0!r}".format(expected))
+                return False
+        # A title that looks like a path must stay inside the folder.
+        escaped = capture_note(r"..\..\escape", "x", "Note", [], False)
+        if os.path.dirname(os.path.realpath(escaped)) != os.path.realpath(tmpdir):
+            log("Capture self-test     : FAILED - a path-like title escaped the folder")
+            return False
+        # And a second capture of the same title must refuse without overwrite.
+        try:
+            capture_note("Capture self test", "Body line.", "Note", [], False)
+        except RagError:
+            pass
+        else:
+            log("Capture self-test     : FAILED - duplicate title was not refused")
+            return False
+        log("Capture self-test     : OK (writes, sanitises titles, refuses duplicates)")
+        return True
+    except RagError as exc:
+        log("Capture self-test     : FAILED - {0}".format(exc))
+        return False
+    finally:
+        CFG.output_dir = real_output
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def check_capture_folder():
+    """Confirm the real capture folder can be created and written to."""
+    probe = os.path.join(CFG.output_dir, ".kb-write-probe")
+    try:
+        os.makedirs(CFG.output_dir, exist_ok=True)
+        with open(probe, "w", encoding="utf-8") as handle:
+            handle.write("probe")
+        os.remove(probe)
+        log("Captures folder       : OK (writable)")
+        return True
+    except OSError as exc:
+        log("Captures folder       : FAILED - {0} is not writable ({1})".format(
+            CFG.output_dir, exc))
+        return False
+
+
 def run_check():
     """Validate config, test the endpoints, report index status. Exit code 0/1."""
     ok = True
     log(tool_kb_status({}))
+    # Capture is checked first: it needs no network, so it still gives a useful
+    # result when the endpoints are unreachable.
+    if not check_capture():
+        ok = False
+    if not check_capture_folder():
+        ok = False
     try:
         vector = embed_texts(["connectivity test"], is_query=True)[0]
         log("Embeddings endpoint   : OK ({0} dimensions)".format(len(vector)))
@@ -1425,6 +1738,10 @@ def main():
                         help="Folder of markdown documents (env: KB_DOCS_DIR). Required.")
     parser.add_argument("--index-dir", default=env("KB_INDEX_DIR"),
                         help="ChromaDB folder (env: KB_INDEX_DIR; default: <docs-dir>/.kb-rag-index).")
+    parser.add_argument("--output-dir", default=env("KB_OUTPUT_DIR"),
+                        help="Folder kb_capture writes new notes into (env: KB_OUTPUT_DIR; "
+                             "default: <docs-dir>/captures). Must be inside --docs-dir, "
+                             "otherwise captured notes would never be indexed.")
     parser.add_argument("--collection", default=env("KB_COLLECTION", "kb-rag"),
                         help="ChromaDB collection name (env: KB_COLLECTION; default: kb-rag).")
     parser.add_argument("--embed-url", default=env("KB_EMBED_URL"),
@@ -1550,6 +1867,27 @@ def main():
     CFG.docs_dir = os.path.realpath(args.docs_dir)
     CFG.index_dir = os.path.realpath(
         args.index_dir or os.path.join(CFG.docs_dir, ".kb-rag-index"))
+    CFG.output_dir = os.path.realpath(
+        args.output_dir or os.path.join(CFG.docs_dir, "captures"))
+    # Captures have to live inside the documents folder or scan_documents()
+    # would never see them, so a note would be written and never indexed.
+    # Refuse at startup rather than at the first kb_capture call.
+    if not is_within(CFG.output_dir, CFG.docs_dir):
+        log("FATAL: --output-dir must be inside --docs-dir, otherwise captured "
+            "notes would never be indexed.\n  --output-dir: {0}\n  --docs-dir  : "
+            "{1}".format(CFG.output_dir, CFG.docs_dir))
+        sys.exit(2)
+    if CFG.output_dir == CFG.index_dir or is_within(CFG.output_dir, CFG.index_dir):
+        log("FATAL: --output-dir must not be inside the vector index folder "
+            "({0}), which is pruned from indexing.".format(CFG.index_dir))
+        sys.exit(2)
+    if any(part.startswith(".") for part in
+           os.path.relpath(CFG.output_dir, CFG.docs_dir).split(os.sep)
+           if part not in (".", "")):
+        log("FATAL: --output-dir must not be a dot-folder ({0}) - dot-folders "
+            "are pruned from indexing, so captures would never be "
+            "searchable.".format(CFG.output_dir))
+        sys.exit(2)
     CFG.collection = args.collection
     CFG.embed_url = args.embed_url
     CFG.embed_model = args.embed_model

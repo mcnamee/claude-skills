@@ -28,23 +28,28 @@ Plus **[`context/`](context)** — the reference material they work from:
   places. The matching skill comes with the server.
 - **Confined by default.** Every server that touches the filesystem is locked to
   the folders you name, and refuses to start unconfined rather than falling back
-  to "anywhere". Five of the seven are read-only.
+  to "anywhere". `word` is the only one that can change a document you already
+  have; the rest either read, or write new Markdown into a folder you nominate.
 - **Secrets never hit the command line.** Tokens and API keys are environment
   variables only — argv is visible to other local users in process listings.
 - **They compose.** Word, Outlook and Confluence can each mirror what they read
   into one Markdown folder; `pdf-to-md` fills the same folder from PDFs; the
   `knowledge-base` server indexes it and answers questions over the lot.
+- **And it grows.** `word` mirrors documents it *writes*, not just ones it
+  reads, and `knowledge-base` takes a `kb_capture` call — so an analysis or a
+  research brief that would otherwise vanish with the chat goes back into the
+  index and answers the same question next time.
 
 ## The plugins
 
 | Plugin | Version | What it does | pip install |
 |---|---|---|---|
-| [**word**](plugins/word) | 4.1.0 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
+| [**word**](plugins/word) | 4.2.0 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
 | [**excel**](plugins/excel) | 3.0.1 | Read and analyse workbooks; parses `.xlsx` directly, so Excel isn't needed | _none_ |
 | [**outlook**](plugins/outlook) | 3.0.1 | Read local Outlook mail and calendar via COM, with a content blacklist | `pywin32` |
 | [**confluence**](plugins/confluence) | 1.3.2 | Search and read Confluence pages | _none_ |
 | [**jira**](plugins/jira) | 1.1.3 | Query issues, sprints and projects (Jira Data Center v2 API) | _none_ |
-| [**knowledge-base**](plugins/knowledge-base) | 2.0.3 | True RAG over your own Markdown: local ChromaDB index + your embeddings API | `chromadb` |
+| [**knowledge-base**](plugins/knowledge-base) | 2.1.0 | True RAG over your own Markdown: local ChromaDB index + your embeddings API, and capture notes back into it | `chromadb` |
 | [**pdf-to-md**](plugins/pdf-to-md) | 4.0.3 | Convert PDFs to Markdown with tables preserved | `pymupdf pymupdf4llm` |
 
 Each plugin's README covers its settings, tools, file access and example
@@ -177,9 +182,9 @@ its configuration, and that configuration is **required**:
 
 | Plugin | Local file access |
 |---|---|
-| `word` | Read/write, confined to the documents folder (plus the output and knowledge-base folders, if set); the templates folder is read-only |
+| `word` | Read/write, confined to the documents folder (plus the output and knowledge-base folders, if set); the templates folder is read-only. Opening, creating and saving each mirror to the knowledge-base folder |
 | `excel` | Read-only, confined to the workbook folder |
-| `knowledge-base` | Reads the documents folder; writes only its vector index; network only to the endpoints you configure |
+| `knowledge-base` | Reads the documents folder; writes its vector index and captured notes (`<docs-dir>\captures` by default, always inside the documents folder); never edits or deletes an existing document; network only to the endpoints you configure |
 | `pdf-to-md` | Reads the PDF folder, writes the output folder |
 | `confluence` | None unless a knowledge-base folder is set; then writes only there |
 | `outlook` | None unless a knowledge-base folder is set; then writes only there |
@@ -233,8 +238,8 @@ agent goes away and does the work in its own.
 
 | Agent | Invoke | What it does |
 |---|---|---|
-| [**researcher**](agents/researcher.md) | `@agent-researcher` | Researches a topic across the local knowledge base and Confluence, corroborates what it finds, and returns a cited brief with confidence ratings and named gaps |
-| [**report-writer**](agents/report-writer.md) | `@agent-report-writer` | Turns research or notes into the written content of a report or official brief, following the structure of an exemplar in `./context/exemplars`, then runs `/unslop` and `/polish` over it |
+| [**researcher**](agents/researcher.md) | `@agent-researcher` | Researches a topic across the local knowledge base and Confluence, corroborates what it finds, and returns a cited brief with confidence ratings and named gaps — then offers to capture the brief back into the knowledge base |
+| [**report-writer**](agents/report-writer.md) | `@agent-report-writer` | Turns research or notes into the written content of a report or official brief, following the structure of an exemplar in `./context/exemplars`, then runs `/unslop` and `/polish` over it, and offers to capture the result |
 
 They chain: `researcher` produces the cited brief, `report-writer` writes it up.
 Each is one Markdown file, so installing is a file copy:
