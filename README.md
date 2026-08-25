@@ -49,7 +49,7 @@ Plus **[`context/`](context)** — the reference material they work from:
 | [**outlook**](plugins/outlook) | 3.0.1 | Read local Outlook mail and calendar via COM, with a content blacklist | `pywin32` |
 | [**confluence**](plugins/confluence) | 1.4.0 | Search and read Confluence pages, across one or two instances | _none_ |
 | [**jira**](plugins/jira) | 1.1.3 | Query issues, sprints and projects (Jira Data Center v2 API) | _none_ |
-| [**knowledge-base**](plugins/knowledge-base) | 2.1.0 | True RAG over your own Markdown: local ChromaDB index + your embeddings API, and capture notes back into it | `chromadb` |
+| [**knowledge-base**](plugins/knowledge-base) | 2.1.1 | True RAG over your own Markdown: local ChromaDB index + your embeddings API, and capture notes back into it | `chromadb` |
 | [**pdf-to-md**](plugins/pdf-to-md) | 4.0.3 | Convert PDFs to Markdown with tables preserved | `pymupdf pymupdf4llm` |
 
 Each plugin's README covers its settings, tools, file access and example
