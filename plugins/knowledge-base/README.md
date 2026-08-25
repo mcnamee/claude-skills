@@ -5,7 +5,7 @@ local ChromaDB vector index plus your own embeddings API.
 
 | | |
 |---|---|
-| **Server** | `knowledge-base.py` v2.1.0 |
+| **Server** | `knowledge-base.py` v2.1.1 |
 | **pip install** | `chromadb` (HTTP to your endpoints is stdlib `urllib` — no `requests`) |
 | **Platform** | any |
 | **Writes to disk** | yes — the vector index folder, plus captured notes under `<docs-dir>\captures` |

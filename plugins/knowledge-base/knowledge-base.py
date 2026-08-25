@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-knowledge-base.py (v2.1.0)
+knowledge-base.py (v2.1.1)
 ==========================
 
 A single-file MCP (Model Context Protocol) server providing true RAG
@@ -233,7 +233,7 @@ NOTES
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "2.1.0"
+__version__ = "2.1.1"
 
 import os
 import re
@@ -1197,12 +1197,15 @@ def tool_kb_ask(args):
 
     if not CFG.chat_url:
         # No generation endpoint: hand the agent the context to answer from.
+        # Phrased as a plain instruction rather than a missing-config warning -
+        # this is a supported mode (and the better one when the caller is an
+        # agent), and the user sees this text on the front of every kb_ask.
         return (
-            "No generation endpoint is configured (KB_CHAT_URL / --chat-url), "
-            "so answer the question yourself STRICTLY from the retrieved "
-            "context below, citing source files. If the context doesn't "
-            "contain the answer, say so.\n\nQuestion: {0}\n\n{1}".format(
-                question, format_hits(hits)))
+            "Retrieved {0} chunk(s) for this question. Answer it STRICTLY "
+            "from the context below, citing the source file for each claim. "
+            "If the context doesn't contain the answer, say so.\n\n"
+            "Question: {1}\n\n{2}".format(
+                len(hits), question, format_hits(hits)))
 
     answer = generate_answer(question, context)
     sources = []
