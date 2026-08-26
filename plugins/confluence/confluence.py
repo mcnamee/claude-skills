@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-confluence.py (v1.4.0) - A single-file MCP (Model Context Protocol) server
+confluence.py (v2.0.0) - A single-file MCP (Model Context Protocol) server
 for querying ONE OR TWO Confluence Data Center instances (tested against the
 9.x v1 REST API) using only the Python 3 standard library.
 
@@ -75,10 +75,16 @@ listings.
                         0 = unlimited, default 0). This limit applies only to
                         the text returned to the model; files saved to
                         CONFLUENCE_KB_DIR are never truncated.
-  CONFLUENCE_KB_DIR     if set, every page that is read is also saved as a
-                        Markdown file into this folder, for feeding a local RAG
-                        knowledge base (--kb-dir). Files are overwritten if they
-                        already exist. Leave unset to disable saving.
+  CONFLUENCE_KB_DIR     every page that is read is also saved as a Markdown
+                        file into this folder, for feeding a local RAG
+                        knowledge base (--kb-dir). Files are overwritten if
+                        they already exist. DEFAULTS to
+                        C:\Eva\knowledge\confluence - the Confluence folder of
+                        the Eva working tree, which sits inside the
+                        knowledge-base plugin's documents folder so mirrored
+                        pages are actually indexed. Pass 'off' to disable
+                        mirroring, after which the server writes no local file
+                        at all.
 
 The second server is all-or-nothing: if CONFLUENCE_BASE_URL_2 is set without
 credentials, the server refuses to start rather than quietly answering "Blue"
@@ -128,7 +134,7 @@ config (note the tokens go in the environment, never in the arguments):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "1.4.0"
+__version__ = "2.0.0"
 
 import argparse
 import base64
@@ -145,6 +151,22 @@ import urllib.request
 
 SERVER_NAME = "confluence-mcp"
 SERVER_VERSION = __version__
+
+# Folder every page read is mirrored to as Markdown, for a local RAG index.
+# Set it here, or at launch with --kb-dir / the CONFLUENCE_KB_DIR environment
+# variable (which take priority over this constant).
+# Default: the confluence\ sub-folder of the Eva knowledge base. It MUST stay
+# inside the knowledge-base plugin's documents folder (C:\Eva\knowledge) or the
+# mirrored pages would never be indexed. The folder is created on demand.
+# Set to None here (or pass --kb-dir off) to disable mirroring, after which this
+# server touches no local file at all.
+KB_DIR = r"C:\Eva\knowledge\confluence"
+
+# Folder-setting values that mean "explicitly turned off". An MCP client can
+# only pass strings, and a BLANK string is what it substitutes for a setting the
+# user left empty - which means "not configured", falling back to the default
+# above. So a keyword is needed to say "definitely off".
+DISABLE_KEYWORDS = frozenset(("off", "none", "no", "false", "disabled"))
 # Friendly names used when the user does not supply one. They only ever show up
 # in output (or in a tool's 'server' enum) when a second server is configured.
 DEFAULT_NAME_1 = "Primary"
@@ -1370,12 +1392,15 @@ def build_arg_parser():
                    help="Truncate page bodies to N characters, 0 = unlimited "
                         "(env CONFLUENCE_MAX_BODY). Applies to returned text "
                         "only, not to saved knowledge-base files.")
-    p.add_argument("--kb-dir", default=env_str("CONFLUENCE_KB_DIR"),
-                   help="If set, every page read is also saved as a Markdown "
-                        "file into this folder for a local RAG knowledge base "
-                        "(env CONFLUENCE_KB_DIR). Files are named "
-                        "'Confluence - <title>.md' and overwritten each time; "
-                        "with two servers, 'Confluence <server> - <title>.md'.")
+    p.add_argument("--kb-dir", default=env_str("CONFLUENCE_KB_DIR") or KB_DIR,
+                   help="Every page read is also saved as a Markdown file into "
+                        "this folder for a local RAG knowledge base (env "
+                        "CONFLUENCE_KB_DIR, then the KB_DIR config value - "
+                        "default C:\\Eva\\knowledge\\confluence). Files "
+                        "are named 'Confluence - <title>.md' and overwritten "
+                        "each time; with two servers, "
+                        "'Confluence <server> - <title>.md'. Pass 'off' to "
+                        "disable mirroring entirely.")
     p.add_argument("--check", action="store_true",
                    help="Connect to every configured Confluence server, print "
                         "who you are authenticated as and how many spaces are "
@@ -1452,6 +1477,14 @@ def main(argv=None):
     name = clean(args.name) or DEFAULT_NAME_1
     name_2 = clean(args.name_2) or DEFAULT_NAME_2
 
+    # The knowledge-base folder has a real default, so "off" (or any other
+    # DISABLE_KEYWORDS value) is how mirroring is switched off from a client
+    # that can only pass strings - a blank value means "not configured" and
+    # falls back to that default.
+    kb_dir = clean(args.kb_dir)
+    if kb_dir and kb_dir.strip().lower() in DISABLE_KEYWORDS:
+        kb_dir = None
+
     if not base_url:
         log("FATAL: no base URL. Set CONFLUENCE_BASE_URL or pass --base-url. "
             "(The first server is always the default one; a second server is "
@@ -1509,7 +1542,7 @@ def main(argv=None):
                 ca_cert=spec_ca,
                 timeout=args.timeout,
                 max_body=args.max_body,
-                kb_dir=args.kb_dir,
+                kb_dir=kb_dir,
             )
             for (spec_name, spec_url, spec_token, spec_user, spec_password,
                  spec_verify, spec_ca) in specs

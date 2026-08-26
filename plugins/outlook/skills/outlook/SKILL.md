@@ -30,8 +30,9 @@ user to wire it in first (see the repo README) and to verify with
 2. If a folder-scoped search misses, `outlook_list_folders` to learn the
    actual folder names, then retry `outlook_search_recent` with `folders`.
 3. "What did I do last week?" → `outlook_list_sent_emails` + summarise.
-4. Reading an email with `--kb-dir` configured also mirrors it to Markdown
-   for the knowledge base — reading IS the import step.
+4. Reading an email also mirrors it to Markdown for the knowledge base
+   (on by default, to `C:\Eva\knowledge\email`) — reading IS the import
+   step. Blacklisted messages are never mirrored.
 
 ## Notes
 

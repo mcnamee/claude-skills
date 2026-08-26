@@ -25,7 +25,7 @@ whichever install route you use:
 to this folder:
 
 ```
-C:\path\to\claude-skills\context\templates
+C:\Eva\reference\templates
 ```
 
 Already installed? `/plugin` → `word` → reconfigure, and set it there.
@@ -33,14 +33,14 @@ Already installed? `/plugin` → `word` → reconfigure, and set it there.
 **`claude mcp add`:**
 
 ```powershell
-claude mcp add word --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\claude-skills\plugins\word\word.py --docs-dir C:\Users\me\Documents\ai_docs --output-dir C:\Users\me\Documents\ai_generated --templates-dir C:\path\to\claude-skills\context\templates
+claude mcp add word --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\claude-skills\plugins\word\word.py --docs-dir C:\Eva\documents\word --output-dir C:\Eva\output\word --templates-dir C:\Eva\reference\templates
 ```
 
 **`.mcp.json`** — add to the `word` entry's `args` (see
 [`.mcp.json.example`](../../.mcp.json.example)):
 
 ```json
-"--templates-dir", "C:\\path\\to\\claude-skills\\context\\templates"
+"--templates-dir", "C:\\Eva\\reference\\templates"
 ```
 
 Confirm it took: the server logs `templates folder (read-only) = ...` at

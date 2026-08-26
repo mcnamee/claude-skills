@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r"""
-excel.py (v3.0.1) -- Read-only Excel (.xlsx) MCP server.
+excel.py (v4.0.0) -- Read-only Excel (.xlsx) MCP server.
 
 PURPOSE
     A single-file, standard-library-only MCP (Model Context Protocol) stdio
@@ -46,14 +46,21 @@ REQUIREMENTS
     * Python 3.8+ (standard library only). No pip install required.
 
 CONFIGURATION
-    Edit the CONFIG block directly below the imports. The workbook folder is
-    REQUIRED - set DOCS_DIR there, or supply --docs-dir / the
-    EXCEL_DOCS_DIR environment variable at launch; the server refuses
-    to start without one and only ever reads files inside it (symlinks that
-    resolve outside the folder are excluded). Other settings can also be
-    overridden per-run via command-line flags (see --help).
+    The workbook folder is REQUIRED, and DEFAULTS to C:\Eva\documents\excel -
+    the Excel folder of the Eva working tree (copy the repo's eva\ folder to
+    C:\Eva and it exists). Override it with --docs-dir or the EXCEL_DOCS_DIR
+    environment variable, or by editing DOCS_DIR in the CONFIG block directly
+    below the imports. The server refuses to start without a folder and only
+    ever reads files inside it (symlinks that resolve outside the folder are
+    excluded). Other settings can also be overridden per-run via command-line
+    flags (see --help).
     Precedence (suite-wide convention): CLI flag > environment variable >
     constant in this file.
+
+    NOTE: only the TOP LEVEL of the workbook folder is listed - sub-folders are
+    not searched (word.py does search recursively; this server does not). Keep
+    workbooks directly in the folder, and use filename prefixes
+    ("Finance - Budget FY26.xlsx") where you would otherwise want a sub-folder.
 
 STANDALONE TESTING (before wiring the server in)
     1) Environment / config sanity check (prints interpreter + folder state):
@@ -104,7 +111,7 @@ PROTOCOL NOTE
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "3.0.1"
+__version__ = "4.0.0"
 
 import sys
 import os
@@ -125,8 +132,10 @@ from datetime import datetime, timedelta
 # resolve outside it are excluded) and REFUSES TO START without one. Set it
 # here, or at launch with --docs-dir or the EXCEL_DOCS_DIR environment
 # variable (which take priority over this constant).
-#   e.g. DOCS_DIR = r"C:\Users\me\Documents\workbooks"
-DOCS_DIR = None
+# Default: the Eva working tree's workbook folder. NOTE this server lists only
+# the TOP LEVEL of the folder (unlike word.py, which searches recursively), so
+# workbooks must sit directly in it - see eva\documents\excel\README.md.
+DOCS_DIR = r"C:\Eva\documents\excel"
 
 # File extensions treated as readable workbooks (lower-case, incl. dot).
 ALLOWED_EXTENSIONS = (".xlsx", ".xlsm")
@@ -1278,11 +1287,11 @@ def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Read-only Excel (.xlsx) MCP server.")
     parser.add_argument("--docs-dir",
-                        default=os.environ.get("EXCEL_DOCS_DIR",
-                                               DOCS_DIR),
+                        default=os.environ.get("EXCEL_DOCS_DIR") or DOCS_DIR,
                         help="Folder containing .xlsx/.xlsm workbooks. Falls "
                              "back to the EXCEL_DOCS_DIR environment "
-                             "variable, then the CONFIG block default.")
+                             "variable, then the CONFIG block default "
+                             "(C:\\Eva\\documents\\excel).")
     parser.add_argument("--check", action="store_true",
                         help="Print environment/config diagnostics and exit.")
     parser.add_argument("--list", action="store_true",

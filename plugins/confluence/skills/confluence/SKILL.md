@@ -63,8 +63,9 @@ asked for is not wired in.
 ## Notes
 
 - The server is read-only; it cannot create or edit pages.
-- If `--kb-dir` / `CONFLUENCE_KB_DIR` is configured, every page you read is
-  automatically mirrored to Markdown for the local knowledge-base server —
+- Every page you read is automatically mirrored to Markdown for the local
+  knowledge-base server (on by default, to `C:\Eva\knowledge\confluence`;
+  disabled only if `--kb-dir` / `CONFLUENCE_KB_DIR` is set to `off`) —
   reading a page IS how you import it into the RAG index. With two instances
   configured the files are named `Confluence <server> - <title>.md`, so pages
   that share a title on both instances stay separate.

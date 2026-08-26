@@ -6,10 +6,10 @@ AI entirely.
 
 | | |
 |---|---|
-| **Server** | `outlook.py` v3.0.1 |
+| **Server** | `outlook.py` v4.0.0 |
 | **pip install** | `pywin32` |
 | **Platform** | **Windows only** — requires classic Win32 Outlook (not "New Outlook") installed, running, and logged into a profile |
-| **Writes to disk** | only if the knowledge-base folder is set |
+| **Writes to disk** | yes — mirrors every email read to `C:\Eva\knowledge\email`, unless that setting is `off` |
 
 ## Install
 
@@ -18,12 +18,23 @@ AI entirely.
 /plugin install outlook@mcnamee-claude-skills
 ```
 
-| Prompt | Required | Env var | Purpose |
+| Prompt | Default | Env var | Purpose |
 |---|---|---|---|
-| Knowledge-base folder | no | `OUTLOOK_KB_DIR` | If set, every email read is also saved as Markdown here for a local RAG index |
-| Search folders | no | `OUTLOOK_SEARCH_FOLDERS` | Comma-separated default folder set for `outlook_search_recent`, e.g. `Inbox,Sent Items,Archive` |
-| Blacklist file | no | `OUTLOOK_BLACKLIST_FILE` | Path to a file of extra content-blacklist terms |
-| Python interpreter | **yes** | — | Absolute path to the `python.exe` that has `pywin32` installed |
+| Knowledge-base folder | `C:\Eva\knowledge\email` | `OUTLOOK_KB_DIR` | Every email read is also saved as Markdown here, for the `knowledge-base` plugin to index. `off` to disable |
+| Search folders | — | `OUTLOOK_SEARCH_FOLDERS` | Comma-separated default folder set for `outlook_search_recent`, e.g. `Inbox,Sent Items,Archive` |
+| Blacklist file | — | `OUTLOOK_BLACKLIST_FILE` | Path to a file of extra content-blacklist terms |
+| Python interpreter | — | — | **Required.** Absolute path to the `python.exe` that has `pywin32` installed |
+
+> **Blank does not mean off.** Leaving the folder prompt empty means "not
+> configured", so the default above applies. To switch mirroring off, type `off`
+> (`none`, `no`, `false` and `disabled` work too), after which the server writes
+> no local file at all.
+
+**Mirroring is on by default, and this is the plugin where that matters most.**
+It turns correspondence into plain text files that are then embedded and
+quotable in answers. Blacklisted messages are never written, so the terms file
+is the control that counts — but if mirroring email is more than you want, set
+the folder to `off`. See [`eva/knowledge/email`](../../eva/knowledge/email).
 
 ## Configuration reference
 
@@ -31,7 +42,7 @@ Precedence is **CLI flag > environment variable > constant in the file**.
 
 | CLI flag | Env var | Purpose |
 |---|---|---|
-| `--kb-dir` | `OUTLOOK_KB_DIR` | If set, every email read with `outlook_get_email` is *also* saved as a Markdown file into this folder for a local RAG knowledge base. Files are named `Email - <date> - <subject> (<id>).md` and overwritten on re-read of the same message; the folder is created at startup. **Blocked (blacklisted) messages are never written** — mirroring only runs after a message clears the content filter. Falls back to the `KB_DIR` config constant. Omit to keep the server file-free (the default) |
+| `--kb-dir` | `OUTLOOK_KB_DIR` | Every email read with `outlook_get_email` is *also* saved as a Markdown file into this folder for a local RAG knowledge base. Files are named `Email - <date> - <subject> (<id>).md` and overwritten on re-read of the same message; the folder is created at startup. **Blocked (blacklisted) messages are never written** — mirroring only runs after a message clears the content filter. Falls back to the `KB_DIR` config constant, default `C:\Eva\knowledge\email` — inside the `knowledge-base` server's documents folder, so mirrored mail is actually indexed. Pass `off` to disable mirroring and keep the server file-free |
 | `--search-folders` | `OUTLOOK_SEARCH_FOLDERS` | Comma-separated folder names used as the **default** folder set for `outlook_search_recent`, overriding the `SEARCH_ALL_FOLDERS` value in the file (e.g. `"Inbox,Sent Items,Archive"`). A per-call `folders` argument still takes priority |
 | `--blacklist-file` | `OUTLOOK_BLACKLIST_FILE` | Path to a file of extra content-blacklist terms (one per line, `#` for comments), added to the built-in list |
 | `--require-blacklist` | `OUTLOOK_REQUIRE_BLACKLIST=1` | Fail closed: refuse to start unless the content blacklist has at least one active term, so a missing/empty terms file cannot silently disable the compliance filter. Also settable via the `REQUIRE_BLACKLIST` constant |

@@ -1,7 +1,7 @@
 {
   "name": "outlook",
   "displayName": "Outlook (mail + calendar)",
-  "version": "3.0.1",
+  "version": "4.0.0",
   "description": "Read-only access to local classic Outlook mail and calendar via COM. Windows only; requires pywin32.",
   "author": {
     "name": "mcnamee"
@@ -18,7 +18,8 @@
     "kb_dir": {
       "type": "directory",
       "title": "Knowledge-base folder",
-      "description": "Optional. If set, every email read is also saved as Markdown here for a local RAG index."
+      "description": "Every email read is also saved as Markdown here, for the knowledge-base plugin to index (blacklisted messages are never written). Keep it inside that plugin's documents folder (C:\\Eva\\knowledge) or the mirrors are never indexed. Enter 'off' to disable mirroring, after which this server writes no local file at all.",
+      "default": "C:\\Eva\\knowledge\\email"
     },
     "search_folders": {
       "type": "string",

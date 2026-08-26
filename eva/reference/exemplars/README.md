@@ -61,7 +61,7 @@ Name the exemplar, or name the kind of document and let Claude match:
 - *"Write the Q3 status report for the migration programme — follow
   `Status Report - Migration Programme.md` for structure and tone."*
 - *"Draft a board paper on the licence renewal. Use the board paper exemplar in
-  `context\exemplars` as the model — same sections, same length, same
+  `C:\Eva\reference\exemplars` as the model — same sections, same length, same
   register."*
 - *"Read the proposal exemplar first, then tell me what sections my draft is
   missing."*

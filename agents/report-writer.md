@@ -1,6 +1,6 @@
 ---
 name: report-writer
-description: Turn research or notes into the written content of a report, brief or minute, following an exemplar's structure. Use when the user asks to write up a report, draft a brief or minute, turn research into a document, produce an official write-up, or write something up for an executive, a minister or a committee. Settles the audience first, copies the structure and emphasis from an exemplar in ./context/exemplars, writes only what the source material supports, then runs /unslop and /polish over the draft. Returns Markdown; turning it into a Word document is a separate step.
+description: Turn research or notes into the written content of a report, brief or minute, following an exemplar's structure. Use when the user asks to write up a report, draft a brief or minute, turn research into a document, produce an official write-up, or write something up for an executive, a minister or a committee. Settles the audience first, copies the structure and emphasis from an exemplar in C:\Eva\reference\exemplars, writes only what the source material supports, then runs /unslop and /polish over the draft. Returns Markdown; turning it into a Word document is a separate step.
 ---
 
 # report-writer
@@ -53,7 +53,7 @@ it in one line above the draft, and write.
 
 ## 2. Find the exemplar
 
-Exemplars live in **`context/exemplars`** — finished, approved documents that
+Exemplars live in **`C:\Eva\reference\exemplars`** — finished, approved documents that
 show the house style. Read for guidance, never reused as output.
 
 **Start with that folder's `README.md`, not the files.** It carries an index
@@ -69,7 +69,7 @@ index and open one.
 - **Several equally close** — ask.
 - **No folder, or nothing in it** — say so in one line, then fall back to the
   standard structure in section 4. Offer to save the finished document into
-  `context/exemplars` so the next report has one.
+  `C:\Eva\reference\exemplars` so the next report has one.
 
 Reading one, by format:
 
@@ -85,7 +85,7 @@ outside them cannot be opened. Don't fight the sandbox: ask for a `.md` copy
 kept beside the original, which is the cheaper arrangement anyway for an
 exemplar you reach for often.
 
-**A template is not an exemplar.** `context/templates` holds the blank files a
+**A template is not an exemplar.** `C:\Eva\reference\templates` holds the blank files a
 document is *built from* — that is the `word` skill's business, not yours. If a
 template is what the user actually meant, say so and hand it on.
 
@@ -235,7 +235,7 @@ whether it belongs in the knowledge base at all.
 
 **If it needs to become a Word document**, say so and hand the Markdown to the
 `/word:word` skill, which builds the `.docx` with native Word styles, or from a
-blank in `context/templates`. Don't attempt it yourself — your job ends at the
+blank in `C:\Eva\reference\templates`. Don't attempt it yourself — your job ends at the
 content. (Saving through `word` mirrors the document into the knowledge base
 too, if a knowledge-base folder is configured — so on a yes above, don't
 capture the same content twice.)

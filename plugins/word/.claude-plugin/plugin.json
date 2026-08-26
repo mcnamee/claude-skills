@@ -1,7 +1,7 @@
 {
   "name": "word",
   "displayName": "Word (.docx)",
-  "version": "4.2.0",
+  "version": "5.0.0",
   "description": "Read, edit and create Word .docx files - including Word tracked changes, native styles and filling out templates.",
   "author": {
     "name": "mcnamee"
@@ -18,23 +18,26 @@
     "docs_dir": {
       "type": "directory",
       "title": "Documents folder",
-      "description": "Folder of .docx files the server may open and save. REQUIRED - the server refuses to start without it.",
-      "required": true
+      "description": "Folder of .docx files the server may open and save, searched recursively. REQUIRED - the server refuses to start without it. Defaults to the Word folder of the Eva working tree; copy the repo's eva\\ folder to C:\\Eva and it exists.",
+      "default": "C:\\Eva\\documents\\word"
     },
     "output_dir": {
       "type": "directory",
       "title": "Output folder",
-      "description": "Optional. Where msword_create writes NEW documents. Defaults to the documents folder."
+      "description": "Where msword_create writes NEW documents, kept separate from the documents folder so generated files never mix with your source library. Enter 'off' to write new documents into the documents folder instead.",
+      "default": "C:\\Eva\\output\\word"
     },
     "templates_dir": {
       "type": "directory",
       "title": "Templates folder",
-      "description": "Optional. Folder of blank .docx templates new documents are created from, e.g. the context\\templates folder in the claude-skills repo. Read-only: templates can be opened and used as a starting point, never saved over. Must be separate from the documents and output folders."
+      "description": "Folder of blank .docx templates new documents are created from. Read-only: templates can be opened and used as a starting point, never saved over, and it must be separate from the documents and output folders. Enter 'off' to run with no templates.",
+      "default": "C:\\Eva\\reference\\templates"
     },
     "kb_dir": {
       "type": "directory",
       "title": "Knowledge-base folder",
-      "description": "Optional. If set, every document opened is also mirrored to Markdown here for a local RAG index."
+      "description": "Every document opened, created or saved is also mirrored to Markdown here, which is what makes it searchable by the knowledge-base plugin. Keep it inside that plugin's documents folder (C:\\Eva\\knowledge) or the mirrors are never indexed. Enter 'off' to disable mirroring.",
+      "default": "C:\\Eva\\knowledge\\word"
     },
     "author": {
       "type": "string",

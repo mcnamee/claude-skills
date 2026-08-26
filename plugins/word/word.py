@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r"""
-word.py (v4.2.0) - A single-file MCP (Model Context Protocol) stdio server
+word.py (v5.0.0) - A single-file MCP (Model Context Protocol) stdio server
 that gives an AI agent read/search/edit/generate access to Word .docx files.
 
 It follows a simple open -> edit -> save workflow (msword_open ... msword_save),
@@ -20,10 +20,10 @@ WHAT IT CAN DO
       an existing document via 'template' - its styles, headers/footers and
       boilerplate are inherited and the template file is left untouched.
     - Keep those blank templates in a folder of their own with --templates-dir
-      (e.g. the repo's context\templates). It is a READ-ONLY third root: its
-      .docx files can be listed, opened and used as the base for msword_create,
-      but every attempt to SAVE over one is refused, so a template cannot be
-      turned into someone's half-finished report.
+      (by default C:\Eva\reference\templates). It is a READ-ONLY third root:
+      its .docx files can be listed, opened and used as the base for
+      msword_create, but every attempt to SAVE over one is refused, so a
+      template cannot be turned into someone's half-finished report.
     - On open, create AND save, optionally MIRROR the document to Markdown into
       a knowledge-base folder for a local RAG index (the same idea as
       confluence.py's --kb-dir): headings, bullet/numbered lists and tables are
@@ -163,23 +163,33 @@ WHAT IT CANNOT DO
 
     To register the server by hand instead:
 
-        claude mcp add word --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\word.py --author Matt --docs-dir C:\Users\me\Documents\ai_docs --output-dir C:\Users\me\Documents\ai_generated --templates-dir C:\path\to\claude-skills\context\templates --kb-dir C:\Users\me\Documents\rag_kb
+        claude mcp add word --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\word.py --author Matt
+
+    Every folder setting DEFAULTS to the matching folder of the Eva working
+    tree, so a stock C:\Eva install needs no path passed at all. To override
+    one (flag beats environment variable beats the CONFIG constant):
+
+        claude mcp add word --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\word.py --author Matt --docs-dir D:\Eva\documents\word --output-dir D:\Eva\output\word --templates-dir D:\Eva\reference\templates --kb-dir D:\Eva\knowledge\word
 
     The --author value (MSWORD_AUTHOR) is stamped on every tracked change;
     omit it to fall back to the TRACKED_CHANGE_AUTHOR config constant below.
-    The --docs-dir folder is REQUIRED (via the flag, MSWORD_DOCS_DIR, or the
-    DOCS_DIR constant): all open/save paths must be inside it and the server
-    refuses to start without one.
-    The --output-dir folder (optional; MSWORD_OUTPUT_DIR or the OUTPUT_DIR
-    constant) is where msword_create writes NEW documents; it is kept SEPARATE
-    from the knowledge-base folder and defaults to the document root if unset.
-    The --templates-dir folder (optional; MSWORD_TEMPLATES_DIR or the
-    TEMPLATES_DIR constant) holds blank .docx templates. It is readable like the
-    document root but NEVER writable - point it at the context\templates folder
-    that ships with this repo, or at your own copy of it.
-    The --kb-dir folder (optional; MSWORD_KB_DIR or the KB_DIR constant) turns
-    on Markdown mirroring for a local RAG knowledge base, on open, create and
-    save; omit it to disable.
+    The --docs-dir folder is REQUIRED (flag, MSWORD_DOCS_DIR, or the DOCS_DIR
+    constant - default C:\Eva\documents\word): all open/save paths must be
+    inside it and the server refuses to start without one.
+    The --output-dir folder (MSWORD_OUTPUT_DIR / OUTPUT_DIR - default
+    C:\Eva\output\word) is where msword_create writes NEW documents; it is kept
+    SEPARATE from the knowledge-base folder, and falls back to the document root
+    if cleared.
+    The --templates-dir folder (MSWORD_TEMPLATES_DIR / TEMPLATES_DIR - default
+    C:\Eva\reference\templates) holds blank .docx templates. It is readable like
+    the document root but NEVER writable.
+    The --kb-dir folder (MSWORD_KB_DIR / KB_DIR - default
+    C:\Eva\knowledge\word) turns on Markdown mirroring for a local RAG
+    knowledge base, on open, create and save; clear it to disable.
+
+    Every one of those folders is part of the Eva working tree: copy the repo's
+    eva\ folder to C:\Eva and they all exist, correctly related to each other.
+    See eva\README.md for the layout and the reasoning behind it.
 
     See README.md next to this file for the full settings reference.
 
@@ -206,7 +216,7 @@ failed transfer" rule):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "4.2.0"
+__version__ = "5.0.0"
 
 # =============================================================================
 # CONFIGURATION  (all user-editable settings live here, nothing scattered below)
@@ -224,12 +234,14 @@ PROTOCOL_VERSION_FALLBACK = "2024-11-05"  # used if the client sends none
 # This root is ALSO the base for relative paths: a bare "Policy 103.docx" is
 # resolved against it (not the process CWD), so the model can open a file by
 # name without knowing its absolute path.
-#   e.g. DOCS_DIR = r"C:\Users\you\Documents\ai_docs"
+# Default: the Eva working tree's Word source library, which is searched
+# recursively - so documents\word\inbox and documents\word\library are both
+# reachable by bare filename.
 # (--check is exempt: the self-test sandboxes itself to its own temp folder.)
 # Related caution: only open .docx files from trusted sources - a maliciously
 # crafted file could use XML entity tricks to pull local file contents into
 # the document text that the model then reads.
-DOCS_DIR = None
+DOCS_DIR = r"C:\Eva\documents\word"
 
 # OPTIONAL folder where msword_create writes NEW .docx files. Kept SEPARATE from
 # the knowledge-base folder below. Set it here, or at launch with --output-dir
@@ -237,12 +249,13 @@ DOCS_DIR = None
 # constant). It is also treated as a permitted open/save location alongside
 # DOCS_DIR, so freshly created documents can be reopened/edited later. If
 # left unset, msword_create falls back to writing inside DOCS_DIR.
-#   e.g. OUTPUT_DIR = r"C:\Users\you\Documents\ai_generated"
-OUTPUT_DIR = None
+# Default: the Eva working tree's output folder, so generated documents never
+# mix with the source library in DOCS_DIR.
+OUTPUT_DIR = r"C:\Eva\output\word"
 
 # OPTIONAL folder of blank .docx TEMPLATES (letterhead, report layout, contract
-# boilerplate ...) - the 'context/templates' folder that ships with this repo is
-# exactly this. Set it here, or at launch with --templates-dir or the
+# boilerplate ...) - the eva\reference\templates folder that ships with this
+# repo is exactly this. Set it here, or at launch with --templates-dir or the
 # MSWORD_TEMPLATES_DIR environment variable (which take priority over this
 # constant). It is a READ-ONLY third root:
 #   - its .docx files can be listed (msword_list_documents), opened
@@ -253,8 +266,9 @@ OUTPUT_DIR = None
 #     OUTPUT_DIR (or DOCS_DIR).
 # Keeping templates out of DOCS_DIR is the point: the folder stays a clean set
 # of blanks that the model can start from but can never edit in place.
-#   e.g. TEMPLATES_DIR = r"C:\path\to\claude-skills\context\templates"
-TEMPLATES_DIR = None
+# Default: the Eva working tree's templates folder (seeded from the repo's
+# eva\reference\templates).
+TEMPLATES_DIR = r"C:\Eva\reference\templates"
 
 # OPTIONAL knowledge-base (RAG) folder. If set, EVERY document opened with
 # msword_open is ALSO written out as a Markdown file into this folder, the same
@@ -264,8 +278,10 @@ TEMPLATES_DIR = None
 # path), so it does not need to sit inside DOCS_DIR. Set it here, or at
 # launch with --kb-dir or the MSWORD_KB_DIR environment variable (which take
 # priority over this constant). Leave unset to disable mirroring.
-#   e.g. KB_DIR = r"C:\Users\you\Documents\rag_kb"
-KB_DIR = None
+# Default: the word\ sub-folder of the Eva knowledge base. It MUST stay inside
+# the knowledge-base plugin's documents folder (C:\Eva\knowledge) or the
+# mirrored Markdown would never be indexed. Clear it to disable mirroring.
+KB_DIR = r"C:\Eva\knowledge\word"
 
 MAX_SESSIONS = 32                    # guard against runaway open() calls
 SEARCH_CONTEXT_CHARS = 40            # chars of context either side of a match
@@ -4749,6 +4765,21 @@ def run_check():
     return 1
 
 
+DISABLE_KEYWORDS = frozenset(("off", "none", "no", "false", "disabled"))
+
+
+def _is_disabled(value):
+    """True if a folder setting is one of the DISABLE_KEYWORDS.
+
+    An MCP client can only pass strings, and a BLANK string is what it
+    substitutes for a setting the user left empty - which the suite treats as
+    "not configured", falling back to the default. So a keyword is needed to
+    say "definitely off": --kb-dir off (or MSWORD_KB_DIR=off) disables Markdown
+    mirroring, --templates-dir off disables the templates root.
+    """
+    return bool(value) and value.strip().lower() in DISABLE_KEYWORDS
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Word (.docx) python-docx MCP stdio server. "
@@ -4771,52 +4802,75 @@ def main():
     parser.add_argument(
         "--docs-dir", default=os.environ.get("MSWORD_DOCS_DIR"),
         metavar="DIR",
-        help="REQUIRED path sandbox (unless the DOCS_DIR config constant "
-             "is set, or via the MSWORD_DOCS_DIR environment variable): "
-             "the server refuses to open or save any file outside this "
-             "directory tree, and refuses to start without one. The model "
-             "chooses open/save paths, so an unconfined server could "
-             "read/write any .docx this account can."
+        help="REQUIRED path sandbox: the server refuses to open or save any "
+             "file outside this directory tree, and refuses to start without "
+             "one. Falls back to the MSWORD_DOCS_DIR environment variable, "
+             "then the DOCS_DIR config value (default: "
+             "C:\\Eva\\documents\\word). The model chooses open/save "
+             "paths, so an unconfined server could read/write any .docx this "
+             "account can."
     )
     parser.add_argument(
         "--output-dir", default=os.environ.get("MSWORD_OUTPUT_DIR"),
         metavar="DIR",
         help="Folder where msword_create writes NEW .docx files, kept SEPARATE "
              "from the knowledge-base folder. Falls back to the MSWORD_OUTPUT_DIR "
-             "environment variable, then the OUTPUT_DIR config value, and finally "
-             "to the document root. Also treated as a permitted open/save "
+             "environment variable, then the OUTPUT_DIR config value (default: "
+             "C:\\Eva\\output\\word); pass 'off' to fall back to the "
+             "document root instead. Also treated as a permitted open/save "
              "location so created documents can be reopened and edited."
     )
     parser.add_argument(
         "--templates-dir", default=os.environ.get("MSWORD_TEMPLATES_DIR"),
         metavar="DIR",
-        help="Optional folder of blank .docx templates (e.g. the repo's "
-             "context\\templates). READ-ONLY: its files can be listed, opened "
-             "and passed as msword_create's 'template', but nothing can be "
-             "saved over them. Falls back to the MSWORD_TEMPLATES_DIR "
-             "environment variable, then the TEMPLATES_DIR config value."
+        help="Folder of blank .docx templates. READ-ONLY: its files can be "
+             "listed, opened and passed as msword_create's 'template', but "
+             "nothing can be saved over them. Falls back to the MSWORD_TEMPLATES_DIR "
+             "environment variable, then the TEMPLATES_DIR config value "
+             "(default: C:\\Eva\\reference\\templates); pass 'off' to "
+             "run with no templates root at all."
     )
     parser.add_argument(
         "--kb-dir", default=os.environ.get("MSWORD_KB_DIR"), metavar="DIR",
-        help="If set, every document opened with msword_open is ALSO written as "
-             "a Markdown file into this folder for a local RAG knowledge base "
+        help="Every document opened, created or saved is ALSO written as a "
+             "Markdown file into this folder for a local RAG knowledge base "
              "(falls back to the MSWORD_KB_DIR environment variable, then the "
-             "KB_DIR config value). Files are named 'Word - <name>.md' and "
-             "overwritten each time. The folder is created if it does not exist."
+             "KB_DIR config value, default: C:\\Eva\\knowledge\\word); "
+             "pass 'off' to disable mirroring. Files are named "
+             "'Word - <name>.md' and overwritten each time. The folder is "
+             "created if it does not exist."
     )
     args = parser.parse_args()
 
     global AUTHOR, DOCS_DIR, OUTPUT_DIR, TEMPLATES_DIR, KB_DIR
     if args.author:
         AUTHOR = args.author
-    if args.docs_dir:
-        DOCS_DIR = args.docs_dir
-    if args.output_dir:
-        OUTPUT_DIR = args.output_dir
-    if args.templates_dir:
-        TEMPLATES_DIR = args.templates_dir
-    if args.kb_dir:
-        KB_DIR = args.kb_dir
+
+    # Each optional folder has a real default (the Eva working tree), so
+    # "leave it blank" can no longer mean "turn this off": a blank value from an
+    # MCP client means "not configured", and falls back to the default. Pass
+    # one of the DISABLE_KEYWORDS instead to switch a folder off explicitly -
+    # the only way to do it from a client that can only supply strings.
+    # explicit_folders records which paths the user actually chose, so that a
+    # typo in one still fails loudly while a default pointing at a folder this
+    # endpoint has not created yet degrades quietly.
+    explicit_folders = set()
+    for name, value in (("docs", args.docs_dir),
+                        ("output", args.output_dir),
+                        ("templates", args.templates_dir),
+                        ("kb", args.kb_dir)):
+        if not value:
+            continue                      # unset -> keep the CONFIG default
+        chosen = None if _is_disabled(value) else value
+        explicit_folders.add(name)
+        if name == "docs":
+            DOCS_DIR = chosen
+        elif name == "output":
+            OUTPUT_DIR = chosen
+        elif name == "templates":
+            TEMPLATES_DIR = chosen
+        else:
+            KB_DIR = chosen
 
     if args.check:
         sys.exit(run_check())
@@ -4831,15 +4885,30 @@ def main():
     if not os.path.isdir(DOCS_DIR):
         log("FATAL: the configured document root does not exist or is not a "
             "directory: {}".format(DOCS_DIR))
+        if "docs" not in explicit_folders:
+            log("       That is the built-in default. Create the folder, or "
+                "copy the repo's eva\\ folder to C:\\Eva to lay the whole "
+                "working tree out at once, or point --docs-dir somewhere else.")
         sys.exit(2)
 
-    # The templates folder is optional, but a typo in it would silently mean
-    # "no templates", so a configured-but-missing folder fails loudly instead.
-    if TEMPLATES_DIR:
-        if not os.path.isdir(TEMPLATES_DIR):
+    # The templates folder is optional. A path the USER chose and got wrong
+    # would silently mean "no templates", so that fails loudly; the built-in
+    # default simply not existing yet does not.
+    if TEMPLATES_DIR and not os.path.isdir(TEMPLATES_DIR):
+        if "templates" in explicit_folders:
             log("FATAL: the configured templates folder does not exist or is "
                 "not a directory: {}".format(TEMPLATES_DIR))
             sys.exit(2)
+        # Only the built-in default is missing, which just means this endpoint
+        # has no templates folder yet. Carry on without one rather than
+        # refusing to start over a feature nobody asked for.
+        log("WARNING: the default templates folder does not exist, so "
+            "templates are disabled: {}".format(TEMPLATES_DIR))
+        log("         Create it (copying the repo's eva\\ folder to C:\\Eva "
+            "lays out the whole tree) to create documents from a template.")
+        TEMPLATES_DIR = None
+
+    if TEMPLATES_DIR:
         # Templates are read-only, so the folder must not be - or contain - the
         # folders documents are saved into; that would refuse every save.
         for label, folder in (("document root", DOCS_DIR),

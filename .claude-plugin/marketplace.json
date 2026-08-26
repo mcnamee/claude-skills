@@ -10,7 +10,7 @@
       "name": "word",
       "source": "./plugins/word",
       "description": "Read, edit and create Word .docx files - including Word tracked changes, native styles and filling out templates.",
-      "version": "4.2.0",
+      "version": "5.0.0",
       "keywords": [
         "word",
         "docx",
@@ -22,7 +22,7 @@
       "name": "excel",
       "source": "./plugins/excel",
       "description": "Read and analyse Excel workbooks. Read-only; parses .xlsx directly so Excel is not required.",
-      "version": "3.0.1",
+      "version": "4.0.0",
       "keywords": [
         "excel",
         "xlsx",
@@ -33,7 +33,7 @@
       "name": "outlook",
       "source": "./plugins/outlook",
       "description": "Read-only access to local classic Outlook mail and calendar via COM. Windows only; requires pywin32.",
-      "version": "3.0.1",
+      "version": "4.0.0",
       "keywords": [
         "outlook",
         "email",
@@ -45,7 +45,7 @@
       "name": "confluence",
       "source": "./plugins/confluence",
       "description": "Search and read Confluence pages across one or two instances, optionally mirroring them to Markdown for a local RAG knowledge base.",
-      "version": "1.4.0",
+      "version": "2.0.0",
       "keywords": [
         "confluence",
         "wiki",
@@ -67,7 +67,7 @@
       "name": "knowledge-base",
       "source": "./plugins/knowledge-base",
       "description": "True RAG over your own Markdown docs: a local ChromaDB vector index plus your embeddings API. Captures new notes back into it. Requires chromadb.",
-      "version": "2.1.1",
+      "version": "3.0.0",
       "keywords": [
         "rag",
         "knowledge-base",
@@ -79,7 +79,7 @@
       "name": "pdf-to-md",
       "source": "./plugins/pdf-to-md",
       "description": "Convert PDFs to Markdown with tables preserved, for feeding a local knowledge base. Requires pymupdf.",
-      "version": "4.0.3",
+      "version": "5.0.0",
       "keywords": [
         "pdf",
         "markdown",

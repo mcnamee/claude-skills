@@ -1,7 +1,7 @@
 {
   "name": "excel",
   "displayName": "Excel (.xlsx)",
-  "version": "3.0.1",
+  "version": "4.0.0",
   "description": "Read and analyse Excel workbooks. Read-only; parses .xlsx directly so Excel is not required.",
   "author": {
     "name": "mcnamee"
@@ -17,8 +17,8 @@
     "docs_dir": {
       "type": "directory",
       "title": "Workbook folder",
-      "description": "Folder of .xlsx/.xlsm workbooks the server may read. REQUIRED.",
-      "required": true
+      "description": "Folder of .xlsx/.xlsm workbooks the server may read. REQUIRED - the server refuses to start without it. Only the TOP LEVEL is listed, so keep workbooks directly in the folder rather than in sub-folders.",
+      "default": "C:\\Eva\\documents\\excel"
     },
     "python": {
       "type": "string",

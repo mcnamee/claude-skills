@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-outlook.py (v3.0.1)
+outlook.py (v4.0.0)
 ======================
 
 A single-file MCP (Model Context Protocol) server giving an LLM read-only
@@ -40,16 +40,26 @@ TOOLS EXPOSED (all read-only)
 - outlook_search_recent      : all mail across Inbox/Archive/Sent in a date range (configurable)
 - outlook_list_folders       : list every mail folder across all stores (to configure the above)
 
-OPTIONAL: Markdown export for a RAG knowledge base
---------------------------------------------------
-Set --kb-dir (or OUTLOOK_KB_DIR, or the KB_DIR config constant) to a folder and
-every email read with outlook_get_email is ALSO written out as a Markdown file
-there, the same way confluence.py mirrors pages and word.py mirrors
-documents, so the content can feed a local RAG index (e.g. alongside
-knowledge-base.py). Files are named 'Email - <date> - <subject> (<id>).md' and
-overwritten on re-read of the same message. Blocked (blacklisted) messages are
-NEVER written - the mirror only runs after a message has cleared the content
-filter. Leave it unset (the default) and the server keeps no local files.
+Markdown export for a RAG knowledge base (ON by default)
+--------------------------------------------------------
+Every email read with outlook_get_email is ALSO written out as a Markdown file
+into the knowledge-base folder, the same way confluence.py mirrors pages and
+word.py mirrors documents, so the content feeds a local RAG index (e.g.
+alongside knowledge-base.py). Files are named
+'Email - <date> - <subject> (<id>).md' and overwritten on re-read of the same
+message. Blocked (blacklisted) messages are NEVER written - the mirror only runs
+after a message has cleared the content filter.
+
+The folder DEFAULTS to C:\Eva\knowledge\email, the email folder of the Eva
+working tree, which sits inside the knowledge-base plugin's documents folder so
+mirrored mail is actually indexed. Override it with --kb-dir or OUTLOOK_KB_DIR,
+or edit the KB_DIR config constant.
+
+To keep NO local files at all, set KB_DIR = None in the config block below (or
+pass an empty OUTLOOK_KB_DIR): mirroring then never runs and the server touches
+no disk. Worth a deliberate decision - mirroring turns correspondence into plain
+text files that are then embedded and quotable in answers. See
+eva\knowledge\email\README.md.
 
 ==============================================================================
 CONFIGURATION  -  all editable settings live in the "USER CONFIGURATION" block
@@ -135,7 +145,7 @@ PYTHONUTF8=1 is set for you by the manifest.
 
 To register the server by hand instead:
 
-    claude mcp add outlook --scope user -e PYTHONUTF8=1 -- C:\\path\\to\\python.exe C:\\path\\to\\outlook.py --search-folders "Inbox,Sent Items,Archive" --kb-dir C:\\reference-docs\\outlook
+    claude mcp add outlook --scope user -e PYTHONUTF8=1 -- C:\\path\\to\\python.exe C:\\path\\to\\outlook.py --search-folders "Inbox,Sent Items,Archive" --kb-dir C:\\Eva\\knowledge\\email
 
 See README.md next to this file for the full settings reference.
 
@@ -160,7 +170,7 @@ IMPORTANT (stdio-on-Windows pitfalls)
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "3.0.1"
+__version__ = "4.0.0"
 
 import os
 import re
@@ -214,10 +224,22 @@ SEARCH_ALL_FOLDERS = ["Inbox", "Sent Items", "Archive"]
 #        the same message. Blocked (blacklisted) messages are NEVER written -
 #        the mirror only runs once a message has cleared the content filter.
 #        Set it here, or at launch with --kb-dir / the OUTLOOK_KB_DIR
-#        environment variable (which take priority over this constant). Leave
-#        as None to disable mirroring (the default; the server keeps no files).
-#          e.g. KB_DIR = r"C:\Users\you\Documents\rag_kb\outlook"
-KB_DIR = None
+#        environment variable (which take priority over this constant).
+#        Default: the email folder of the Eva knowledge base. It MUST stay
+#        inside the knowledge-base plugin's documents folder (C:\Eva\knowledge)
+#        or the mirrored mail would never be indexed.
+#        Set to None to disable mirroring entirely - the server then keeps no
+#        local files at all.
+KB_DIR = r"C:\Eva\knowledge\email"
+
+# --- 6. DISABLE_KEYWORDS. Values that mean "explicitly turned off" for a
+#        folder setting. An MCP client can only pass strings, and a BLANK
+#        string is what it substitutes for a setting the user left empty -
+#        which means "not configured", falling back to the constant above. So
+#        a keyword is needed to say "definitely off": --kb-dir off (or
+#        OUTLOOK_KB_DIR=off) disables mirroring, after which this server keeps
+#        no local files at all.
+DISABLE_KEYWORDS = frozenset(("off", "none", "no", "false", "disabled"))
 
 # ============================================================================
 # END USER CONFIGURATION  -  you should not need to edit below this line
@@ -1636,7 +1658,10 @@ def main():
              "confluence.py / word.py). Files are named "
              "'Email - <date> - <subject> (<id>).md' and overwritten on re-read. "
              "Blocked (blacklisted) messages are never written. Falls back to the "
-             "OUTLOOK_KB_DIR environment variable, then the KB_DIR config constant.",
+             "OUTLOOK_KB_DIR environment variable, then the KB_DIR config "
+             "constant (default: C:\\Eva\\knowledge\\email). Pass 'off' "
+             "to disable mirroring, after which the server writes no local "
+             "file at all.",
     )
     parser.add_argument(
         "--version",
@@ -1648,9 +1673,12 @@ def main():
     # Optional Markdown knowledge-base mirror. Resolve the folder now and make
     # sure it is usable so a misconfiguration is caught at startup, not on the
     # first email read.
+    global KB_DIR
     if args.kb_dir:
-        global KB_DIR
-        KB_DIR = args.kb_dir
+        # A DISABLE_KEYWORDS value turns mirroring off; a blank value means
+        # "not configured" and leaves the KB_DIR default in place.
+        KB_DIR = (None if args.kb_dir.strip().lower() in DISABLE_KEYWORDS
+                  else args.kb_dir)
     if KB_DIR:
         try:
             os.makedirs(KB_DIR, exist_ok=True)
