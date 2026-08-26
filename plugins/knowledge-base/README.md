@@ -5,10 +5,10 @@ local ChromaDB vector index plus your own embeddings API.
 
 | | |
 |---|---|
-| **Server** | `knowledge-base.py` v2.1.1 |
+| **Server** | `knowledge-base.py` v3.0.0 |
 | **pip install** | `chromadb` (HTTP to your endpoints is stdlib `urllib` — no `requests`) |
 | **Platform** | any |
-| **Writes to disk** | yes — the vector index folder, plus captured notes under `<docs-dir>\captures` |
+| **Writes to disk** | yes — the vector index folder (`C:\Eva\index`), plus captured notes under `C:\Eva\knowledge\captures` |
 
 ## How it works
 
@@ -40,13 +40,25 @@ local ChromaDB vector index plus your own embeddings API.
 /plugin install knowledge-base@mcnamee-claude-skills
 ```
 
-| Prompt | Required | Env var | Purpose |
+The three folders are pre-filled with their place in the [Eva working
+tree](../../eva) — copy the repo's [`eva/`](../../eva) folder to `C:\Eva` and
+you can accept them as they stand. Only the endpoint URL and interpreter are
+genuinely yours to supply.
+
+| Prompt | Default | Env var | Purpose |
 |---|---|---|---|
-| Documents folder | **yes** | `KB_DOCS_DIR` | Folder of `.md`/`.markdown`/`.txt` documents to index |
-| Embeddings endpoint URL | **yes** | `KB_EMBED_URL` | Full URL of your embeddings API |
-| Embeddings model | no | `KB_EMBED_MODEL` | Model name sent in embed requests; omit if the endpoint fixes one |
-| Captures folder | no | `KB_OUTPUT_DIR` | Where `kb_capture` writes new notes. Defaults to `<documents folder>\captures`; leave blank unless you want them elsewhere |
-| Python interpreter | **yes** | — | Absolute path to the `python.exe` that has `chromadb` installed |
+| Documents folder | `C:\Eva\knowledge` | `KB_DOCS_DIR` | The indexed corpus: every `.md`/`.markdown`/`.txt` file under here, recursively. **Required** |
+| Index folder | `C:\Eva\index` | `KB_INDEX_DIR` | Where the ChromaDB vector store lives — deliberately **outside** the corpus |
+| Captures folder | `C:\Eva\knowledge\captures` | `KB_OUTPUT_DIR` | Where `kb_capture` writes new notes. Must be inside the documents folder |
+| Embeddings endpoint URL | — | `KB_EMBED_URL` | **Required.** Full URL of your embeddings API |
+| Embeddings model | — | `KB_EMBED_MODEL` | Model name sent in embed requests; omit if the endpoint fixes one |
+| Python interpreter | — | — | **Required.** Absolute path to the `python.exe` that has `chromadb` installed |
+
+Because the documents folder defaults to `C:\Eva\knowledge`, the mirrors the
+`word`, `outlook`, `confluence` and `pdf-to-md` plugins write — into
+`knowledge\word`, `knowledge\email`, `knowledge\confluence` and
+`knowledge\pdf` — are all inside the corpus, so a stock install indexes every
+one of them with no further wiring. See [`eva/knowledge`](../../eva/knowledge).
 
 **Your API key is not stored in the plugin.** Set `KB_EMBED_API_KEY` as a
 Windows user environment variable before starting Claude Code. API keys are
@@ -94,9 +106,9 @@ Precedence is **CLI flag > environment variable > constant in the file**.
 
 | Env var | CLI flag | Purpose |
 |---|---|---|
-| `KB_DOCS_DIR` | `--docs-dir` | **Required.** Folder of `.md`/`.markdown`/`.txt` docs, searched recursively |
-| `KB_INDEX_DIR` | `--index-dir` | ChromaDB folder (default `<docs-dir>\.kb-rag-index`) |
-| `KB_OUTPUT_DIR` | `--output-dir` | Folder `kb_capture` writes new notes into (default `<docs-dir>\captures`, created on demand). Must resolve **inside** `--docs-dir`, and must not be a dot-folder or sit inside the index folder — all three are pruned from indexing, so a note written there would never be searchable. The server refuses to start rather than let that happen |
+| `KB_DOCS_DIR` | `--docs-dir` | **Required.** Folder of `.md`/`.markdown`/`.txt` docs, searched recursively. Default `C:\Eva\knowledge` |
+| `KB_INDEX_DIR` | `--index-dir` | ChromaDB folder. Default `C:\Eva\index` — outside the corpus, so a large binary database does not sit inside the folder you want to be able to zip or grep. Clear the `INDEX_DIR` constant to fall back to `<docs-dir>\.kb-rag-index` |
+| `KB_OUTPUT_DIR` | `--output-dir` | Folder `kb_capture` writes new notes into (default `C:\Eva\knowledge\captures`, created on demand). Must resolve **inside** `--docs-dir`, and must not be a dot-folder or sit inside the index folder — all three are pruned from indexing, so a note written there would never be searchable. The server refuses to start rather than let that happen |
 | `KB_COLLECTION` | `--collection` | ChromaDB collection name (default `kb-rag`) |
 | `KB_EMBED_URL` | `--embed-url` | **Required.** Full URL of the embeddings endpoint |
 | `KB_EMBED_MODEL` | `--embed-model` | Model name sent in embed requests (omit if the endpoint fixes one) |
@@ -135,9 +147,9 @@ Precedence is **CLI flag > environment variable > constant in the file**.
 
 ## File access
 
-Reads only inside the documents folder. Writes the vector-index folder (default
-`<docs-dir>\.kb-rag-index`) and captured notes (default `<docs-dir>\captures`);
-network only to the endpoint(s) you configure.
+Reads only inside the documents folder (`C:\Eva\knowledge`). Writes the
+vector-index folder (`C:\Eva\index`) and captured notes
+(`C:\Eva\knowledge\captures`); network only to the endpoint(s) you configure.
 
 Existing documents are never modified or deleted — the only file the server
 creates is a new note from `kb_capture`, and the caller supplies a **title, not

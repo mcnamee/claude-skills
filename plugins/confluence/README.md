@@ -6,10 +6,10 @@ knowledge base.
 
 | | |
 |---|---|
-| **Server** | `confluence.py` v1.4.0 |
+| **Server** | `confluence.py` v2.0.0 |
 | **pip install** | _none_ — standard library only (HTTP via stdlib `urllib`) |
 | **Platform** | any |
-| **Writes to disk** | only if the knowledge-base folder is set |
+| **Writes to disk** | yes — mirrors every page read to `C:\Eva\knowledge\confluence`, unless that setting is `off` |
 
 ## Install
 
@@ -24,8 +24,13 @@ knowledge base.
 | Name for this Confluence server | no | `CONFLUENCE_NAME` | e.g. `Green`. Only matters if you configure a second server; defaults to `Primary` |
 | Second Confluence base URL | no | `CONFLUENCE_BASE_URL_2` | Leave blank for a single-server setup |
 | Name for the second Confluence server | no | `CONFLUENCE_NAME_2` | e.g. `Blue` — say it in a prompt to query that server; defaults to `Secondary` |
-| Knowledge-base folder | no | `CONFLUENCE_KB_DIR` | If set, every page read is also saved as Markdown here |
+| Knowledge-base folder | no | `CONFLUENCE_KB_DIR` | Every page read is also saved as Markdown here, for the `knowledge-base` plugin to index. Defaults to `C:\Eva\knowledge\confluence`; `off` to disable |
 | Python interpreter | **yes** | — | Absolute path to the `python.exe` to launch the server with |
+
+> **Blank does not mean off.** Leaving the folder prompt empty means "not
+> configured", so the default above applies. To switch mirroring off, type `off`
+> (`none`, `no`, `false` and `disabled` work too), after which the server writes
+> no local file at all.
 
 **Your tokens are not stored in the plugin.** Set them as Windows user
 environment variables before starting Claude Code — the plugin reads them from

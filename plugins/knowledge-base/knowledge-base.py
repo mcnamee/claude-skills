@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-knowledge-base.py (v2.1.1)
+knowledge-base.py (v3.0.0)
 ==========================
 
 A single-file MCP (Model Context Protocol) server providing true RAG
@@ -52,11 +52,12 @@ ONLY (command lines are visible to other local users in process listings).
 
 | Env var                 | CLI flag             | Purpose                                                     |
 |-------------------------|----------------------|-------------------------------------------------------------|
-| KB_DOCS_DIR             | --docs-dir           | REQUIRED. Folder of .md/.markdown/.txt docs (recursive)     |
-| KB_INDEX_DIR            | --index-dir          | ChromaDB folder (default: <docs-dir>/.kb-rag-index)         |
-| KB_OUTPUT_DIR           | --output-dir         | Folder kb_capture writes new notes into (default:           |
-|                         |                      | <docs-dir>/captures). MUST resolve inside --docs-dir, or    |
-|                         |                      | captured notes would never be indexed                       |
+| KB_DOCS_DIR             | --docs-dir           | REQUIRED. Folder of .md/.markdown/.txt docs (recursive).    |
+|                         |                      | Default: C:\\Eva\\knowledge                                  |
+| KB_INDEX_DIR            | --index-dir          | ChromaDB folder. Default: C:\\Eva\\index                     |
+| KB_OUTPUT_DIR           | --output-dir         | Folder kb_capture writes new notes into. Default:           |
+|                         |                      | C:\\Eva\\knowledge\\captures. MUST resolve inside --docs-dir, |
+|                         |                      | or captured notes would never be indexed                    |
 | KB_COLLECTION           | --collection         | ChromaDB collection name (default: kb-rag; 3-512 chars of   |
 |                         |                      | [a-zA-Z0-9._-], starting/ending alphanumeric)               |
 | KB_EMBED_URL            | --embed-url          | REQUIRED. Full URL of the embeddings endpoint               |
@@ -233,7 +234,7 @@ NOTES
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "2.1.1"
+__version__ = "3.0.0"
 
 import os
 import re
@@ -271,6 +272,30 @@ def log(message):
 # ---------------------------------------------------------------------------
 
 DOC_EXTENSIONS = {".md", ".markdown", ".txt"}
+
+# ---------------------------------------------------------------------------
+# CONFIG: folder defaults. A CLI flag beats the environment variable, which
+# beats the constant here (the suite-wide convention). All three point at the
+# Eva working tree - copy the repo's eva\ folder to C:\Eva and they exist,
+# correctly related to each other. See eva\README.md.
+# ---------------------------------------------------------------------------
+
+# REQUIRED. The indexed corpus: every .md/.markdown/.txt file under here is
+# chunked, embedded and searchable. Dot-folders and dot-files are skipped, and
+# non-text files are ignored, so the mirrors the other servers write into
+# sub-folders of this one are picked up automatically.
+DOCS_DIR = r"C:\Eva\knowledge"
+
+# The ChromaDB vector store. Deliberately OUTSIDE DOCS_DIR so a
+# multi-hundred-megabyte binary database does not sit inside the corpus you
+# want to be able to zip, copy or grep. Set to None to fall back to a hidden
+# .kb-rag-index folder inside DOCS_DIR (the pre-3.0.0 behaviour).
+INDEX_DIR = r"C:\Eva\index"
+
+# Where kb_capture writes new notes. MUST resolve inside DOCS_DIR - a capture
+# folder outside the corpus would be written to and never indexed - and must
+# not be a dot-folder. Set to None to fall back to <DOCS_DIR>/captures.
+OUTPUT_DIR = r"C:\Eva\knowledge\captures"
 
 # Hard cap on how much retrieved context is stuffed into a generation prompt.
 MAX_CONTEXT_CHARS = 16000
@@ -1737,14 +1762,22 @@ def main():
         )
     )
     env = os.environ.get
-    parser.add_argument("--docs-dir", default=env("KB_DOCS_DIR"),
-                        help="Folder of markdown documents (env: KB_DOCS_DIR). Required.")
-    parser.add_argument("--index-dir", default=env("KB_INDEX_DIR"),
-                        help="ChromaDB folder (env: KB_INDEX_DIR; default: <docs-dir>/.kb-rag-index).")
-    parser.add_argument("--output-dir", default=env("KB_OUTPUT_DIR"),
+    # "or CONSTANT" rather than a two-argument env() lookup: an MCP client
+    # substitutes a BLANK string for a setting the user left empty, and blank
+    # must mean "not configured" so the default below still applies.
+    parser.add_argument("--docs-dir", default=env("KB_DOCS_DIR") or DOCS_DIR,
+                        help="Folder of markdown documents (env: KB_DOCS_DIR; "
+                             "default: C:\\Eva\\knowledge). Required.")
+    parser.add_argument("--index-dir", default=env("KB_INDEX_DIR") or INDEX_DIR,
+                        help="ChromaDB folder (env: KB_INDEX_DIR; default: "
+                             "C:\\Eva\\index, or <docs-dir>/.kb-rag-index "
+                             "if that is cleared).")
+    parser.add_argument("--output-dir", default=env("KB_OUTPUT_DIR") or OUTPUT_DIR,
                         help="Folder kb_capture writes new notes into (env: KB_OUTPUT_DIR; "
-                             "default: <docs-dir>/captures). Must be inside --docs-dir, "
-                             "otherwise captured notes would never be indexed.")
+                             "default: C:\\Eva\\knowledge\\captures, or "
+                             "<docs-dir>/captures if that is cleared). Must be "
+                             "inside --docs-dir, otherwise captured notes would "
+                             "never be indexed.")
     parser.add_argument("--collection", default=env("KB_COLLECTION", "kb-rag"),
                         help="ChromaDB collection name (env: KB_COLLECTION; default: kb-rag).")
     parser.add_argument("--embed-url", default=env("KB_EMBED_URL"),
@@ -1843,6 +1876,10 @@ def main():
         sys.exit(2)
     if not os.path.isdir(args.docs_dir):
         log("FATAL: knowledge-base folder does not exist or is not a directory: {0}".format(args.docs_dir))
+        if args.docs_dir == DOCS_DIR:
+            log("       That is the built-in default. Copy the repo's eva\\ "
+                "folder to C:\\Eva to lay out the whole working tree, or "
+                "point --docs-dir at your own knowledge-base folder.")
         sys.exit(2)
     if not args.embed_url:
         log("FATAL: no embeddings endpoint set. Pass --embed-url or set KB_EMBED_URL.")

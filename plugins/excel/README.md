@@ -6,7 +6,7 @@ not need to be installed.
 
 | | |
 |---|---|
-| **Server** | `excel.py` v3.0.1 |
+| **Server** | `excel.py` v4.0.0 |
 | **pip install** | _none_ — standard library only |
 | **Platform** | any |
 | **Writes to disk** | no |
@@ -21,10 +21,17 @@ not need to be installed.
 This is the simplest plugin in the suite — standard library only, one prompt —
 so it's a good one to install first if you're confirming the flow works.
 
-| Prompt | Required | Env var | Purpose |
+| Prompt | Default | Env var | Purpose |
 |---|---|---|---|
-| Workbook folder | **yes** | `EXCEL_DOCS_DIR` | The only folder the server may read workbooks from |
-| Python interpreter | **yes** | — | Absolute path to the `python.exe` to launch the server with |
+| Workbook folder | `C:\Eva\documents\excel` | `EXCEL_DOCS_DIR` | The only folder the server may read workbooks from. **Required** — the server refuses to start without one |
+| Python interpreter | — | — | **Required.** Absolute path to the `python.exe` to launch the server with |
+
+> **Only the top level is listed.** Unlike `word`, this server does not search
+> sub-folders, so a workbook filed in `documents\excel\Finance\` will not
+> appear in `excel_list_workbooks`. Keep workbooks directly in the folder and
+> use filename prefixes (`Finance - Budget FY26.xlsx`) where you would
+> otherwise want a sub-folder. See
+> [`eva/documents/excel`](../../eva/documents/excel).
 
 ## Configuration reference
 
@@ -32,7 +39,7 @@ Precedence is **CLI flag > environment variable > constant in the file**.
 
 | CLI flag | Env var | Purpose |
 |---|---|---|
-| `--docs-dir` | `EXCEL_DOCS_DIR` | **Required.** Folder of `.xlsx`/`.xlsm` workbooks to expose — the server only reads files inside it and refuses to start without one. Falls back to the `DOCS_DIR` constant in the file |
+| `--docs-dir` | `EXCEL_DOCS_DIR` | **Required.** Folder of `.xlsx`/`.xlsm` workbooks to expose — the server only reads files inside it and refuses to start without one. Falls back to the `DOCS_DIR` constant in the file, default `C:\Eva\documents\excel`. Top level only: sub-folders are not searched |
 | `--check` | — | Print environment/config diagnostics and exit (no server) |
 | `--list` | — | List readable workbooks in the folder and exit (no server) |
 | `--version` | — | Print version and exit |

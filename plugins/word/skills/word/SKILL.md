@@ -145,8 +145,9 @@ more values than the row has cells is an error.
 - All paths must be inside the configured docs folder (plus the output folder,
   and the read-only templates folder); requests outside it are refused — don't
   fight the sandbox.
-- With `--kb-dir` configured, opening, creating and saving a document each
-  mirror it to Markdown for the knowledge base. Saving is the one that matters
-  for work you author here — no need to reopen a document to get it indexed.
+- Opening, creating and saving a document each mirror it to Markdown for the
+  knowledge base (on by default, to `C:\Eva\knowledge\word`). Saving is the
+  one that matters for work you author here — no need to reopen a document to
+  get it indexed.
 - Not supported: comments, tracked moves, formatting-only revisions,
   headers/footers editing.

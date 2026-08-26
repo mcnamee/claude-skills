@@ -1,7 +1,7 @@
 {
   "name": "pdf-to-md",
   "displayName": "PDF to Markdown",
-  "version": "4.0.3",
+  "version": "5.0.0",
   "description": "Convert PDFs to Markdown with tables preserved, for feeding a local knowledge base. Requires pymupdf.",
   "author": {
     "name": "mcnamee"
@@ -17,14 +17,14 @@
     "docs_dir": {
       "type": "directory",
       "title": "PDF folder",
-      "description": "Folder of source PDFs. REQUIRED.",
-      "required": true
+      "description": "Folder of source PDFs. Read-only: conversion never alters a PDF. Only the top level is converted unless the server is launched with --recursive.",
+      "default": "C:\\Eva\\documents\\pdf"
     },
     "output_dir": {
       "type": "directory",
       "title": "Output folder",
-      "description": "Where the generated Markdown is written. REQUIRED.",
-      "required": true
+      "description": "Where the generated Markdown is written. Defaults inside the knowledge-base plugin's documents folder, so converting a PDF is the same act as adding it to the RAG corpus; point it outside C:\\Eva\\knowledge and the Markdown piles up unindexed.",
+      "default": "C:\\Eva\\knowledge\\pdf"
     },
     "python": {
       "type": "string",

@@ -1,7 +1,7 @@
 {
   "name": "knowledge-base",
   "displayName": "Knowledge base (RAG)",
-  "version": "2.1.1",
+  "version": "3.0.0",
   "description": "True RAG over your own Markdown docs: a local ChromaDB vector index plus your embeddings API. Captures new notes back into it. Requires chromadb.",
   "author": {
     "name": "mcnamee"
@@ -18,8 +18,20 @@
     "docs_dir": {
       "type": "directory",
       "title": "Documents folder",
-      "description": "Folder of .md/.markdown/.txt documents to index. REQUIRED.",
-      "required": true
+      "description": "The indexed corpus: every .md/.markdown/.txt file under here is chunked, embedded and searchable, recursively. REQUIRED. Defaults to the Eva knowledge folder, which is where the word, outlook, confluence and pdf-to-md plugins write their mirrors - so a stock install indexes all of them.",
+      "default": "C:\\Eva\\knowledge"
+    },
+    "index_dir": {
+      "type": "directory",
+      "title": "Index folder",
+      "description": "Where the ChromaDB vector store is kept. Deliberately OUTSIDE the documents folder, so a large binary database does not sit inside the corpus. Derived and disposable: delete it and re-index to rebuild, which you must do after changing the embeddings model.",
+      "default": "C:\\Eva\\index"
+    },
+    "output_dir": {
+      "type": "directory",
+      "title": "Captures folder",
+      "description": "Where kb_capture writes new notes. Must sit INSIDE the documents folder, or captured notes would never be indexed, and must not be a dot-folder. Created on demand.",
+      "default": "C:\\Eva\\knowledge\\captures"
     },
     "embed_url": {
       "type": "string",
@@ -31,11 +43,6 @@
       "type": "string",
       "title": "Embeddings model",
       "description": "Optional. Model name sent in embed requests; omit if the endpoint fixes one."
-    },
-    "output_dir": {
-      "type": "directory",
-      "title": "Captures folder",
-      "description": "Optional. Where kb_capture writes new notes. Must sit INSIDE the documents folder, or captured notes would never be indexed. Defaults to a 'captures' subfolder of it, created on demand - leave blank unless you want them somewhere else."
     },
     "python": {
       "type": "string",
@@ -54,6 +61,7 @@
       "env": {
         "PYTHONUTF8": "1",
         "KB_DOCS_DIR": "${user_config.docs_dir}",
+        "KB_INDEX_DIR": "${user_config.index_dir}",
         "KB_OUTPUT_DIR": "${user_config.output_dir}",
         "KB_EMBED_URL": "${user_config.embed_url}",
         "KB_EMBED_MODEL": "${user_config.embed_model}",

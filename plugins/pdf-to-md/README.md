@@ -5,10 +5,10 @@ local knowledge base built from PDF source material.
 
 | | |
 |---|---|
-| **Server** | `pdf-to-md.py` v4.0.3 |
+| **Server** | `pdf-to-md.py` v5.0.0 |
 | **pip install** | `pymupdf pymupdf4llm` |
 | **Platform** | any |
-| **Writes to disk** | yes — the output folder only |
+| **Writes to disk** | yes — the output folder only (`C:\Eva\knowledge\pdf`) |
 
 OCR of scanned PDFs additionally requires **Tesseract installed on the machine**
 (not a pip package).
@@ -20,11 +20,17 @@ OCR of scanned PDFs additionally requires **Tesseract installed on the machine**
 /plugin install pdf-to-md@mcnamee-claude-skills
 ```
 
-| Prompt | Required | Env var | Purpose |
+| Prompt | Default | Env var | Purpose |
 |---|---|---|---|
-| PDF folder | **yes** | `PDF2MD_DOCS_DIR` | Folder containing the source PDFs |
-| Output folder | **yes** | `PDF2MD_OUTPUT_DIR` | Folder the `.md` files are written to |
-| Python interpreter | **yes** | — | Absolute path to the `python.exe` that has `pymupdf` installed |
+| PDF folder | `C:\Eva\documents\pdf` | `PDF2MD_DOCS_DIR` | Folder containing the source PDFs |
+| Output folder | `C:\Eva\knowledge\pdf` | `PDF2MD_OUTPUT_DIR` | Folder the `.md` files are written to |
+| Python interpreter | — | — | **Required.** Absolute path to the `python.exe` that has `pymupdf` installed |
+
+Both folders are pre-filled with their place in the [Eva working
+tree](../../eva). The output default sits **inside** the `knowledge-base`
+plugin's documents folder on purpose: converting a PDF is then the same act as
+adding it to the RAG corpus. Point it outside `C:\Eva\knowledge` and the
+Markdown piles up unindexed.
 
 To search sub-folders too, set `PDF2MD_RECURSIVE=1` as an environment variable
 (sub-folder structure is mirrored in the output).
@@ -35,8 +41,8 @@ Precedence is **CLI flag > environment variable > constant in the file**.
 
 | CLI flag | Env var | Purpose |
 |---|---|---|
-| `--docs-dir` | `PDF2MD_DOCS_DIR` | **Required.** Folder containing the source PDFs |
-| `--output-dir` | `PDF2MD_OUTPUT_DIR` | **Required.** Folder to write `.md` files into |
+| `--docs-dir` | `PDF2MD_DOCS_DIR` | **Required.** Folder containing the source PDFs. Falls back to the `DOCS_DIR` constant, default `C:\Eva\documents\pdf` |
+| `--output-dir` | `PDF2MD_OUTPUT_DIR` | **Required.** Folder to write `.md` files into. Falls back to the `OUTPUT_DIR` constant, default `C:\Eva\knowledge\pdf` — inside the `knowledge-base` corpus, so conversions are indexed |
 | `--recursive` | `PDF2MD_RECURSIVE=1` | Also search sub-folders of the docs folder (sub-folder structure is mirrored in the output) |
 | `--check` | — | Print environment/config diagnostics (folders, dependency status, PDFs found) and exit (no server) |
 | `--version` | — | Print version and exit (works even without `pymupdf` installed) |

@@ -1,0 +1,19 @@
+# Everything under eva/ is YOUR material - real corporate documents, mirrored
+# Confluence pages, exported email, the RAG index. This repo is public, so
+# nothing here is committed: every file is ignored except the READMEs that
+# document what each folder is for.
+#
+# That is also what makes the folder structure itself committable - git stores
+# no empty directories, so each folder survives in the repo because of its
+# README.
+#
+# To commit one file deliberately (a genuinely generic template, say):
+#     git add -f eva/reference/templates/"Report Template.docx"
+#
+# If none of your material is sensitive and you would rather it travelled with
+# the repo, delete this file.
+
+*
+!*/
+!README.md
+!.gitignore

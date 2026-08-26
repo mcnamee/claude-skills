@@ -11,9 +11,11 @@ Three things, all for Claude Code, all working **entirely offline**:
 - **[`agents/`](agents)** — subagents that take a whole job away and hand back
   a finished result, built on top of the servers and skills above.
 
-Plus **[`context/`](context)** — the reference material they work from:
-**exemplars** (finished documents showing what good looks like) and
-**templates** (the blank `.docx`/`.pptx` new documents are built from).
+Plus **[`eva/`](eva)** — the working folder they all read, write and index,
+carried here as a scaffold you copy to `C:\Eva`. It holds the knowledge base,
+the document library, generated output, and the reference material: **exemplars**
+(finished documents showing what good looks like) and **templates** (the blank
+`.docx`/`.pptx` new documents are built from).
 
 ## Why this exists
 
@@ -44,13 +46,13 @@ Plus **[`context/`](context)** — the reference material they work from:
 
 | Plugin | Version | What it does | pip install |
 |---|---|---|---|
-| [**word**](plugins/word) | 4.2.0 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
-| [**excel**](plugins/excel) | 3.0.1 | Read and analyse workbooks; parses `.xlsx` directly, so Excel isn't needed | _none_ |
-| [**outlook**](plugins/outlook) | 3.0.1 | Read local Outlook mail and calendar via COM, with a content blacklist | `pywin32` |
-| [**confluence**](plugins/confluence) | 1.4.0 | Search and read Confluence pages, across one or two instances | _none_ |
+| [**word**](plugins/word) | 5.0.0 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
+| [**excel**](plugins/excel) | 4.0.0 | Read and analyse workbooks; parses `.xlsx` directly, so Excel isn't needed | _none_ |
+| [**outlook**](plugins/outlook) | 4.0.0 | Read local Outlook mail and calendar via COM, with a content blacklist | `pywin32` |
+| [**confluence**](plugins/confluence) | 2.0.0 | Search and read Confluence pages, across one or two instances | _none_ |
 | [**jira**](plugins/jira) | 1.1.3 | Query issues, sprints and projects (Jira Data Center v2 API) | _none_ |
-| [**knowledge-base**](plugins/knowledge-base) | 2.1.1 | True RAG over your own Markdown: local ChromaDB index + your embeddings API, and capture notes back into it | `chromadb` |
-| [**pdf-to-md**](plugins/pdf-to-md) | 4.0.3 | Convert PDFs to Markdown with tables preserved | `pymupdf pymupdf4llm` |
+| [**knowledge-base**](plugins/knowledge-base) | 3.0.0 | True RAG over your own Markdown: local ChromaDB index + your embeddings API, and capture notes back into it | `chromadb` |
+| [**pdf-to-md**](plugins/pdf-to-md) | 5.0.0 | Convert PDFs to Markdown with tables preserved | `pymupdf pymupdf4llm` |
 
 Each plugin's README covers its settings, tools, file access and example
 prompts. Every server also carries a semantic version in `__version__`, printed
@@ -63,7 +65,21 @@ Two things to know if you're pasting from elsewhere: a quoted path at the start
 of a command needs the call operator (`& "C:\...\python.exe"`), and `%VAR%`
 does not expand — it's `$env:VAR`.
 
-**1. Install the pip dependencies** into the *same* interpreter you'll point the
+**1. Lay out the working folder.** Copy the repo's [`eva/`](eva) folder to
+`C:\Eva`:
+
+```powershell
+Copy-Item -Recurse C:\path\to\claude-skills\eva C:\Eva
+```
+
+Every folder setting in every plugin already defaults to its place in that tree,
+so this one step means you can accept each folder prompt as it stands and the
+servers are correctly related to each other — mirrors landing inside the indexed
+corpus, generated documents kept out of your source library. See
+[Folder layout](#folder-layout) for what goes where, and `eva/README.md` for
+each folder's own README.
+
+**2. Install the pip dependencies** into the *same* interpreter you'll point the
 plugins at:
 
 ```powershell
@@ -74,7 +90,7 @@ plugins at:
 what the plugins you want need — see the table above.) `word.py`'s docstring
 walks through sideloading the wheels.
 
-**2. Add this repo as a marketplace**, then install whichever plugins you want.
+**3. Add this repo as a marketplace**, then install whichever plugins you want.
 These are slash commands, typed inside Claude Code — not shell commands:
 
 ```
@@ -83,15 +99,19 @@ These are slash commands, typed inside Claude Code — not shell commands:
 /plugin install excel@mcnamee-claude-skills
 ```
 
-Claude Code prompts for that server's settings — documents folder, output
-folder, and the **Python interpreter** (give the absolute path to the
-`python.exe` from step 1; a mismatch here is the most common cause of
-"dependency missing"). The plugins are independent, so a machine without
-`pywin32` simply doesn't install `outlook`.
+Claude Code prompts for that server's settings. Every folder prompt is
+pre-filled from step 1, so the only answer that is genuinely yours to give is
+the **Python interpreter** — the absolute path to the `python.exe` from step 2;
+a mismatch here is the most common cause of "dependency missing". The plugins
+are independent, so a machine without `pywin32` simply doesn't install
+`outlook`.
+
+Leaving a folder prompt **blank** means "not configured", so the default
+applies. To switch an optional folder off, type `off`.
 
 `excel` is the simplest to start with: standard library only, one prompt.
 
-**3. Set your secrets** as Windows user environment variables before starting
+**4. Set your secrets** as Windows user environment variables before starting
 Claude Code — they're read from the ambient environment, never stored in the
 plugin. Only needed for the plugins you actually install:
 
@@ -172,8 +192,76 @@ The per-plugin READMEs list each server's actual settings.
 4. **Shared flag vocabulary:** `--docs-dir` (the source folder a server is
    confined to), `--output-dir` (generated files), `--templates-dir` (blank
    templates to create from, read-only), `--kb-dir` (Markdown mirror
-   for the RAG knowledge base), `--base-url`/`--ca-cert`/`--insecure`/
-   `--timeout`/`--max-body` (the HTTP servers), `--check`, `--version`.
+   for the RAG knowledge base), `--index-dir` (the vector store),
+   `--base-url`/`--ca-cert`/`--insecure`/`--timeout`/`--max-body` (the HTTP
+   servers), `--check`, `--version`.
+5. **Every folder setting defaults to its place in `C:\Eva`** — see
+   [Folder layout](#folder-layout). A **blank** value means "not configured",
+   so the default applies; to switch an optional folder off, pass `off`
+   (`none`, `no`, `false` and `disabled` also work). A folder you configured
+   yourself that does not exist is a fatal error, because it is almost always a
+   typo; a built-in default that does not exist yet is a warning, and the
+   feature it enables simply stays off.
+
+## Folder layout
+
+One working folder, `C:\Eva`, holds everything the servers read, write and
+index. The repo carries it as a scaffold — [`eva/`](eva) is the same tree with a
+README in every folder and no content, so `Copy-Item -Recurse ...\eva C:\Eva`
+lays it out in one step and every default below is already correct.
+
+```
+C:\Eva\
+├─ knowledge\        the RAG corpus - Markdown only, the ONE indexed root
+│  ├─ notes\           Markdown you write by hand
+│  ├─ captures\        notes kb_capture writes back
+│  ├─ confluence\      pages the confluence plugin mirrored
+│  ├─ email\           emails the outlook plugin mirrored
+│  ├─ word\            documents the word plugin mirrored
+│  └─ pdf\             PDFs the pdf-to-md plugin converted
+├─ index\            the ChromaDB vector store - derived, disposable
+├─ documents\        the binary library the servers READ
+│  ├─ word\            .docx (searched recursively; inbox\ + library\)
+│  ├─ excel\           .xlsx (top level only - excel does not recurse)
+│  └─ pdf\             source PDFs
+├─ output\           what the assistant creates
+│  └─ word\
+└─ reference\        style, not facts - deliberately NOT indexed
+   ├─ exemplars\       finished documents showing what good looks like
+   └─ templates\       blank branded files new documents start from
+```
+
+| Folder | Plugin → setting |
+|---|---|
+| `knowledge\` | `knowledge-base` → `--docs-dir` |
+| `knowledge\captures\` | `knowledge-base` → `--output-dir` |
+| `knowledge\confluence\` | `confluence` → `--kb-dir` |
+| `knowledge\email\` | `outlook` → `--kb-dir` |
+| `knowledge\word\` | `word` → `--kb-dir` |
+| `knowledge\pdf\` | `pdf-to-md` → `--output-dir` |
+| `index\` | `knowledge-base` → `--index-dir` |
+| `documents\word\` | `word` → `--docs-dir` |
+| `documents\excel\` | `excel` → `--docs-dir` |
+| `documents\pdf\` | `pdf-to-md` → `--docs-dir` |
+| `output\word\` | `word` → `--output-dir` |
+| `reference\templates\` | `word` → `--templates-dir` |
+
+Two rules make it hold together, and both are worth knowing before you move a
+folder:
+
+**There is one indexed root.** `knowledge\` is the only folder the RAG index
+reads, so every server that produces Markdown writes inside it. Point a mirror
+anywhere else and it fills up faithfully while `kb_ask` never sees a word of it.
+
+**Folders are named after what wrote them, not what they are about.** Topic
+folders rot — every document belongs to three of them. Provenance maps
+one-to-one onto a setting, retrieval is semantic anyway, and cleanup stays
+surgical: delete `knowledge\confluence\` and re-mirror, with nothing you wrote
+yourself at risk.
+
+[`eva/README.md`](eva/README.md) covers the reasoning, how to put the tree on
+another drive, and why nothing in it is committed. Each folder's own README says
+what belongs there.
 
 ## File access policy
 
@@ -182,12 +270,12 @@ its configuration, and that configuration is **required**:
 
 | Plugin | Local file access |
 |---|---|
-| `word` | Read/write, confined to the documents folder (plus the output and knowledge-base folders, if set); the templates folder is read-only. Opening, creating and saving each mirror to the knowledge-base folder |
-| `excel` | Read-only, confined to the workbook folder |
-| `knowledge-base` | Reads the documents folder; writes its vector index and captured notes (`<docs-dir>\captures` by default, always inside the documents folder); never edits or deletes an existing document; network only to the endpoints you configure |
+| `word` | Read/write, confined to the documents folder plus the output and knowledge-base folders; the templates folder is read-only. Opening, creating and saving each mirror to the knowledge-base folder |
+| `excel` | Read-only, confined to the workbook folder (top level only) |
+| `knowledge-base` | Reads the documents folder; writes its vector index (`C:\Eva\index`) and captured notes (`C:\Eva\knowledge\captures`, always inside the documents folder); never edits or deletes an existing document; network only to the endpoints you configure |
 | `pdf-to-md` | Reads the PDF folder, writes the output folder |
-| `confluence` | None unless a knowledge-base folder is set; then writes only there |
-| `outlook` | None unless a knowledge-base folder is set; then writes only there |
+| `confluence` | Writes only the knowledge-base folder — every page read is mirrored there. Set it to `off` and the server touches no local file |
+| `outlook` | Writes only the knowledge-base folder — every email read is mirrored there, blacklisted messages excepted. Set it to `off` and the server touches no local file |
 | `jira` | None — HTTP GET to Jira only |
 
 Paths are resolved (symlinks included) before the containment check, so a
@@ -239,7 +327,7 @@ agent goes away and does the work in its own.
 | Agent | Invoke | What it does |
 |---|---|---|
 | [**researcher**](agents/researcher.md) | `@agent-researcher` | Researches a topic across the local knowledge base and Confluence, corroborates what it finds, and returns a cited brief with confidence ratings and named gaps — then offers to capture the brief back into the knowledge base |
-| [**report-writer**](agents/report-writer.md) | `@agent-report-writer` | Turns research or notes into the written content of a report or official brief, following the structure of an exemplar in `./context/exemplars`, then runs `/unslop` and `/polish` over it, and offers to capture the result |
+| [**report-writer**](agents/report-writer.md) | `@agent-report-writer` | Turns research or notes into the written content of a report or official brief, following the structure of an exemplar in `C:\Eva\reference\exemplars`, then runs `/unslop` and `/polish` over it, and offers to capture the result |
 
 They chain: `researcher` produces the cited brief, `report-writer` writes it up.
 Each is one Markdown file, so installing is a file copy:
@@ -259,23 +347,25 @@ be a `.docx`, so a wording change doesn't mean rebuilding the document. See
 [`agents/README.md`](agents/README.md) for the details, including how
 `report-writer` picks an exemplar.
 
-## Context
+## Reference material
 
-[`context/`](context) holds what Claude *reads* rather than what it runs:
+[`eva/reference/`](eva/reference) holds what Claude *reads* for style rather
+than for facts, which is why it sits outside the indexed corpus:
 
 | Folder | Holds | Wired up by |
 |---|---|---|
-| [**`context/exemplars`**](context/exemplars) | Finished, good documents (`.md`, `.docx`, `.pptx`, `.pdf`) that show the house style to write in | nothing — point at one in the prompt |
-| [**`context/templates`**](context/templates) | Blank `.docx`/`.pptx` templates a new document is created from | `word` → `--templates-dir` (read-only) |
+| [**`reference/exemplars`**](eva/reference/exemplars) | Finished, good documents (`.md`, `.docx`, `.pptx`, `.pdf`) that show the house style to write in | nothing — point at one in the prompt |
+| [**`reference/templates`**](eva/reference/templates) | Blank `.docx`/`.pptx` templates a new document is created from | `word` → `--templates-dir` (read-only) |
 
 An exemplar is read for guidance and never becomes the output; a template *is*
-the output's first draft. Each folder's README covers naming, conventions and
-how to ask. Document files there are **not committed** — see
-[`context/.gitignore`](context/.gitignore).
+the output's first draft. Neither is indexed: add a board paper to the RAG
+corpus and its phrasing comes back with the same authority as a policy. Each
+folder's README covers naming, conventions and how to ask. Document files there
+are **not committed** — see [`eva/.gitignore`](eva/.gitignore).
 
-`report-writer` reads `context/exemplars` for the shape of the document it is
-writing, so the index table in that folder's README is what lets it pick the
-right one without opening every file.
+`report-writer` reads `C:\Eva\reference\exemplars` for the shape of the
+document it is writing, so the index table in that folder's README is what lets
+it pick the right one without opening every file.
 
 ## Versioning
 

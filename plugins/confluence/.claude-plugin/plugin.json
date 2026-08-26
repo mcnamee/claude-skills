@@ -1,7 +1,7 @@
 {
   "name": "confluence",
   "displayName": "Confluence (read-only)",
-  "version": "1.4.0",
+  "version": "2.0.0",
   "description": "Search and read Confluence pages across one or two instances, optionally mirroring them to Markdown for a local RAG knowledge base.",
   "author": {
     "name": "mcnamee"
@@ -38,7 +38,8 @@
     "kb_dir": {
       "type": "directory",
       "title": "Knowledge-base folder",
-      "description": "Optional. Every page read is also saved as Markdown here (shared by both servers)."
+      "description": "Every page read is also saved as Markdown here (shared by both servers), for the knowledge-base plugin to index. Keep it inside that plugin's documents folder (C:\\Eva\\knowledge) or the mirrors are never indexed. Enter 'off' to disable mirroring, after which this server writes no local file at all.",
+      "default": "C:\\Eva\\knowledge\\confluence"
     },
     "python": {
       "type": "string",

@@ -27,7 +27,7 @@ already in, an agent goes away and does the work in its own.
 | Agent | Invoke | What it does |
 |---|---|---|
 | [**researcher**](researcher.md) | `@agent-researcher` | Researches a topic across the local knowledge base and Confluence, corroborates what it finds, and returns a cited brief with confidence ratings and named gaps — then offers to capture the brief back into the knowledge base |
-| [**report-writer**](report-writer.md) | `@agent-report-writer` | Turns research or notes into the written content of a report or official brief, following the structure of an exemplar in `./context/exemplars`, then runs `/unslop` and `/polish` over it, and offers to capture the result |
+| [**report-writer**](report-writer.md) | `@agent-report-writer` | Turns research or notes into the written content of a report or official brief, following the structure of an exemplar in `C:\Eva\reference\exemplars`, then runs `/unslop` and `/polish` over it, and offers to capture the result |
 
 They are built to run back to back: `researcher` produces the cited brief,
 `report-writer` writes it up. Neither needs the other, though —
@@ -99,7 +99,7 @@ server that isn't there.
 | Agent | Assumes | Optional |
 |---|---|---|
 | `researcher` | [`knowledge-base`](../plugins/knowledge-base) and [`confluence`](../plugins/confluence) plugins | Files you point it at |
-| `report-writer` | [`unslop`](../skills/unslop) and [`polish`](../skills/polish) skills | An exemplar in [`context/exemplars`](../context/exemplars); [`word`](../plugins/word) or [`pdf-to-md`](../plugins/pdf-to-md) to read a `.docx` or PDF one |
+| `report-writer` | [`unslop`](../skills/unslop) and [`polish`](../skills/polish) skills | An exemplar in [`eva/reference/exemplars`](../eva/reference/exemplars); [`word`](../plugins/word) or [`pdf-to-md`](../plugins/pdf-to-md) to read a `.docx` or PDF one |
 
 `researcher` searches both sources on every question — the knowledge base holds
 the settled documents, Confluence holds the working knowledge that never became
@@ -128,8 +128,10 @@ citation in June.
 
 ### Exemplars
 
-`report-writer` reads [`context/exemplars`](../context/exemplars) for the shape
-of the document it is writing. The exemplar supplies **structure and emphasis —
+`report-writer` reads the exemplars folder of the Eva working tree
+(`C:\Eva\reference\exemplars`, seeded from
+[`eva/reference/exemplars`](../eva/reference/exemplars)) for the shape of the
+document it is writing. The exemplar supplies **structure and emphasis —
 never content**: section order and headings, how long each section runs, what
 that audience always needs to see. Facts, figures and names come only from the
 material you hand it.
@@ -139,14 +141,16 @@ expect far better than any generic template, and two or three strong ones — a
 brief, a report, a minute — cover most of what gets asked for.
 
 Fill in the **index table** in
-[`context/exemplars/README.md`](../context/exemplars/README.md). That one line
-per file is what lets the agent pick the right exemplar without opening every
-document, which matters because a `.docx` or PDF costs a conversion to read.
+[`eva/reference/exemplars/README.md`](../eva/reference/exemplars/README.md).
+That one line per file is what lets the agent pick the right exemplar without
+opening every document, which matters because a `.docx` or PDF costs a
+conversion to read.
 `.md` exemplars are the cheapest and the easiest to review, so a Markdown copy
 beside the original earns its keep for anything you reach for often.
 
-The [`templates`](../context/templates) folder next door is a different thing —
-blank files a document is *built from*, which is the `word` server's business.
+The [`templates`](../eva/reference/templates) folder next door is a different
+thing — blank files a document is *built from*, which is the `word` server's
+business.
 `report-writer` will say so rather than treat one as an exemplar.
 
 ## Adding an agent

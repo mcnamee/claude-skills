@@ -4,6 +4,14 @@
     "the folder you open Claude Code in, delete the servers you do not use, and",
     "replace every C:\\path\\to\\... with a real absolute path.",
     "",
+    "  - Every folder below is part of the Eva working tree. Copy the repo's",
+    "    'eva' folder to C:\\Eva first and they all exist, correctly related to",
+    "    each other; see eva\\README.md. These are also the built-in defaults,",
+    "    so you can delete any folder argument you have not changed.",
+    "  - The folder that matters most: C:\\Eva\\knowledge is the knowledge-base",
+    "    server's --docs-dir, and every OTHER server's Markdown output goes to a",
+    "    sub-folder of it. Point a --kb-dir somewhere outside that folder and it",
+    "    will fill up faithfully while the RAG index never reads a line of it.",
     "  - 'command' must be the SAME python.exe you installed the pip",
     "    dependencies into (see the README's 'Install everything at once').",
     "  - Backslashes are DOUBLED because this is JSON.",
@@ -11,6 +19,8 @@
     "    JSON-RPC stream on non-ASCII content. Keep it.",
     "  - Secrets go in 'env', never in 'args': command lines are visible to",
     "    other local users in process listings.",
+    "  - Pass 'off' to an optional folder to switch that feature off, e.g.",
+    "    '--kb-dir', 'off' on outlook to keep no local copy of any email.",
     "  - 'confluence' is shown with TWO instances. One is enough: delete the",
     "    CONFLUENCE_NAME* and *_2 settings and it behaves as it always has.",
     "    Keep them and a prompt can say '...on Blue' to reach the second",
@@ -30,10 +40,10 @@
       "args": [
         "C:\\path\\to\\claude-skills\\plugins\\word\\word.py",
         "--author", "Matt",
-        "--docs-dir", "C:\\Users\\me\\Documents\\ai_docs",
-        "--output-dir", "C:\\Users\\me\\Documents\\ai_generated",
-        "--templates-dir", "C:\\path\\to\\claude-skills\\context\\templates",
-        "--kb-dir", "C:\\Users\\me\\Documents\\rag_kb"
+        "--docs-dir", "C:\\Eva\\documents\\word",
+        "--output-dir", "C:\\Eva\\output\\word",
+        "--templates-dir", "C:\\Eva\\reference\\templates",
+        "--kb-dir", "C:\\Eva\\knowledge\\word"
       ],
       "env": { "PYTHONUTF8": "1" }
     },
@@ -41,7 +51,7 @@
       "command": "C:\\path\\to\\python.exe",
       "args": [
         "C:\\path\\to\\claude-skills\\plugins\\excel\\excel.py",
-        "--docs-dir", "C:\\path\\to\\your\\workbooks"
+        "--docs-dir", "C:\\Eva\\documents\\excel"
       ],
       "env": { "PYTHONUTF8": "1" }
     },
@@ -50,7 +60,7 @@
       "args": [
         "C:\\path\\to\\claude-skills\\plugins\\outlook\\outlook.py",
         "--search-folders", "Inbox,Sent Items,Archive",
-        "--kb-dir", "C:\\reference-docs\\outlook"
+        "--kb-dir", "C:\\Eva\\knowledge\\email"
       ],
       "env": { "PYTHONUTF8": "1" }
     },
@@ -59,7 +69,7 @@
       "args": [
         "C:\\path\\to\\claude-skills\\plugins\\confluence\\confluence.py",
         "--max-body", "20000",
-        "--kb-dir", "C:\\reference-docs\\confluence"
+        "--kb-dir", "C:\\Eva\\knowledge\\confluence"
       ],
       "env": {
         "CONFLUENCE_NAME": "Green",
@@ -85,8 +95,9 @@
       "command": "C:\\path\\to\\python.exe",
       "args": [
         "C:\\path\\to\\claude-skills\\plugins\\knowledge-base\\knowledge-base.py",
-        "--docs-dir", "C:\\Users\\me\\knowledge-base",
-        "--output-dir", "C:\\Users\\me\\knowledge-base\\captures",
+        "--docs-dir", "C:\\Eva\\knowledge",
+        "--index-dir", "C:\\Eva\\index",
+        "--output-dir", "C:\\Eva\\knowledge\\captures",
         "--embed-url", "https://ai-gateway.internal.example.com/v1/embeddings",
         "--embed-model", "text-embedding-3-small"
       ],
@@ -99,8 +110,8 @@
       "command": "C:\\path\\to\\python.exe",
       "args": [
         "C:\\path\\to\\claude-skills\\plugins\\pdf-to-md\\pdf-to-md.py",
-        "--docs-dir", "C:\\reference-docs\\pdfs",
-        "--output-dir", "C:\\reference-docs\\markdown"
+        "--docs-dir", "C:\\Eva\\documents\\pdf",
+        "--output-dir", "C:\\Eva\\knowledge\\pdf"
       ],
       "env": { "PYTHONUTF8": "1" }
     }

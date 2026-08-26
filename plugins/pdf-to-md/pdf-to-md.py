@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 r"""
-pdf-to-md.py (v4.0.3) - Self-contained MCP (Model Context Protocol) stdio
+pdf-to-md.py (v5.0.0) - Self-contained MCP (Model Context Protocol) stdio
 server that converts PDFs in a folder to Markdown, including tables (both
 bordered and borderless).
 
@@ -50,8 +50,15 @@ is set for you by the manifest.
 
 To register the server by hand instead:
 
-    claude mcp add pdf2md --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\pdf-to-md.py --docs-dir C:\Reference\PDFs --output-dir C:\Reference\Markdown
+    claude mcp add pdf2md --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\pdf-to-md.py
 
+  * Both folders DEFAULT to the Eva working tree - PDFs are read from
+    C:\Eva\documents\pdf and Markdown is written to C:\Eva\knowledge\pdf,
+    which sits inside the knowledge-base plugin's documents folder so a
+    converted PDF is indexed without any further wiring. Copy the repo's eva\
+    folder to C:\Eva and both exist. Override either with --docs-dir /
+    --output-dir, the PDF2MD_DOCS_DIR / PDF2MD_OUTPUT_DIR environment
+    variables, or the CONFIG constants below the imports.
   * Give the FULL path to a specific python.exe (e.g. C:\Python311\python.exe)
     rather than a bare "python", so the exact interpreter that has pymupdf4llm
     installed is the one launched.
@@ -70,7 +77,7 @@ echo with nested JSON, which silently drops the "arguments" object):
     {"jsonrpc":"2.0","id":2,"method":"tools/list"}
     {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"convert_all_pdfs","arguments":{}}}
     '@
-    $msgs | python C:\path\to\pdf-to-md.py --docs-dir "C:\Reference\PDFs" --output-dir "C:\Reference\Markdown"
+    $msgs | python C:\path\to\pdf-to-md.py --docs-dir "C:\Eva\documents\pdf" --output-dir "C:\Eva\knowledge\pdf"
 
 Expected: three JSON lines on stdout (initialize result, tool list, conversion
 summary). Diagnostics appear on stderr and never on stdout.
@@ -120,7 +127,7 @@ A quick Python conversion check (no MCP) can be done with:
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "4.0.3"
+__version__ = "5.0.0"
 
 import argparse
 import contextlib
@@ -177,6 +184,23 @@ if IMPORT_ERROR is None:
 # --------------------------------------------------------------------------
 SERVER_NAME = "pdf2md-mcp"
 SERVER_VERSION = __version__
+
+# ---------------------------------------------------------------------------
+# CONFIG: folder defaults. A CLI flag beats the environment variable, which
+# beats the constant here (the suite-wide convention). Both point at the Eva
+# working tree - copy the repo's eva\ folder to C:\Eva and they exist. See
+# eva\README.md.
+# ---------------------------------------------------------------------------
+
+# Where the source PDFs live. Read-only: conversion never alters a PDF. Only
+# the top level is converted unless --recursive is passed.
+DOCS_DIR = r"C:\Eva\documents\pdf"
+
+# Where the converted Markdown is written. This sits INSIDE the knowledge-base
+# plugin's documents folder (C:\Eva\knowledge) on purpose: converting a PDF is
+# then the same act as adding it to the RAG corpus. Point it somewhere outside
+# that folder and the Markdown will pile up unindexed.
+OUTPUT_DIR = r"C:\Eva\knowledge\pdf"
 DEFAULT_PROTOCOL_VERSION = "2024-11-05"
 
 # Table detection strategy passed to pymupdf4llm. "lines_strict" is the
@@ -665,14 +689,23 @@ def parse_args(argv):
     parser = argparse.ArgumentParser(
         description="Self-contained MCP stdio server: convert PDFs in a folder to Markdown (with tables)."
     )
+    # "or CONSTANT" rather than a two-argument env lookup: an MCP client
+    # substitutes a BLANK string for a setting the user left empty, and blank
+    # must mean "not configured" so the CONFIG default still applies.
     parser.add_argument("--docs-dir",
-                        default=os.environ.get("PDF2MD_DOCS_DIR"),
+                        default=os.environ.get("PDF2MD_DOCS_DIR") or DOCS_DIR,
                         help="Folder containing the source PDFs. Falls back to "
-                             "the PDF2MD_DOCS_DIR environment variable.")
+                             "the PDF2MD_DOCS_DIR environment variable, then "
+                             "the DOCS_DIR config value (default: "
+                             "C:\\Eva\\documents\\pdf).")
     parser.add_argument("--output-dir",
-                        default=os.environ.get("PDF2MD_OUTPUT_DIR"),
+                        default=os.environ.get("PDF2MD_OUTPUT_DIR") or OUTPUT_DIR,
                         help="Folder to write .md files into. Falls back to "
-                             "the PDF2MD_OUTPUT_DIR environment variable.")
+                             "the PDF2MD_OUTPUT_DIR environment variable, then "
+                             "the OUTPUT_DIR config value (default: "
+                             "C:\\Eva\\knowledge\\pdf, inside the "
+                             "knowledge-base corpus so conversions are "
+                             "indexed).")
     parser.add_argument(
         "--recursive",
         action="store_true",
