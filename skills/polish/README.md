@@ -38,9 +38,15 @@ See [`skills/README.md`](../README.md) for the general install notes.
 /polish rewrite this as an email to an external stakeholder
 ```
 
-It works out the reader, the medium and the purpose from the draft where it can.
-Where it can't, it asks — once, up to three questions, with a recommended default
-on each so you can skip them. Say "just polish it" and it picks the closest
+Before it rewrites anything it settles who the reader is and what the medium is.
+Unless you've already said, it asks — those two pick the format profile and the
+tone, and the same paragraphs read differently as an internal email and as a
+brief. Purpose it only asks about when the draft leaves it unclear.
+
+It's one round, up to three questions, and it reads the draft first so the option
+it recommends is already the likely one — `Dear …` pre-selects correspondence,
+`Recommendation:` pre-selects a brief. Skipping a question takes that
+recommendation. Say "just polish it" and it asks nothing, picks the closest
 profile, tells you which, and gets on with it.
 
 ## Tone, voice and format profiles

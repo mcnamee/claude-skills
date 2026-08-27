@@ -23,7 +23,7 @@ need nothing installed and work anywhere, including offline.
 
 | Skill | Invoke | What it does |
 |---|---|---|
-| [**polish**](polish) | `/polish` | Rewrites a draft into Australian Public Service style — the Australian Government Style Manual — picking the register from the reader and the medium |
+| [**polish**](polish) | `/polish` | Rewrites a draft into Australian Public Service style — the Australian Government Style Manual — asking who the reader is and what the medium is, then picking the register from them |
 | [**unslop**](unslop) | `/unslop` | Strips AI-slop markers from writing — padding, tell-tale vocabulary, stock LLM sentence shapes — leaving meaning and voice intact |
 
 ## Install
