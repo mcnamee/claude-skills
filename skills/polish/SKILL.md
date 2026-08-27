@@ -1,6 +1,6 @@
 ---
 name: polish
-description: Rewrite a draft into Australian Public Service writing style, following the Australian Government Style Manual and the APSC Government writing handbook — plain language, active voice, front-loaded structure, Australian spelling, and APS conventions for numbers, dates, capitals, lists and links. Use when asked to "polish" a draft, rewrite something "in APS style", "in government style", "for the Style Manual" or "for the style guide", or to turn a draft into an APS email, brief, minute, report section, web page, letter or media release. Asks about reader, medium and purpose when the draft doesn't make them obvious.
+description: Rewrite a draft into Australian Public Service writing style, following the Australian Government Style Manual and the APSC Government writing handbook — plain language, active voice, front-loaded structure, Australian spelling, and APS conventions for numbers, dates, capitals, lists and links. Use when asked to "polish" a draft, rewrite something "in APS style", "in government style", "for the Style Manual" or "for the style guide", or to turn a draft into an APS email, brief, minute, report section, web page, letter or media release. Always asks who the reader is and what the medium is before rewriting, unless you have already said, and asks about purpose when the draft leaves it unclear.
 ---
 
 # polish — rewrite to APS writing style
@@ -32,16 +32,31 @@ start until three things are known:
    report section, web or intranet page, letter, media release, talking points)
 3. **Purpose** — what should the reader do, decide or understand afterwards?
 
-**Infer what you can before asking.** `Dear …` and a subject line means
-correspondence. `Recommendation:` / `That you note …` means a brief. Numbered
-headings and a summary mean a report. `Media contact:` means a release. An
-internal thread with first names and acronyms means an internal email. If the
-user already stated the audience or format, that settles it.
+**Always ask for reader and medium unless the user has stated them.** Those two
+pick the format profile and the tone, and a draft can only ever suggest them: the
+same paragraphs could be an internal email or the body of a brief, and they go to
+a colleague and to a member of the public differently. Getting either wrong
+wastes the whole rewrite, so a silent guess is not worth the round it saves. Only
+the user settles them — in this request, or earlier in the conversation.
 
-**Ask only for what is still genuinely unclear**, in a single round, three
-questions maximum. In Claude Code, use `AskUserQuestion` so the options are
-clickable; otherwise ask in plain text. Offer a recommended default in each
-question and say what you will assume if they skip it.
+**Purpose is different**: ask only when the draft leaves it genuinely unclear. An
+explicit `Recommendation:`, an action with a due date, or a decision already
+communicated usually settles it.
+
+**Infer to pre-fill the answer, not to skip the question.** `Dear …` and a
+subject line means correspondence. `Recommendation:` / `That you note …` means a
+brief. Numbered headings and a summary mean a report. `Media contact:` means a
+release. An internal thread with first names and acronyms means an internal
+email. That reading becomes the recommended option in the question, and the
+assumption you fall back on if nobody answers — never a reason to proceed without
+asking.
+
+**Ask in a single round, three questions maximum.** In Claude Code, use
+`AskUserQuestion` so the options are clickable; otherwise ask in plain text. Put
+the inferred option first and mark it as the recommendation, and say what you
+will assume if they skip it. `AskUserQuestion` takes at most four options per
+question, so offer the inferred one plus the three next most likely — the user
+can type anything else through *Other*.
 
 - *Reader*: internal colleagues / executive or minister / another agency or
   external stakeholder / a member of the public
@@ -50,9 +65,10 @@ question and say what you will assume if they skip it.
 - *Purpose*: for a decision / for action by a date / to inform only / to explain
   a decision already made
 
-**Skip the questions entirely** when the user says "just polish it", "don't ask",
-or supplies all three up front. Then proceed on the most likely reading and state
-the assumption in one line above the rewrite.
+**Skip the questions entirely** when the user says "just polish it", "don't ask"
+or anything else that waives them, or when they have already given reader and
+medium. Then proceed on the most likely reading and state the assumption in one
+line above the rewrite.
 
 **Never block on the questions.** If the user does not answer, pick the closest
 profile, say which one you picked, and deliver the rewrite.
