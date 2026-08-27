@@ -79,7 +79,7 @@
       "name": "pdf-to-md",
       "source": "./plugins/pdf-to-md",
       "description": "Convert PDFs to Markdown with tables preserved, for feeding a local knowledge base. Requires pymupdf.",
-      "version": "5.0.0",
+      "version": "5.1.0",
       "keywords": [
         "pdf",
         "markdown",

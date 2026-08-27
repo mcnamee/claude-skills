@@ -52,7 +52,7 @@ the document library, generated output, and the reference material: **exemplars*
 | [**confluence**](plugins/confluence) | 2.0.0 | Search and read Confluence pages, across one or two instances | _none_ |
 | [**jira**](plugins/jira) | 1.1.3 | Query issues, sprints and projects (Jira Data Center v2 API) | _none_ |
 | [**knowledge-base**](plugins/knowledge-base) | 3.0.0 | True RAG over your own Markdown: local ChromaDB index + your embeddings API, and capture notes back into it | `chromadb` |
-| [**pdf-to-md**](plugins/pdf-to-md) | 5.0.0 | Convert PDFs to Markdown with tables preserved | `pymupdf pymupdf4llm` |
+| [**pdf-to-md**](plugins/pdf-to-md) | 5.1.0 | Convert PDFs to Markdown with tables preserved | `pymupdf pymupdf4llm` |
 
 Each plugin's README covers its settings, tools, file access and example
 prompts. Every server also carries a semantic version in `__version__`, printed

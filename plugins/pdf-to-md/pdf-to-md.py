@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 r"""
-pdf-to-md.py (v5.0.0) - Self-contained MCP (Model Context Protocol) stdio
+pdf-to-md.py (v5.1.0) - Self-contained MCP (Model Context Protocol) stdio
 server that converts PDFs in a folder to Markdown, including tables (both
 bordered and borderless).
 
@@ -64,6 +64,9 @@ To register the server by hand instead:
     installed is the one launched.
   * Add  --recursive  (or set PDF2MD_RECURSIVE=1) to also process sub-folders;
     the sub-folder structure is mirrored under the output folder.
+  * Add  --keep-image-refs  (or set PDF2MD_KEEP_IMAGE_REFS=1) to KEEP the
+    image references and "missing image" placeholder text that are stripped
+    by default. See "IMAGES" below for exactly what is removed.
   * See README.md next to this file for the full settings reference.
 
 =============================================================================
@@ -85,8 +88,10 @@ summary). Diagnostics appear on stderr and never on stdout.
 To test the single-file fuzzy tool, replace the third line with:
     {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"convert_pdf_to_markdown","arguments":{"query":"procurement policy"}}}
 
-A quick Python conversion check (no MCP) can be done with:
-    python -c "import pdf2md_mcp as m; print(m.convert_one(r'C:\Reference\PDFs\Some File.pdf'))"
+A quick conversion check (no MCP) - the file name has a dash, so it has to
+be loaded by path rather than imported by name:
+
+    python -c "import importlib.util as u; s=u.spec_from_file_location('p', r'C:\path\to\pdf-to-md.py'); m=u.module_from_spec(s); s.loader.exec_module(m); print(m.convert_one(r'C:\Eva\documents\pdf\Some File.pdf')[1][:800])"
 
 =============================================================================
  TOOLS EXPOSED
@@ -106,11 +111,40 @@ A quick Python conversion check (no MCP) can be done with:
   * Extraction uses pymupdf4llm, which handles reading order, headings, and
     TABLES - both bordered (ruling lines) and borderless (column alignment).
   * Post-processing then:
+      - removes image references and "missing image" placeholder text (see
+        below);
       - rejoins list markers that land on their own line (the "1." on one
         line, content on the next" problem) with their content;
       - collapses any run of 2+ blank lines into a single blank line;
       - strips trailing whitespace from every line.
   * Table rows are never altered by the list-marker fix.
+
+IMAGES
+------
+Nothing here ever writes or embeds an image file, so every image reference
+in the raw output points at a file that does not exist - a dangling
+"missing image" that is pure noise once the Markdown is in a knowledge
+base. Those are removed by default. What goes:
+
+  * Markdown image links - "![alt](name.pdf-0003-01.png)" and the
+    "![alt][ref]" form - plus any HTML <img> tag.
+  * pymupdf4llm's "<!-- Start of picture text -->" / "<!-- End of picture
+    text -->" markers. The text BETWEEN them is real text found inside a
+    picture, so it is kept; only the commentary goes, and the <br>
+    separators it uses become real line breaks. (<br> elsewhere - inside
+    table cells - is left alone.)
+  * Placeholder wording the SOURCE PDF itself carries where a picture
+    failed to load, which is common in PDFs printed from Outlook or Word:
+    "Image removed by sender.", the "Right-click here to download
+    pictures..." sentence, "This image cannot currently be displayed.",
+    "The linked image cannot be displayed..." and "[cid:...]" inline-image
+    tokens. The full list is the MISSING_IMAGE_PHRASES constant below.
+
+A line left holding nothing but its bullet or number once a reference is
+removed collapses to a blank line, so no stray markers are left behind.
+
+Pass --keep-image-refs (or set PDF2MD_KEEP_IMAGE_REFS=1) to turn all of
+this off and get the raw pymupdf4llm output back.
 
 =============================================================================
  TRANSPORT NOTES (MCP over stdio)
@@ -127,7 +161,7 @@ A quick Python conversion check (no MCP) can be done with:
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "5.0.0"
+__version__ = "5.1.0"
 
 import argparse
 import contextlib
@@ -201,6 +235,14 @@ DOCS_DIR = r"C:\Eva\documents\pdf"
 # then the same act as adding it to the RAG corpus. Point it somewhere outside
 # that folder and the Markdown will pile up unindexed.
 OUTPUT_DIR = r"C:\Eva\knowledge\pdf"
+
+# Keep image references and "missing image" placeholder text in the Markdown?
+# Default False: this server never writes or embeds image files, so every image
+# reference in the raw output is dangling, and placeholder wording carried over
+# from Outlook/Word is noise in a knowledge base. Override with
+# --keep-image-refs or PDF2MD_KEEP_IMAGE_REFS=1.
+KEEP_IMAGE_REFS = False
+
 DEFAULT_PROTOCOL_VERSION = "2024-11-05"
 
 # Table detection strategy passed to pymupdf4llm. "lines_strict" is the
@@ -231,6 +273,68 @@ MARKER_ONLY_RE = re.compile(
     r")\s*$"
 )
 LEADING_BULLET_RE = re.compile(r"^\s*[\u2022\u25aa\u25e6\u00b7\u2023]\s+")
+
+
+# --------------------------------------------------------------------------
+# Image artefacts (removed unless --keep-image-refs is given)
+# --------------------------------------------------------------------------
+# pymupdf4llm wraps text it finds INSIDE a picture in these two comments,
+# joining the picture's lines with <br> on a single line. The text itself is
+# real page text and is kept; the commentary around it is not. Matched as a
+# pair so the <br> rewrite stays inside the block - <br> is also how table
+# cells separate their lines, and those must not be touched.
+PICTURE_TEXT_BLOCK_RE = re.compile(
+    r"[ \t]*<!--\s*Start\s+of\s+picture\s+text\s*-->[ \t]*\n?"
+    r"(?P<body>.*?)"
+    r"\n?[ \t]*<!--\s*End\s+of\s+picture\s+text\s*-->[ \t]*",
+    re.DOTALL | re.IGNORECASE,
+)
+
+BR_TAG_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
+
+# Placeholder wording the SOURCE document carries where a picture failed to
+# load - overwhelmingly PDFs printed from Outlook or Word. This is boilerplate
+# ABOUT a missing image, never document content, so it goes with the rest.
+# Add a phrase here if your PDFs carry one that is not listed.
+MISSING_IMAGE_PHRASES = (
+    # Outlook, where a remote image was blocked or stripped.
+    r"Image\s+removed\s+by\s+sender\.?",
+    r"Right[- ]click\s+here\s+to\s+download\s+pictures\.?"
+    r"(?:\s*To\s+help\s+protect\s+your\s+privacy,?\s*(?:Microsoft\s+)?"
+    r"Outlook\s+prevented\s+automatic\s+download\s+of\s+th(?:is|ese)\s+"
+    r"pictures?\s+from\s+the\s+Internet\.?)?",
+    # Word / PowerPoint placeholders for a picture they could not render.
+    r"This\s+image\s+cannot\s+currently\s+be\s+displayed\.?",
+    r"The\s+linked\s+image\s+cannot\s+be\s+displayed\.?"
+    r"(?:\s*The\s+file\s+may\s+have\s+been\s+moved,?\s+renamed,?\s+or\s+"
+    r"deleted\.?)?"
+    r"(?:\s*Verify\s+that\s+the\s+link\s+points\s+to\s+the\s+correct\s+"
+    r"file\s+and\s+location\.?)?",
+    # Inline-image content-ID token left by an email-to-PDF print.
+    r"[\[<]cid:[^\]>\n]*[\]>]",
+)
+
+# One pass removes: Markdown image links (both ![alt](path) and ![alt][ref]),
+# HTML <img> tags, an unpaired picture-text marker that PICTURE_TEXT_BLOCK_RE
+# could not match, and every phrase above.
+IMAGE_ARTEFACT_RE = re.compile(
+    "|".join(
+        (
+            r"!\[[^\]\n]*\](?:\([^)\n]*\)|\[[^\]\n]*\])",
+            r"<img\b[^>]*>",
+            r"<!--\s*(?:Start|End)\s+of\s+picture\s+text\s*-->",
+        )
+        + MISSING_IMAGE_PHRASES
+    ),
+    re.IGNORECASE,
+)
+
+# A line holding nothing but a bullet, heading hash or list number once its
+# image reference has been removed. Deliberately single-character for the
+# bullets so a "---" horizontal rule or table separator is never matched.
+ORPHAN_MARKER_RE = re.compile(
+    r"^(?:[-*+>]|#{1,6}|\(?\d{1,3}[.)]|\([a-zA-Z]\))?$"
+)
 
 
 # --------------------------------------------------------------------------
@@ -271,10 +375,55 @@ def _tidy_block(block):
     return LEADING_BULLET_RE.sub("- ", block)
 
 
-def _postprocess(markdown):
-    """Apply the local fixes on top of pymupdf4llm's output:
-    strip trailing whitespace, rejoin orphan list markers, collapse runs of
-    blank lines to a single blank line."""
+def _unwrap_picture_text(match):
+    """Keep the text found inside a picture, drop the markers around it and
+    turn the <br> separators back into real line breaks."""
+    return BR_TAG_RE.sub("\n", match.group("body")).strip("\n")
+
+
+def _strip_image_artefacts(markdown):
+    """Remove image references and "missing image" placeholder text.
+
+    This server never asks pymupdf4llm to write or embed image files, so any
+    image link in its output points at a file that does not exist. Those, the
+    picture-text markers, and the Outlook/Word wording a source PDF carries
+    where a picture failed to load are all noise once the Markdown is indexed.
+    See the IMAGES section of the module docstring for the full list."""
+    # 1) Unwrap the picture-text blocks first, so their real text survives.
+    markdown = PICTURE_TEXT_BLOCK_RE.sub(_unwrap_picture_text, markdown)
+
+    # 2) Then remove the artefacts line by line, so a line left holding only
+    #    its bullet or number becomes blank instead of a stray marker. Blank
+    #    lines are absorbed by the blank-run collapsing in _postprocess.
+    out_lines = []
+    for line in markdown.split("\n"):
+        cleaned = IMAGE_ARTEFACT_RE.sub(" ", line)
+        if cleaned == line:
+            out_lines.append(line)
+            continue
+        if not line.lstrip().startswith("|"):
+            remainder = cleaned.strip()
+            if not remainder or ORPHAN_MARKER_RE.match(remainder):
+                out_lines.append("")
+                continue
+        # Close the gap the removal opened. Indentation comes from the original
+        # line so it is never widened into an accidental code block; a table row
+        # keeps its pipes and simply ends up with an empty cell.
+        indent = line[: len(line) - len(line.lstrip())]
+        out_lines.append(
+            (indent + re.sub(r"[ \t]{2,}", " ", cleaned.strip())).rstrip()
+        )
+    return "\n".join(out_lines)
+
+
+def _postprocess(markdown, keep_image_refs=False):
+    """Apply the local fixes on top of pymupdf4llm's output: remove image
+    artefacts, strip trailing whitespace, rejoin orphan list markers, collapse
+    runs of blank lines to a single blank line."""
+    # 0) Drop image references / "missing image" placeholder text.
+    if not keep_image_refs:
+        markdown = _strip_image_artefacts(markdown)
+
     # 1) Strip trailing whitespace per line.
     markdown = "\n".join(line.rstrip() for line in markdown.split("\n"))
 
@@ -309,7 +458,7 @@ def _postprocess(markdown):
     return markdown.strip() + "\n"
 
 
-def convert_pdf_to_markdown_text(pdf_path):
+def convert_pdf_to_markdown_text(pdf_path, keep_image_refs=False):
     """Convert a PDF file to a Markdown string. Raises on failure
     (file errors, encrypted PDF, parse errors)."""
     # Light open first, for a clean error on encrypted PDFs.
@@ -325,10 +474,10 @@ def convert_pdf_to_markdown_text(pdf_path):
     with _suppress_fd_stdout():
         raw_markdown = pymupdf4llm.to_markdown(str(pdf_path), table_strategy=TABLE_STRATEGY)
 
-    return _postprocess(raw_markdown)
+    return _postprocess(raw_markdown, keep_image_refs=keep_image_refs)
 
 
-def convert_one(pdf_path):
+def convert_one(pdf_path, keep_image_refs=False):
     """Convert one PDF. Returns (ok, markdown, error_text)."""
     if fitz is None or pymupdf4llm is None:
         return (
@@ -341,7 +490,9 @@ def convert_one(pdf_path):
             "has it.)".format(IMPORT_ERROR, sys.executable),
         )
     try:
-        markdown = convert_pdf_to_markdown_text(str(pdf_path))
+        markdown = convert_pdf_to_markdown_text(
+            str(pdf_path), keep_image_refs=keep_image_refs
+        )
     except FileNotFoundError:
         return (False, "", "File not found")
     except PermissionError:
@@ -438,6 +589,7 @@ def do_convert_all(config, force=False):
     docs_dir = config["docs_dir"]
     output_dir = config["output_dir"]
     recursive = config["recursive"]
+    keep_image_refs = config["keep_image_refs"]
 
     if not os.path.isdir(docs_dir):
         return ("Configured input folder does not exist: {}".format(docs_dir), True)
@@ -456,7 +608,7 @@ def do_convert_all(config, force=False):
         if out_path.exists() and not force:
             skipped.append(pdf.name)
             continue
-        ok, markdown, err = convert_one(pdf)
+        ok, markdown, err = convert_one(pdf, keep_image_refs=keep_image_refs)
         if not ok:
             failed.append((pdf.name, err))
             continue
@@ -493,6 +645,7 @@ def do_convert_one_fuzzy(query, config):
     docs_dir = config["docs_dir"]
     output_dir = config["output_dir"]
     recursive = config["recursive"]
+    keep_image_refs = config["keep_image_refs"]
 
     if not os.path.isdir(docs_dir):
         return ("Configured input folder does not exist: {}".format(docs_dir), True)
@@ -530,7 +683,7 @@ def do_convert_one_fuzzy(query, config):
         )
 
     log("Converting (fuzzy): {}".format(best_path))
-    ok, markdown, err = convert_one(best_path)
+    ok, markdown, err = convert_one(best_path, keep_image_refs=keep_image_refs)
     if not ok:
         return ("Failed to convert '{}': {}".format(best_path.name, err), True)
 
@@ -714,6 +867,16 @@ def parse_args(argv):
         help="Search sub-folders of --docs-dir (sub-folder structure is "
              "mirrored in the output). Also via PDF2MD_RECURSIVE=1.",
     )
+    parser.add_argument(
+        "--keep-image-refs",
+        action="store_true",
+        default=(os.environ.get("PDF2MD_KEEP_IMAGE_REFS", "").strip().lower()
+                 in ("1", "true", "yes", "on")) or KEEP_IMAGE_REFS,
+        help="Keep image references and \"missing image\" placeholder text in "
+             "the Markdown. By default they are removed: nothing here writes "
+             "image files, so every reference is dangling. Also via "
+             "PDF2MD_KEEP_IMAGE_REFS=1.",
+    )
     parser.add_argument("--check", action="store_true",
                         help="Print environment/config diagnostics (interpreter, "
                              "folders, dependency status, PDFs found), then exit "
@@ -742,6 +905,7 @@ def run_check(args):
     print("  output dir        : {0}".format(args.output_dir or "(NOT SET - required)"))
     print("  output dir exists : {0}".format(bool(args.output_dir) and os.path.isdir(args.output_dir)))
     print("  recursive         : {0}".format(args.recursive))
+    print("  keep image refs   : {0}".format(args.keep_image_refs))
     print("  dependencies      : {0}".format(
         "OK (pymupdf + pymupdf4llm importable)" if IMPORT_ERROR is None else IMPORT_ERROR))
     if args.docs_dir and os.path.isdir(args.docs_dir):
@@ -771,10 +935,12 @@ def main(argv=None):
         "docs_dir": args.docs_dir,
         "output_dir": args.output_dir,
         "recursive": args.recursive,
+        "keep_image_refs": args.keep_image_refs,
     }
     log("interpreter (sys.executable): {}".format(sys.executable))
-    log("started (docs_dir={!r}, output_dir={!r}, recursive={})".format(
-        args.docs_dir, args.output_dir, args.recursive))
+    log("started (docs_dir={!r}, output_dir={!r}, recursive={}, "
+        "keep_image_refs={})".format(
+            args.docs_dir, args.output_dir, args.recursive, args.keep_image_refs))
     if fitz is None or pymupdf4llm is None:
         log("WARNING: {}".format(IMPORT_ERROR))
         log("WARNING: the package is missing from the interpreter above. "
