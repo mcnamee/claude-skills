@@ -1,7 +1,7 @@
 {
   "name": "pdf-to-md",
   "displayName": "PDF to Markdown",
-  "version": "5.0.0",
+  "version": "5.1.0",
   "description": "Convert PDFs to Markdown with tables preserved, for feeding a local knowledge base. Requires pymupdf.",
   "author": {
     "name": "mcnamee"
