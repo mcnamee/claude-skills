@@ -13,7 +13,7 @@ put it in [`../templates`](../templates) instead.
 |---|---|
 | **Formats** | `.md`, `.docx`, `.pptx`, `.pdf` |
 | **Configuration** | none — these are read on request, not by a server |
-| **Committed to git?** | no (see [`../.gitignore`](../.gitignore)) |
+| **Committed to git?** | no (see [`../.gitignore`](../../.gitignore)) |
 
 ## What belongs here
 
@@ -30,7 +30,7 @@ put it in [`../templates`](../templates) instead.
 - Twelve near-identical reports. Two or three strong examples beat a folder of
   variations, and a big folder makes "which one?" ambiguous.
 - Reference *data* to answer questions from — that is what the
-  [`knowledge-base`](../../plugins/knowledge-base) plugin indexes.
+  [`knowledge-base`](../../../plugins/knowledge-base) plugin indexes.
 
 ## Naming
 
@@ -74,9 +74,9 @@ than *"read everything in exemplars"*.
 | Format | Read by |
 |---|---|
 | `.md` | directly — cheapest, and the easiest to diff and review |
-| `.docx` | the [`word`](../../plugins/word) plugin (`msword_open` → `msword_get_content`) |
-| `.pdf` | the [`pdf-to-md`](../../plugins/pdf-to-md) plugin, which converts it to Markdown first |
-| `.pptx` | no MCP server in this suite reads PowerPoint; Claude Code's own `pptx` skill can, where it is available |
+| `.docx` | the [`word`](../../../plugins/word) plugin (`msword_open` → `msword_get_content`) |
+| `.pdf` | the [`pdf-to-md`](../../../plugins/pdf-to-md) plugin, which converts it to Markdown first |
+| `.pptx` | the [`powerpoint`](../../../plugins/powerpoint) plugin (`powerpoint_open` → `powerpoint_get_content`, which returns each slide's title, bullets, tables and speaker notes) |
 
 If an exemplar is one you reach for constantly, keeping a `.md` copy beside the
 original is the cheapest option — no conversion step, and the structure is
@@ -85,5 +85,5 @@ visible at a glance.
 ## A note on style guidance
 
 An exemplar shows *what* good output looks like. It does not stop the writing
-sounding like an AI wrote it — for that, ask for [`/unslop`](../../skills/unslop)
+sounding like an AI wrote it — for that, ask for [`/unslop`](../../../skills/unslop)
 over the draft.
