@@ -20,8 +20,8 @@ The tree is organised by **what writes to a folder**, not by topic:
 |---|---|---|
 | [`knowledge\`](knowledge) | The RAG corpus — Markdown only | every server that mirrors what it reads, plus `kb_capture` |
 | [`index\`](index) | The ChromaDB vector store | `knowledge-base`, from `knowledge\` |
-| [`documents\`](documents) | The binary library — `.docx`, `.xlsx`, `.pdf` | you |
-| [`output\`](output) | Generated files | `word` |
+| [`documents\`](documents) | The binary library — `.docx`, `.pptx`, `.xlsx`, `.pdf` | you |
+| [`output\`](output) | Generated files | `word`, `powerpoint` |
 | [`reference\`](reference) | Templates and exemplars — style, not facts | you |
 
 ```
@@ -32,16 +32,19 @@ C:\Eva\
 │  ├─ confluence\      pages the confluence plugin mirrored
 │  ├─ email\           emails the outlook plugin mirrored
 │  ├─ word\            documents the word plugin mirrored
+│  ├─ powerpoint\      decks the powerpoint plugin mirrored
 │  └─ pdf\             PDFs the pdf-to-md plugin converted
 ├─ index\            ChromaDB — derived, disposable
 ├─ documents\
 │  ├─ word\            .docx  (searched recursively)
 │  │  ├─ inbox\          drop files here to work on
 │  │  └─ library\        documents you keep
+│  ├─ powerpoint\      .pptx  (searched recursively)
 │  ├─ excel\           .xlsx  (top level only — see its README)
 │  └─ pdf\             .pdf   source PDFs
 ├─ output\
-│  └─ word\            documents the assistant creates
+│  ├─ word\            documents the assistant creates
+│  └─ powerpoint\      decks the assistant creates
 └─ reference\
    ├─ exemplars\       finished documents showing what good looks like
    └─ templates\       blank branded files new documents start from
@@ -61,13 +64,17 @@ default.
 | `knowledge\confluence\` | `confluence` → knowledge-base folder | `--kb-dir` / `CONFLUENCE_KB_DIR` |
 | `knowledge\email\` | `outlook` → knowledge-base folder | `--kb-dir` / `OUTLOOK_KB_DIR` |
 | `knowledge\word\` | `word` → knowledge-base folder | `--kb-dir` / `MSWORD_KB_DIR` |
+| `knowledge\powerpoint\` | `powerpoint` → knowledge-base folder | `--kb-dir` / `POWERPOINT_KB_DIR` |
 | `knowledge\pdf\` | `pdf-to-md` → output folder | `--output-dir` / `PDF2MD_OUTPUT_DIR` |
 | `index\` | `knowledge-base` → index folder | `--index-dir` / `KB_INDEX_DIR` |
 | `documents\word\` | `word` → documents folder | `--docs-dir` / `MSWORD_DOCS_DIR` |
+| `documents\powerpoint\` | `powerpoint` → presentations folder | `--docs-dir` / `POWERPOINT_DOCS_DIR` |
 | `documents\excel\` | `excel` → workbook folder | `--docs-dir` / `EXCEL_DOCS_DIR` |
 | `documents\pdf\` | `pdf-to-md` → documents folder | `--docs-dir` / `PDF2MD_DOCS_DIR` |
 | `output\word\` | `word` → output folder | `--output-dir` / `MSWORD_OUTPUT_DIR` |
+| `output\powerpoint\` | `powerpoint` → output folder | `--output-dir` / `POWERPOINT_OUTPUT_DIR` |
 | `reference\templates\` | `word` → templates folder | `--templates-dir` / `MSWORD_TEMPLATES_DIR` |
+| `reference\templates\` | `powerpoint` → templates folder | `--templates-dir` / `POWERPOINT_TEMPLATES_DIR` |
 | `reference\exemplars\` | none — read as ordinary files | — |
 
 `jira` touches no local folder at all.
