@@ -2,7 +2,7 @@
 
 Three things, all for Claude Code, all working **entirely offline**:
 
-- **[`plugins/`](plugins)** — seven MCP servers that give an agent hands on the
+- **[`plugins/`](plugins)** — eight MCP servers that give an agent hands on the
   things enterprise work actually lives in: Word documents, Excel workbooks,
   Outlook mail, Confluence, Jira, PDFs, plus a local RAG knowledge base to tie
   them together. This repo doubles as a plugin marketplace for them.
@@ -23,15 +23,16 @@ the document library, generated output, and the reference material: **exemplars*
   no registry lookups. Copy the folder across, add it as a local marketplace,
   install.
 - **One file per server.** Every server is a single `.py` — nothing to build, no
-  package tree to transfer. Four of the seven are **standard library only**, and
+  package tree to transfer. Three of the eight are **standard library only**, and
   the standalone skills have no code at all.
 - **Install with prompts, not JSON.** `/plugin install` asks for the folders and
-  the Python interpreter instead of you hand-editing absolute paths in seven
+  the Python interpreter instead of you hand-editing absolute paths in eight
   places. The matching skill comes with the server.
 - **Confined by default.** Every server that touches the filesystem is locked to
   the folders you name, and refuses to start unconfined rather than falling back
-  to "anywhere". `word` is the only one that can change a document you already
-  have; the rest either read, or write new Markdown into a folder you nominate.
+  to "anywhere". `word` and `powerpoint` are the only ones that can change a
+  file you already have; the rest either read, or write new Markdown into a
+  folder you nominate.
 - **Secrets never hit the command line.** Tokens and API keys are environment
   variables only — argv is visible to other local users in process listings.
 - **They compose.** Word, Outlook and Confluence can each mirror what they read
@@ -47,6 +48,7 @@ the document library, generated output, and the reference material: **exemplars*
 | Plugin | Version | What it does | pip install |
 |---|---|---|---|
 | [**word**](plugins/word) | 5.0.0 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
+| [**powerpoint**](plugins/powerpoint) | 1.0.0 | Build `.pptx` decks that inherit your own template's layouts and theme, and audit them against the 10/20/30 rule | `python-pptx` |
 | [**excel**](plugins/excel) | 4.0.0 | Read and analyse workbooks; parses `.xlsx` directly, so Excel isn't needed | _none_ |
 | [**outlook**](plugins/outlook) | 4.0.0 | Read local Outlook mail and calendar via COM, with a content blacklist | `pywin32` |
 | [**confluence**](plugins/confluence) | 2.0.0 | Search and read Confluence pages, across one or two instances | _none_ |
@@ -218,17 +220,20 @@ C:\Eva\
 │  ├─ confluence\      pages the confluence plugin mirrored
 │  ├─ email\           emails the outlook plugin mirrored
 │  ├─ word\            documents the word plugin mirrored
+│  ├─ powerpoint\      decks the powerpoint plugin mirrored
 │  └─ pdf\             PDFs the pdf-to-md plugin converted
 ├─ index\            the ChromaDB vector store - derived, disposable
 ├─ documents\        the binary library the servers READ
 │  ├─ word\            .docx (searched recursively; inbox\ + library\)
+│  ├─ powerpoint\      .pptx (searched recursively)
 │  ├─ excel\           .xlsx (top level only - excel does not recurse)
 │  └─ pdf\             source PDFs
 ├─ output\           what the assistant creates
-│  └─ word\
+│  ├─ word\
+│  └─ powerpoint\
 └─ reference\        style, not facts - deliberately NOT indexed
    ├─ exemplars\       finished documents showing what good looks like
-   └─ templates\       blank branded files new documents start from
+   └─ templates\       blank branded files new documents/decks start from
 ```
 
 | Folder | Plugin → setting |
@@ -238,13 +243,16 @@ C:\Eva\
 | `knowledge\confluence\` | `confluence` → `--kb-dir` |
 | `knowledge\email\` | `outlook` → `--kb-dir` |
 | `knowledge\word\` | `word` → `--kb-dir` |
+| `knowledge\powerpoint\` | `powerpoint` → `--kb-dir` |
 | `knowledge\pdf\` | `pdf-to-md` → `--output-dir` |
 | `index\` | `knowledge-base` → `--index-dir` |
 | `documents\word\` | `word` → `--docs-dir` |
+| `documents\powerpoint\` | `powerpoint` → `--docs-dir` |
 | `documents\excel\` | `excel` → `--docs-dir` |
 | `documents\pdf\` | `pdf-to-md` → `--docs-dir` |
 | `output\word\` | `word` → `--output-dir` |
-| `reference\templates\` | `word` → `--templates-dir` |
+| `output\powerpoint\` | `powerpoint` → `--output-dir` |
+| `reference\templates\` | `word` and `powerpoint` → `--templates-dir` |
 
 Two rules make it hold together, and both are worth knowing before you move a
 folder:
@@ -271,6 +279,7 @@ its configuration, and that configuration is **required**:
 | Plugin | Local file access |
 |---|---|
 | `word` | Read/write, confined to the documents folder plus the output and knowledge-base folders; the templates folder is read-only. Opening, creating and saving each mirror to the knowledge-base folder |
+| `powerpoint` | Read/write, confined to the presentations folder plus the output and knowledge-base folders; the templates folder is read-only. Opening, creating and saving each mirror to the knowledge-base folder |
 | `excel` | Read-only, confined to the workbook folder (top level only) |
 | `knowledge-base` | Reads the documents folder; writes its vector index (`C:\Eva\index`) and captured notes (`C:\Eva\knowledge\captures`, always inside the documents folder); never edits or deletes an existing document; network only to the endpoints you configure |
 | `pdf-to-md` | Reads the PDF folder, writes the output folder |
@@ -290,6 +299,13 @@ teaches an agent that server's tools, the right call order, and the sharp
 edges (read-only limits, sandboxes, the tracked-changes workflow, when to
 reindex). Installing the plugin installs its skill, namespaced as
 `/<plugin>:<skill>` — so `/word:word`, not `/word`.
+
+`powerpoint` is the exception that ships **two**: `/powerpoint:powerpoint` for
+the server's mechanics, and `/powerpoint:kawasaki` for Guy Kawasaki's 10/20/30
+rule — 10 slides, 20 minutes, a 30-point minimum font. They are split because
+the rule is a way of thinking about any presentation, in any tool, while the
+other is about driving this server; the rule fires when someone asks for a deck
+at all, and reaches for the server's audit only when it is there.
 
 **[`skills/`](skills) holds standalone skills**, which need no server and no
 plugin. Install one by copying its folder:
@@ -313,9 +329,9 @@ another.
 Note the difference in what they give Claude: a **plugin** adds *tools*, a
 **skill** adds *instructions*. A server's skill describes how to use it — it
 isn't a way to run one. These are MCP servers, launched as long-running stdio
-subprocesses, not scripts a skill shells out to. That matters most for `word`,
-which is session-based (`msword_open` returns a `session_id` and holds the
-document in memory until `msword_save`).
+subprocesses, not scripts a skill shells out to. That matters most for `word`
+and `powerpoint`, which are session-based (`msword_open` / `powerpoint_create`
+return a `session_id` and hold the file in memory until it is saved).
 
 ## Agents
 
@@ -355,7 +371,7 @@ than for facts, which is why it sits outside the indexed corpus:
 | Folder | Holds | Wired up by |
 |---|---|---|
 | [**`reference/exemplars`**](eva/reference/exemplars) | Finished, good documents (`.md`, `.docx`, `.pptx`, `.pdf`) that show the house style to write in | nothing — point at one in the prompt |
-| [**`reference/templates`**](eva/reference/templates) | Blank `.docx`/`.pptx` templates a new document is created from | `word` → `--templates-dir` (read-only) |
+| [**`reference/templates`**](eva/reference/templates) | Blank `.docx`/`.pptx` templates a new document or deck is created from | `word` and `powerpoint` → `--templates-dir` (read-only) |
 
 An exemplar is read for guidance and never becomes the output; a template *is*
 the output's first draft. Neither is indexed: add a board paper to the RAG

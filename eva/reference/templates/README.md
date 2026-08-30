@@ -10,14 +10,19 @@ that is an exemplar — put it in [`../exemplars`](../exemplars) instead.
 
 | | |
 |---|---|
-| **Formats** | `.docx` (used by the `word` plugin), `.pptx` (see [PowerPoint](#powerpoint-templates)) |
-| **Configuration** | `word` plugin → templates folder (`--templates-dir` / `MSWORD_TEMPLATES_DIR`) |
+| **Formats** | `.docx` (used by the `word` plugin), `.pptx` / `.potx` (used by the `powerpoint` plugin) |
+| **Configuration** | `word` → templates folder (`--templates-dir` / `MSWORD_TEMPLATES_DIR`)<br>`powerpoint` → templates folder (`--templates-dir` / `POWERPOINT_TEMPLATES_DIR`) |
 | **Writable?** | **no** — the server refuses every save into this folder |
-| **Committed to git?** | no (see [`../.gitignore`](../.gitignore)) |
+| **Committed to git?** | no (see [`../.gitignore`](../../.gitignore)) |
+
+**One folder, two plugins.** Both point here, and each reads only the file
+types it understands: `word` reads the `.docx` files and ignores the rest,
+`powerpoint` reads the `.pptx`/`.potx` files and ignores the rest. Keep every
+template in here and there is one place to look.
 
 ## Point the `word` plugin at this folder
 
-The [`word`](../../plugins/word) plugin (v4.1.0+) takes a **templates folder**
+The [`word`](../../../plugins/word) plugin (v4.1.0+) takes a **templates folder**
 as a read-only third root, alongside its documents and output folders. Pick
 whichever install route you use:
 
@@ -37,7 +42,7 @@ claude mcp add word --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\pat
 ```
 
 **`.mcp.json`** — add to the `word` entry's `args` (see
-[`.mcp.json.example`](../../.mcp.json.example)):
+[`.mcp.json.example`](../../../.mcp.json.example)):
 
 ```json
 "--templates-dir", "C:\\Eva\\reference\\templates"
@@ -46,6 +51,20 @@ claude mcp add word --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\pat
 Confirm it took: the server logs `templates folder (read-only) = ...` at
 startup, and `msword_list_documents` with `location: "templates"` lists exactly
 what is in here.
+
+## Point the `powerpoint` plugin at the same folder
+
+Identical, with the `powerpoint` names. **Plugin install** — answer its
+*Templates folder* prompt with `C:\Eva\reference\templates`.
+
+**`claude mcp add`:**
+
+```powershell
+claude mcp add powerpoint --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\claude-skills\plugins\powerpoint\powerpoint.py --docs-dir C:\Eva\documents\powerpoint --output-dir C:\Eva\output\powerpoint --templates-dir C:\Eva\reference\templates
+```
+
+Confirm it took with `powerpoint_list_presentations` and
+`location: "templates"`.
 
 > The folder must exist and must be **separate from** the documents and output
 > folders — the server refuses to start otherwise, rather than silently running
@@ -123,13 +142,50 @@ Also worth doing:
   `msword_open` on it + `msword_list_styles` (reading is fine; saving is not).
 
 The full workflow, including filling out example tables, is in the
-[`word` plugin README](../../plugins/word/README.md) and its `SKILL.md`.
+[`word` plugin README](../../../plugins/word/README.md) and its `SKILL.md`.
 
 ## PowerPoint templates
 
-`.pptx` files are welcome here, but note that **this suite has no PowerPoint
-server** — nothing in `plugins/` reads or writes `.pptx`, and the `word` server
-ignores every file here that is not a `.docx`. They are for Claude Code's own
-`pptx` skill where that is available, and for you to open by hand. Keep them
-alongside the Word templates so there is one place to look; if a PowerPoint
-plugin ever lands in this repo, this is the folder it will point at.
+`.pptx` (and `.potx`) files here are read by the [`powerpoint`](../../../plugins/powerpoint)
+plugin, which creates a new deck **from** one — inheriting its slide masters,
+layouts, theme, fonts and colours — and writes the result to
+`C:\Eva\output\powerpoint`. The template itself is never modified, and any
+example slides in it are stripped so the new deck starts blank with the styling
+intact.
+
+### What makes a good deck template
+
+The `word` advice above is about styles and placeholders; for a deck it is about
+**layouts**, because that is the only thing the server writes into.
+
+- **Define a layout for each job** — a cover, a section divider, a
+  title-and-bullets content slide, a two-column slide, a title-only slide. The
+  server detects each layout's *role* from its placeholders rather than its
+  name, so `Chapter Opener` and `Section Header` both work; name them for
+  humans.
+- **Set your font sizes in the slide master**, not on individual slides. That is
+  where they are read from, and it is what lets a whole deck restyle at once.
+- **Check the deeper outline levels.** Nearly every template shrinks each level —
+  the stock Office one runs 32 / 28 / 24 / 20 point — so a level-2 bullet breaks
+  the 30-point rule without anyone choosing a font. If your house style is
+  30-point minimum, set level 2 to 30 too.
+- **Keep the slides empty.** Example slides are stripped on create, so they cost
+  nothing, but a template that is only masters and layouts is clearer.
+- **Leave picture placeholders in.** The server writes no images and never drops
+  an empty picture placeholder, so one in the layout becomes a correctly
+  positioned, correctly styled click target for you to fill in by hand.
+- `.potx` works and is only ever read; decks are always saved as `.pptx`.
+
+### How it gets used
+
+- *"Build a pitch deck from our template."* → `powerpoint_create` with
+  `template: "Deck Template.pptx"`, then `powerpoint_list_layouts` to see what it
+  offers, then a `powerpoint_add_slide` per slide.
+- *"What layouts does our template have, and will they hold 30-point text?"* →
+  `powerpoint_list_layouts`, which reports each placeholder's *effective* font
+  size and lists the layouts that clear the minimum.
+- *"Is this deck too long?"* → `powerpoint_review`, which audits slide count,
+  estimated speaking time and font sizes against the 10/20/30 rule.
+
+The full workflow is in the [`powerpoint` plugin
+README](../../../plugins/powerpoint/README.md) and its two skills.

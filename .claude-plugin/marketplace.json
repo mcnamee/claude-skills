@@ -4,7 +4,7 @@
     "name": "mcnamee",
     "url": "https://github.com/mcnamee/claude-skills"
   },
-  "description": "Single-file MCP servers for working with Word, Excel, Outlook, Confluence, Jira, PDFs and a local RAG knowledge base. Each plugin bundles one server with its matching skill, so it installs and updates as one unit - including fully offline.",
+  "description": "Single-file MCP servers for working with Word, PowerPoint, Excel, Outlook, Confluence, Jira, PDFs and a local RAG knowledge base. Each plugin bundles one server with its matching skill, so it installs and updates as one unit - including fully offline.",
   "plugins": [
     {
       "name": "word",
@@ -16,6 +16,19 @@
         "docx",
         "tracked-changes",
         "documents"
+      ]
+    },
+    {
+      "name": "powerpoint",
+      "source": "./plugins/powerpoint",
+      "description": "Build PowerPoint decks that inherit your own template's layouts and theme, and audit them against Guy Kawasaki's 10/20/30 rule.",
+      "version": "1.0.0",
+      "keywords": [
+        "powerpoint",
+        "pptx",
+        "presentation",
+        "slides",
+        "kawasaki"
       ]
     },
     {
