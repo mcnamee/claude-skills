@@ -37,6 +37,11 @@ REST API). If its tools are not available, tell the user to wire it in first
 
 - Read-only by design: the server cannot create, edit, transition or comment
   on issues — never promise to update Jira.
+- **Nothing from Jira is saved anywhere.** The server writes no files, so
+  issues you read never reach the knowledge base. If the user asks for
+  something from Jira to be kept ("save this ticket", "remember this
+  decision"), write it as a note with the `knowledge-base` server's
+  `kb_capture` — quoting the issue keys — and only when they ask.
 - A `JIRA_PROJECTS` allowlist may be configured; issues outside it are
   refused and other projects hidden. If a key is refused, say why.
 - Jira Cloud is not supported (v3 rich-text API); this targets Data Center.

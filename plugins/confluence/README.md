@@ -1,15 +1,15 @@
 # Confluence (read-only)
 
-Search and read Confluence pages across one or two Confluence instances,
-optionally mirroring every page read to Markdown so it feeds a local RAG
+Search and read Confluence pages across one or two Confluence instances, and
+save a page to Markdown — when you ask for it — so it feeds a local RAG
 knowledge base.
 
 | | |
 |---|---|
-| **Server** | `confluence.py` v2.0.0 |
+| **Server** | `confluence.py` v3.0.0 |
 | **pip install** | _none_ — standard library only (HTTP via stdlib `urllib`) |
 | **Platform** | any |
-| **Writes to disk** | yes — mirrors every page read to `C:\Eva\knowledge\confluence`, unless that setting is `off` |
+| **Writes to disk** | only when you ask a page to be saved — then one Markdown file in `C:\Eva\knowledge\confluence` |
 
 ## Install
 
@@ -24,13 +24,13 @@ knowledge base.
 | Name for this Confluence server | no | `CONFLUENCE_NAME` | e.g. `Green`. Only matters if you configure a second server; defaults to `Primary` |
 | Second Confluence base URL | no | `CONFLUENCE_BASE_URL_2` | Leave blank for a single-server setup |
 | Name for the second Confluence server | no | `CONFLUENCE_NAME_2` | e.g. `Blue` — say it in a prompt to query that server; defaults to `Secondary` |
-| Knowledge-base folder | no | `CONFLUENCE_KB_DIR` | Every page read is also saved as Markdown here, for the `knowledge-base` plugin to index. Defaults to `C:\Eva\knowledge\confluence`; `off` to disable |
+| Knowledge-base folder | no | `CONFLUENCE_KB_DIR` | Where a page is saved as Markdown **when you ask for it**, for the `knowledge-base` plugin to index. Defaults to `C:\Eva\knowledge\confluence`; `off` to forbid saving |
 | Python interpreter | **yes** | — | Absolute path to the `python.exe` to launch the server with |
 
 > **Blank does not mean off.** Leaving the folder prompt empty means "not
-> configured", so the default above applies. To switch mirroring off, type `off`
-> (`none`, `no`, `false` and `disabled` work too), after which the server writes
-> no local file at all.
+> configured", so the default above applies. To forbid saving outright, type
+> `off` (`none`, `no`, `false` and `disabled` work too), after which the server
+> writes no local file at all.
 
 **Your tokens are not stored in the plugin.** Set them as Windows user
 environment variables before starting Claude Code — the plugin reads them from
@@ -46,6 +46,35 @@ setx CONFLUENCE_TOKEN_2 "token-for-the-second-server"   # only if you have two
 `setx` does not affect processes that are already running, so quit VS Code
 completely (a window reload is not enough) and reopen it. Check it took in a
 **new** window with `$env:CONFLUENCE_TOKEN`.
+
+## Saving to the knowledge base
+
+**Reading a page does not save it.** Both page tools take a `save_to_kb`
+argument, false by default; the page is written to the knowledge-base folder
+only when it is true, which Claude sets when you ask for the page to be kept:
+
+| You say | What happens |
+|---|---|
+| "What does the incident runbook say about escalation?" | Pages are searched and read to answer. Nothing is saved |
+| "Save the incident runbook to the knowledge base" | `save_to_kb=true` — one Markdown file, then `kb_index` can pick it up |
+| "Pull the whole onboarding tree into the KB" | One saved file per page you asked for |
+
+That is the difference between a knowledge base of pages you chose and one
+holding every page skimmed along the way. A search for "retention policy" that
+turns up somebody's meeting notes used to file those notes in the index, where
+they came back later as an answer.
+
+The saved file is the full page — `CONFLUENCE_MAX_BODY` truncates only what is
+returned to the model — under `Confluence - <title>.md`, overwriting any earlier
+copy of the same page. If saving is switched off (`off`) and you ask for a page
+to be kept anyway, the tool says so instead of failing silently.
+
+To go back to saving every page read, as versions before 3.0.0 did, set
+`CONFLUENCE_KB_AUTOSAVE=true`:
+
+```powershell
+setx CONFLUENCE_KB_AUTOSAVE "true"
+```
 
 ## Two Confluence servers
 
@@ -118,14 +147,15 @@ Setting `CONFLUENCE_BASE_URL_2` is what enables it.
 |---|---|---|
 | `CONFLUENCE_TIMEOUT` | `--timeout` | Request timeout in seconds (default 30) |
 | `CONFLUENCE_MAX_BODY` | `--max-body` | Truncate page bodies to N chars, 0 = unlimited (default). Applies only to text returned to the model, not to files saved via the knowledge-base folder |
-| `CONFLUENCE_KB_DIR` | `--kb-dir` | If set, every page read is also saved as a Markdown file into this folder — handy for feeding a local RAG knowledge base, e.g. alongside the `knowledge-base` plugin |
+| `CONFLUENCE_KB_DIR` | `--kb-dir` | Folder a page is saved into as Markdown when a tool call asks for it (`save_to_kb=true`) — for feeding a local RAG knowledge base, e.g. alongside the `knowledge-base` plugin. Default `C:\Eva\knowledge\confluence`; `off` forbids saving |
+| `CONFLUENCE_KB_AUTOSAVE` | `--kb-autosave` | Save **every** page read, without being asked (default false). The pre-3.0.0 behaviour; needs `CONFLUENCE_KB_DIR` to be set |
 | — | `--check` | Connect to every configured server, print who you are authenticated as + visible space count to stderr, then exit (no server) |
 | — | `--version` | Print version and exit |
 
 ## File access
 
-No local file access unless the knowledge-base folder is set; then it writes
-only inside that folder.
+No local file access until a tool call asks for a page to be saved; then it
+writes one Markdown file inside the knowledge-base folder, and nowhere else.
 
 ## Usage examples
 
@@ -136,7 +166,8 @@ only inside that folder.
 5. "Open the 'Q3 Roadmap' page in the PROD space and summarise it." → `confluence_get_page_by_title`
 6. "List every page under the 'Engineering Handbook' in the DOCS space, direct children only." → `confluence_list_pages_under`
 7. "Is the retention policy on Green the same as the one on Blue?" → the same tool called once per server, then compared
-8. "Pull the onboarding runbook into our local knowledge base for offline search." → `confluence_get_page` (or `confluence_get_page_by_title`), automatically mirrored to Markdown when the knowledge-base folder is configured, so the `knowledge-base` plugin's `kb_index`/`kb_ask` can find it afterwards
+8. "Pull the onboarding runbook into our local knowledge base for offline search." → `confluence_get_page` (or `confluence_get_page_by_title`) with `save_to_kb=true`, which writes the Markdown copy the `knowledge-base` plugin's `kb_index`/`kb_ask` can find afterwards
+9. "Summarise the release notes page." → the same tools **without** `save_to_kb` — you get the summary and nothing lands in the knowledge base
 
 ## Troubleshooting
 

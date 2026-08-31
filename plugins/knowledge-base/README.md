@@ -171,10 +171,16 @@ captures folder before anything is written, so no title can reach outside it.
 
 The `confluence`, `outlook` and `word` plugins each take a
 **knowledge-base folder** setting. Point all of them at this plugin's documents
-folder and everything you read — wiki pages, emails, Word documents — is
-mirrored to Markdown there, ready for `kb_index`. The `pdf-to-md` plugin fills
-the same folder from PDFs. `word` also mirrors on **create and save**, so a
-document written for you lands there too.
+folder and what they collect — wiki pages, emails, Word documents — arrives as
+Markdown there, ready for `kb_index`. The `pdf-to-md` plugin fills the same
+folder from PDFs. `word` also mirrors on **create and save**, so a document
+written for you lands there too.
+
+They differ in *when* they write, and it is worth knowing which is which:
+`outlook` and `word` mirror **everything they read**, while `confluence` saves
+only the pages you ask it to keep (`save_to_kb`) — a search that turns up an
+unrelated page does not put it in the index. Reach for `CONFLUENCE_KB_AUTOSAVE`
+only if you want the wiki mirrored wholesale.
 
 ## Growing it
 

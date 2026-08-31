@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-confluence.py (v2.0.0) - A single-file MCP (Model Context Protocol) server
+confluence.py (v3.0.0) - A single-file MCP (Model Context Protocol) server
 for querying ONE OR TWO Confluence Data Center instances (tested against the
 9.x v1 REST API) using only the Python 3 standard library.
 
@@ -35,6 +35,18 @@ files stay named 'Confluence - <title>.md'.
 
 Content IDs are NOT shared between instances: page 393217 on Green is a
 different page from 393217 on Blue.
+
+SAVING TO THE KNOWLEDGE BASE
+----------------------------
+Reading a page does NOT save it. Both page tools take an optional
+'save_to_kb' argument, false by default; only when it is true is the page
+written to CONFLUENCE_KB_DIR as Markdown for the local RAG index. That keeps
+the knowledge base to pages you asked to keep, instead of every page skimmed
+while answering a question - a search that turns up someone's meeting notes
+should not put them in the index.
+
+Set CONFLUENCE_KB_AUTOSAVE=true (or pass --kb-autosave) to go back to saving
+every page that is read, which is how versions before 3.0.0 behaved.
 
 CONFIGURATION
 -------------
@@ -75,16 +87,21 @@ listings.
                         0 = unlimited, default 0). This limit applies only to
                         the text returned to the model; files saved to
                         CONFLUENCE_KB_DIR are never truncated.
-  CONFLUENCE_KB_DIR     every page that is read is also saved as a Markdown
-                        file into this folder, for feeding a local RAG
+  CONFLUENCE_KB_DIR     where a page is saved as Markdown when a tool call
+                        asks for it (save_to_kb=true), for feeding a local RAG
                         knowledge base (--kb-dir). Files are overwritten if
                         they already exist. DEFAULTS to
                         C:\Eva\knowledge\confluence - the Confluence folder of
                         the Eva working tree, which sits inside the
-                        knowledge-base plugin's documents folder so mirrored
-                        pages are actually indexed. Pass 'off' to disable
-                        mirroring, after which the server writes no local file
-                        at all.
+                        knowledge-base plugin's documents folder so saved
+                        pages are actually indexed. Pass 'off' to forbid
+                        saving entirely, after which the server writes no
+                        local file at all and a save_to_kb request is refused.
+  CONFLUENCE_KB_AUTOSAVE
+                        "true" to save EVERY page that is read, without being
+                        asked (--kb-autosave; default false, the pre-3.0.0
+                        behaviour). Needs CONFLUENCE_KB_DIR to be set, which
+                        it is by default.
 
 The second server is all-or-nothing: if CONFLUENCE_BASE_URL_2 is set without
 credentials, the server refuses to start rather than quietly answering "Blue"
@@ -134,7 +151,7 @@ config (note the tokens go in the environment, never in the arguments):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "2.0.0"
+__version__ = "3.0.0"
 
 import argparse
 import base64
@@ -152,15 +169,24 @@ import urllib.request
 SERVER_NAME = "confluence-mcp"
 SERVER_VERSION = __version__
 
-# Folder every page read is mirrored to as Markdown, for a local RAG index.
-# Set it here, or at launch with --kb-dir / the CONFLUENCE_KB_DIR environment
-# variable (which take priority over this constant).
+# Folder a page is saved into as Markdown, for a local RAG index, WHEN a tool
+# call asks for it (save_to_kb=true). Set it here, or at launch with --kb-dir /
+# the CONFLUENCE_KB_DIR environment variable (which take priority over this
+# constant).
 # Default: the confluence\ sub-folder of the Eva knowledge base. It MUST stay
 # inside the knowledge-base plugin's documents folder (C:\Eva\knowledge) or the
-# mirrored pages would never be indexed. The folder is created on demand.
-# Set to None here (or pass --kb-dir off) to disable mirroring, after which this
-# server touches no local file at all.
+# saved pages would never be indexed. The folder is created on demand.
+# Set to None here (or pass --kb-dir off) to forbid saving altogether, after
+# which this server touches no local file at all.
 KB_DIR = r"C:\Eva\knowledge\confluence"
+
+# Whether reading a page saves it WITHOUT being asked. False means a page is
+# saved only when the caller passes save_to_kb=true, which is the point: a
+# search that turns up an unrelated page should not add it to the knowledge
+# base just because it was read while answering. Set to True here, or at launch
+# with --kb-autosave / CONFLUENCE_KB_AUTOSAVE=true, to save every page read
+# (how this server behaved before v3.0.0).
+KB_AUTOSAVE = False
 
 # Folder-setting values that mean "explicitly turned off". An MCP client can
 # only pass strings, and a BLANK string is what it substitutes for a setting the
@@ -509,7 +535,7 @@ class ConfluenceError(Exception):
 class ConfluenceClient:
     def __init__(self, name, base_url, token=None, user=None, password=None,
                  verify_ssl=True, ca_cert=None, timeout=30, max_body=0,
-                 kb_dir=None):
+                 kb_dir=None, kb_autosave=False):
         if not name:
             raise ValueError("name is required")
         if not base_url:
@@ -518,8 +544,11 @@ class ConfluenceClient:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.max_body = max_body
-        # Folder to mirror pages into as Markdown; None/empty disables saving.
+        # Folder to save pages into as Markdown; None/empty forbids saving.
         self.kb_dir = kb_dir or None
+        # Whether a page read without an explicit save_to_kb argument is saved
+        # anyway. Off by default - saving is something the user asks for.
+        self.kb_autosave = bool(kb_autosave)
         # Whether output should say which server it came from. ConfluenceServers
         # turns this on when more than one server is configured; with a single
         # server the output stays exactly as it was before multi-server support.
@@ -655,8 +684,15 @@ class ConfluenceClient:
             )
         return header + "\n\n" + "\n\n".join(lines) + footer
 
-    def _render_page(self, page):
-        """Format a single content object (with body.storage) as text."""
+    def _render_page(self, page, save_to_kb=None):
+        """
+        Format a single content object (with body.storage) as text.
+
+        save_to_kb decides whether the page is also written to the
+        knowledge-base folder: True on request, False to skip, None ("the
+        caller did not say") to follow the kb_autosave setting, which is off
+        unless the endpoint deliberately turned it on.
+        """
         title = page.get("title", "(untitled)")
         cid = page.get("id", "?")
         ctype = page.get("type", "content")
@@ -682,10 +718,21 @@ class ConfluenceClient:
         meta = "".join("{}: {}\n".format(k, v) for k, v in fields) + "\n--- Content ---\n"
         rendered = meta + (text if text else "(this page has no readable body content)") + truncated_note
 
-        # If a knowledge-base folder is configured, mirror the page to Markdown.
-        # This is a side effect of reading a page; it must never break the tool,
-        # so any failure is reported but swallowed.
-        if self.kb_dir:
+        # Save the page to Markdown only if this call asked for it (or the
+        # endpoint turned autosave on). Saving must never break the read, so
+        # any failure is reported but swallowed.
+        wanted = self.kb_autosave if save_to_kb is None else bool(save_to_kb)
+        if wanted and not self.kb_dir:
+            # A save was asked for that this endpoint has switched off. Say so,
+            # so it cannot look done. (Autosave with no folder is a startup
+            # warning instead - repeating it on every page would be noise.)
+            if save_to_kb:
+                rendered += (
+                    "\n\n[NOT saved: knowledge-base saving is switched off for "
+                    "this server. Set CONFLUENCE_KB_DIR (or --kb-dir) to a "
+                    "folder inside the knowledge base to enable it.]"
+                )
+        elif wanted:
             try:
                 path = self._save_to_kb(title, link, space, version, storage)
                 log("saved page to knowledge base: {}".format(path))
@@ -734,15 +781,15 @@ class ConfluenceClient:
             fh.write(content)
         return path
 
-    def get_page(self, page_id):
+    def get_page(self, page_id, save_to_kb=None):
         if page_id is None or str(page_id).strip() == "":
             raise ConfluenceError("'page_id' is required")
         page_id = str(page_id).strip()
         params = {"expand": "body.storage,version,space"}
         page = self._get("/rest/api/content/" + urllib.parse.quote(page_id, safe=""), params)
-        return self._render_page(page)
+        return self._render_page(page, save_to_kb=save_to_kb)
 
-    def get_page_by_title(self, title, space):
+    def get_page_by_title(self, title, space, save_to_kb=None):
         if not title or not space:
             raise ConfluenceError("Both 'title' and 'space' are required")
         params = {
@@ -756,7 +803,7 @@ class ConfluenceClient:
         if not results:
             return "No page titled {!r} found in space {!r}{}.".format(
                 title, space, self._on_server())
-        return self._render_page(results[0])
+        return self._render_page(results[0], save_to_kb=save_to_kb)
 
     def resolve_page_id(self, title, space):
         """
@@ -883,6 +930,27 @@ class ConfluenceServers:
 # ---------------------------------------------------------------------------
 # Tool definitions and dispatch
 # ---------------------------------------------------------------------------
+def save_to_kb_property():
+    """
+    The shared 'save_to_kb' argument for the two page-reading tools.
+
+    Returned fresh each time so a caller mutating one tool's schema cannot
+    affect the other's.
+    """
+    return {
+        "type": "boolean",
+        "description": (
+            "Save this page into the local knowledge base as Markdown, for "
+            "the RAG index. Default false: reading a page does NOT save it. "
+            "Set it to true ONLY when the user asks for the page to be kept "
+            "- 'save this to the knowledge base', 'add that page to the KB', "
+            "'keep this for later'. Do not set it while merely reading pages "
+            "to answer a question; saving pages nobody asked for is what "
+            "makes the knowledge base return irrelevant results later."
+        ),
+    }
+
+
 def base_tool_definitions():
     """
     The tools as advertised when a single server is configured (JSON-Schema
@@ -947,7 +1015,9 @@ def base_tool_definitions():
             "description": (
                 "Retrieve a single Confluence page by its numeric page ID. "
                 "Returns the title, space, version, URL and the page body "
-                "converted to plain text."
+                "converted to plain text. Reading a page does not save it "
+                "anywhere; pass 'save_to_kb' only if the user asks for it to "
+                "be kept."
             ),
             "inputSchema": {
                 "type": "object",
@@ -956,6 +1026,7 @@ def base_tool_definitions():
                         "type": "string",
                         "description": "The numeric Confluence content ID, e.g. '393217'.",
                     },
+                    "save_to_kb": save_to_kb_property(),
                 },
                 "required": ["page_id"],
             },
@@ -977,6 +1048,7 @@ def base_tool_definitions():
                         "type": "string",
                         "description": "The space key the page lives in (e.g. 'DOCS').",
                     },
+                    "save_to_kb": save_to_kb_property(),
                 },
                 "required": ["title", "space"],
             },
@@ -1108,11 +1180,13 @@ def call_tool(servers, name, arguments):
         return client.search(str(cql), limit)
 
     if name == "confluence_get_page":
-        return client.get_page(arguments.get("page_id"))
+        return client.get_page(arguments.get("page_id"),
+                               save_to_kb=arguments.get("save_to_kb"))
 
     if name == "confluence_get_page_by_title":
         return client.get_page_by_title(
-            arguments.get("title"), arguments.get("space")
+            arguments.get("title"), arguments.get("space"),
+            save_to_kb=arguments.get("save_to_kb"),
         )
 
     if name == "confluence_list_pages_under":
@@ -1393,14 +1467,22 @@ def build_arg_parser():
                         "(env CONFLUENCE_MAX_BODY). Applies to returned text "
                         "only, not to saved knowledge-base files.")
     p.add_argument("--kb-dir", default=env_str("CONFLUENCE_KB_DIR") or KB_DIR,
-                   help="Every page read is also saved as a Markdown file into "
-                        "this folder for a local RAG knowledge base (env "
-                        "CONFLUENCE_KB_DIR, then the KB_DIR config value - "
-                        "default C:\\Eva\\knowledge\\confluence). Files "
-                        "are named 'Confluence - <title>.md' and overwritten "
-                        "each time; with two servers, "
-                        "'Confluence <server> - <title>.md'. Pass 'off' to "
-                        "disable mirroring entirely.")
+                   help="Folder a page is saved into as Markdown for a local "
+                        "RAG knowledge base WHEN a tool call asks for it, i.e. "
+                        "save_to_kb=true (env CONFLUENCE_KB_DIR, then the "
+                        "KB_DIR config value - default "
+                        "C:\\Eva\\knowledge\\confluence). Files are named "
+                        "'Confluence - <title>.md' and overwritten each time; "
+                        "with two servers, 'Confluence <server> - <title>.md'. "
+                        "Pass 'off' to forbid saving entirely.")
+    p.add_argument("--kb-autosave", action="store_true",
+                   default=env_bool("CONFLUENCE_KB_AUTOSAVE", KB_AUTOSAVE),
+                   help="Save EVERY page that is read, without being asked "
+                        "(env CONFLUENCE_KB_AUTOSAVE=true). Off by default: "
+                        "pages are saved only when a tool call passes "
+                        "save_to_kb=true, so skimming a page while answering "
+                        "a question does not add it to the knowledge base. "
+                        "Turn this on to restore the pre-3.0.0 behaviour.")
     p.add_argument("--check", action="store_true",
                    help="Connect to every configured Confluence server, print "
                         "who you are authenticated as and how many spaces are "
@@ -1439,7 +1521,12 @@ def run_check(servers):
     """
     failed = [c.name for c in servers.clients if not check_one(c, servers)]
     if servers.default.kb_dir:
-        log("KB mirror folder : {}".format(servers.default.kb_dir))
+        log("KB save folder   : {} ({})".format(
+            servers.default.kb_dir,
+            "every page read (autosave on)" if servers.default.kb_autosave
+            else "on request only"))
+    else:
+        log("KB save folder   : disabled - no page can be saved")
     if failed:
         log("CHECK FAILED for {} of {} server(s): {}".format(
             len(failed), len(servers.clients), ", ".join(failed)))
@@ -1478,7 +1565,7 @@ def main(argv=None):
     name_2 = clean(args.name_2) or DEFAULT_NAME_2
 
     # The knowledge-base folder has a real default, so "off" (or any other
-    # DISABLE_KEYWORDS value) is how mirroring is switched off from a client
+    # DISABLE_KEYWORDS value) is how saving is switched off from a client
     # that can only pass strings - a blank value means "not configured" and
     # falls back to that default.
     kb_dir = clean(args.kb_dir)
@@ -1543,6 +1630,7 @@ def main(argv=None):
                 timeout=args.timeout,
                 max_body=args.max_body,
                 kb_dir=kb_dir,
+                kb_autosave=args.kb_autosave,
             )
             for (spec_name, spec_url, spec_token, spec_user, spec_password,
                  spec_verify, spec_ca) in specs
@@ -1556,8 +1644,19 @@ def main(argv=None):
         if not client.verify_ssl:
             log("WARNING: TLS verification is disabled for {} ({}).".format(
                 client.name, client.base_url))
-    if servers.default.kb_dir:
-        log("knowledge-base mirroring enabled -> {}".format(servers.default.kb_dir))
+    if not servers.default.kb_dir:
+        log("knowledge-base saving disabled (no --kb-dir); pages are never "
+            "written to disk")
+        if servers.default.kb_autosave:
+            log("WARNING: --kb-autosave has no effect while the "
+                "knowledge-base folder is off. Set --kb-dir / "
+                "CONFLUENCE_KB_DIR to a folder to enable saving.")
+    elif servers.default.kb_autosave:
+        log("knowledge-base AUTOSAVE is on: every page read is saved -> {}"
+            .format(servers.default.kb_dir))
+    else:
+        log("knowledge-base saving on request only (save_to_kb=true) -> {}"
+            .format(servers.default.kb_dir))
     if servers.multi:
         for position, client in enumerate(servers.clients, start=1):
             log("server {}: {} -> {}{}".format(

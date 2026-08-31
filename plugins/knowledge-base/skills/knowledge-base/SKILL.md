@@ -36,10 +36,11 @@ wire it in first (see the repo README) and to verify with
 
 ## Capture
 
-The other servers mirror what you **read** into the knowledge base. `kb_capture`
-is how what you **write** gets in — an analysis, a decision and its reasoning, a
-procedure worked out with the user, a research brief. Without it that work ends
-with the conversation.
+The `outlook` and `word` servers mirror what you **read** into the knowledge
+base, and `confluence` saves the pages you explicitly ask it to keep
+(`save_to_kb`). `kb_capture` is how what you **write** gets in — an analysis, a
+decision and its reasoning, a procedure worked out with the user, a research
+brief. Without it that work ends with the conversation.
 
 **Only when asked.** Capture when the user asks for something to be kept, or
 when they accept an offer to keep it. Never capture on your own initiative, and

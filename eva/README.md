@@ -29,7 +29,7 @@ C:\Eva\
 ├─ knowledge\        the indexed corpus (.md / .txt only)
 │  ├─ notes\           Markdown you write by hand
 │  ├─ captures\        notes kb_capture writes back
-│  ├─ confluence\      pages the confluence plugin mirrored
+│  ├─ confluence\      pages you asked the confluence plugin to save
 │  ├─ email\           emails the outlook plugin mirrored
 │  ├─ word\            documents the word plugin mirrored
 │  ├─ powerpoint\      decks the powerpoint plugin mirrored
@@ -91,8 +91,8 @@ which is the single most common way to end up with a knowledge base that
 folders rot: every document belongs to three of them and you spend your time
 deciding which. Provenance is unambiguous, maps one-to-one onto a setting, and
 retrieval is semantic anyway — folder names do not affect what comes back. It
-also makes cleanup surgical: delete `knowledge\confluence\` and re-mirror after
-a space is restructured, with nothing you wrote yourself at risk.
+also makes cleanup surgical: delete `knowledge\confluence\` and save the pages
+again after a space is restructured, with nothing you wrote yourself at risk.
 
 ## Moving it somewhere else
 

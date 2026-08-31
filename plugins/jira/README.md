@@ -64,6 +64,11 @@ Precedence is **CLI flag > environment variable > constant in the file**.
 None. HTTP GET to Jira only; the optional `JIRA_CA_CERT` bundle is read once at
 startup.
 
+There is no knowledge-base folder here, and no `--kb-dir`: nothing you read from
+Jira is written to disk or indexed. To keep something from a ticket, ask for it
+to be saved and Claude writes a note with the `knowledge-base` plugin's
+`kb_capture` — which only ever runs when you ask.
+
 ## Usage examples
 
 1. "What's assigned to me right now, highest priority first?" → `jira_my_issues`

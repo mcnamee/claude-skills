@@ -57,8 +57,8 @@
     {
       "name": "confluence",
       "source": "./plugins/confluence",
-      "description": "Search and read Confluence pages across one or two instances, optionally mirroring them to Markdown for a local RAG knowledge base.",
-      "version": "2.0.0",
+      "description": "Search and read Confluence pages across one or two instances, saving a page to Markdown for a local RAG knowledge base when you ask for it.",
+      "version": "3.0.0",
       "keywords": [
         "confluence",
         "wiki",

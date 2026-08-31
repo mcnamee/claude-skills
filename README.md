@@ -51,7 +51,7 @@ the document library, generated output, and the reference material: **exemplars*
 | [**powerpoint**](plugins/powerpoint) | 1.1.0 | Build `.pptx` decks that inherit your own template's layouts and theme, and audit them against the 10/20/30 rule | `python-pptx` |
 | [**excel**](plugins/excel) | 4.0.0 | Read and analyse workbooks; parses `.xlsx` directly, so Excel isn't needed | _none_ |
 | [**outlook**](plugins/outlook) | 4.0.0 | Read local Outlook mail and calendar via COM, with a content blacklist | `pywin32` |
-| [**confluence**](plugins/confluence) | 2.0.0 | Search and read Confluence pages, across one or two instances | _none_ |
+| [**confluence**](plugins/confluence) | 3.0.0 | Search and read Confluence pages, across one or two instances; saves a page to the knowledge base when you ask | _none_ |
 | [**jira**](plugins/jira) | 1.1.3 | Query issues, sprints and projects (Jira Data Center v2 API) | _none_ |
 | [**knowledge-base**](plugins/knowledge-base) | 3.0.0 | True RAG over your own Markdown: local ChromaDB index + your embeddings API, and capture notes back into it | `chromadb` |
 | [**pdf-to-md**](plugins/pdf-to-md) | 5.1.0 | Convert PDFs to Markdown with tables preserved | `pymupdf pymupdf4llm` |
@@ -217,7 +217,7 @@ C:\Eva\
 ├─ knowledge\        the RAG corpus - Markdown only, the ONE indexed root
 │  ├─ notes\           Markdown you write by hand
 │  ├─ captures\        notes kb_capture writes back
-│  ├─ confluence\      pages the confluence plugin mirrored
+│  ├─ confluence\      pages you asked the confluence plugin to save
 │  ├─ email\           emails the outlook plugin mirrored
 │  ├─ word\            documents the word plugin mirrored
 │  ├─ powerpoint\      decks the powerpoint plugin mirrored
@@ -264,8 +264,8 @@ anywhere else and it fills up faithfully while `kb_ask` never sees a word of it.
 **Folders are named after what wrote them, not what they are about.** Topic
 folders rot — every document belongs to three of them. Provenance maps
 one-to-one onto a setting, retrieval is semantic anyway, and cleanup stays
-surgical: delete `knowledge\confluence\` and re-mirror, with nothing you wrote
-yourself at risk.
+surgical: delete `knowledge\confluence\` and save the pages again, with nothing
+you wrote yourself at risk.
 
 [`eva/README.md`](eva/README.md) covers the reasoning, how to put the tree on
 another drive, and why nothing in it is committed. Each folder's own README says
@@ -283,7 +283,7 @@ its configuration, and that configuration is **required**:
 | `excel` | Read-only, confined to the workbook folder (top level only) |
 | `knowledge-base` | Reads the documents folder; writes its vector index (`C:\Eva\index`) and captured notes (`C:\Eva\knowledge\captures`, always inside the documents folder); never edits or deletes an existing document; network only to the endpoints you configure |
 | `pdf-to-md` | Reads the PDF folder, writes the output folder |
-| `confluence` | Writes only the knowledge-base folder — every page read is mirrored there. Set it to `off` and the server touches no local file |
+| `confluence` | Writes only the knowledge-base folder, and only for a page you asked to keep (`save_to_kb`); reading a page saves nothing. Set the folder to `off` and the server touches no local file |
 | `outlook` | Writes only the knowledge-base folder — every email read is mirrored there, blacklisted messages excepted. Set it to `off` and the server touches no local file |
 | `jira` | None — HTTP GET to Jira only |
 
