@@ -19,7 +19,7 @@ The tree is organised by **what writes to a folder**, not by topic:
 
 | Zone | Holds | Written by |
 |---|---|---|
-| [`knowledge\`](knowledge) | The RAG corpus — Markdown only | every server that mirrors what it reads, plus `kb_capture` |
+| [`knowledge\`](knowledge) | The RAG corpus — Markdown only | every server that mirrors what it opens or saves what you ask it to keep, plus `kb_capture` |
 | [`index\`](index) | The ChromaDB vector store | `knowledge-base`, from `knowledge\` |
 | [`documents\`](documents) | The binary library — `.docx`, `.pptx`, `.xlsx`, `.pdf` | you |
 | [`output\`](output) | Generated files | `word`, `powerpoint` |

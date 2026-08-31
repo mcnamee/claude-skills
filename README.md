@@ -39,8 +39,9 @@ source material with something invented.
   folder you nominate.
 - **Secrets never hit the command line.** Tokens and API keys are environment
   variables only — argv is visible to other local users in process listings.
-- **They compose.** Word, Outlook and Confluence can each mirror what they read
-  into one Markdown folder; `pdf-to-md` fills the same folder from PDFs; the
+- **They compose.** `word` and `powerpoint` mirror what they open into one
+  Markdown folder, `confluence` and `outlook` save the pages and emails you ask
+  them to keep into the same folder, and `pdf-to-md` fills it from PDFs; the
   `knowledge-base` server indexes it and answers questions over the lot.
 - **And it grows.** `word` mirrors documents it *writes*, not just ones it
   reads, and `knowledge-base` takes a `kb_capture` call — so an analysis or a

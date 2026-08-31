@@ -174,7 +174,9 @@ from memory.
    converting the whole PDF library, or opening fifty emails is worth a sentence
    of warning first.
 5. **Offer to file it, do not file it.** When a piece of work is finished, offer
-   `kb_capture` so it is searchable next time. Wait for a yes.
+   `kb_capture` so it is searchable next time. Wait for a yes. Source material
+   works the same way: reading a wiki page or an email does not file it, so pass
+   `save_to_kb` only when I ask for that page or message to be kept.
 6. **Flag what you could not do.** A section you could not source, a document
    that would not open, a search that came back empty. Never quietly narrow the
    job.
@@ -185,6 +187,7 @@ from memory.
 |---|---|
 | Answer a question from our own material | `kb_ask`, `kb_retrieve`; reindex with `kb_index` |
 | File finished work back into the corpus | `kb_capture` |
+| Keep a wiki page or an email in the corpus | `save_to_kb: true` on `confluence_get_page` or `outlook_get_email`, only when I ask |
 | Find something on the wiki | `confluence_search`, `confluence_get_page` |
 | Project or sprint status | `jira_my_issues`, `jira_project_status`, `jira_search` |
 | Read mail and the diary | `outlook_search_recent`, `outlook_get_email`, `outlook_get_calendar` |
