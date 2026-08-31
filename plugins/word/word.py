@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r"""
-word.py (v5.0.0) - A single-file MCP (Model Context Protocol) stdio server
+word.py (v5.1.0) - A single-file MCP (Model Context Protocol) stdio server
 that gives an AI agent read/search/edit/generate access to Word .docx files.
 
 It follows a simple open -> edit -> save workflow (msword_open ... msword_save),
@@ -47,7 +47,12 @@ WHAT IT CAN DO
       them - all at once, or individually by change id.
     - Read/search the FINAL view while changes are pending (like Word's
       "No Markup"): pending insertions are visible, pending deletions hidden.
-    - Append paragraphs, headings and tables; insert paragraphs anywhere,
+    - WRITE A WHOLE DOCUMENT IN ONE CALL (msword_add_content): an ordered list
+      of blocks - headings, paragraphs, bullet/numbered items, tables, page
+      breaks - appended in exactly the order given. This is the tool to build
+      a document with, and the ONLY one whose order is guaranteed: see
+      "DOCUMENT ORDER" below for why that matters.
+    - Append single paragraphs, headings and tables; insert paragraphs anywhere,
       using NATIVE Word styles (List Bullet / List Number / Heading N), with
       msword_list_styles to discover what a document or template defines and
       an auto-correction when text is typed as a fake "- " bullet.
@@ -56,6 +61,30 @@ WHAT IT CAN DO
       fill out a template's example table (e.g. one row per agenda item).
     - Apply simple paragraph formatting (bold/italic/underline/alignment/style).
     - Save in place, or save-as to a new path.
+
+DOCUMENT ORDER - WHY msword_add_content EXISTS
+    The one-block-per-call tools (msword_add_heading, msword_add_paragraph,
+    msword_add_table) each append their block to the END of the document. That
+    makes the document's order simply the order in which the CALLS REACH this
+    server - and an MCP client is free to dispatch independent tool calls
+    concurrently, in which case their arrival order is NOT the order the model
+    wrote them. Writing a report as thirty separate append calls therefore
+    produced documents whose blocks were shuffled: the observed symptom was
+    every heading bunched together at the top with all the body text after
+    them.
+
+    Nothing inside a single append call can detect this - the server sees one
+    "add a paragraph" request and has no idea what was meant to come before it.
+    So the fix is to stop splitting the sequence: msword_add_content takes the
+    whole ordered list of blocks in ONE request, which cannot be reordered by
+    anything. Build documents with it; keep the single-block tools for a
+    genuinely single afterthought block.
+
+    As a safety net for callers still chaining the single-block tools, three or
+    more of them landing on the same session within APPEND_BURST_SECONDS - the
+    signature of a parallel batch, not of separate conversational turns - adds
+    an `order_warning` to the result, so a scramble is reported instead of
+    silently shipped.
 
 TRACKED CHANGES - SCOPE AND VERIFICATION
     Supported (mirrors what Word records for normal typing with Track
@@ -216,7 +245,7 @@ failed transfer" rule):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "5.0.0"
+__version__ = "5.1.0"
 
 # =============================================================================
 # CONFIGURATION  (all user-editable settings live here, nothing scattered below)
@@ -286,6 +315,21 @@ KB_DIR = r"C:\Eva\knowledge\word"
 MAX_SESSIONS = 32                    # guard against runaway open() calls
 SEARCH_CONTEXT_CHARS = 40            # chars of context either side of a match
 
+# The append tools (msword_add_heading / msword_add_paragraph / msword_add_table)
+# each add ONE block to the end of the document, so the document's order is
+# simply the order the calls REACH this server. An MCP client is free to
+# dispatch independent tool calls concurrently, and concurrent calls do not
+# necessarily arrive in the order the model wrote them - which is how a
+# document ends up with its headings bunched together and the body text after
+# them. msword_add_content exists to make that impossible: one call, one
+# ordered list of blocks. This threshold drives the safety net for callers
+# still using the one-block-per-call tools: when several of them land on the
+# same session inside this many seconds - the signature of a parallel batch
+# rather than of separate turns - the result carries an order_warning telling
+# the caller to verify the order and switch to msword_add_content.
+APPEND_BURST_SECONDS = 1.0
+APPEND_BURST_MIN_CALLS = 3           # warn from the Nth rapid append onwards
+
 # msword_open name matching. An exact filename always wins; only when no exact
 # match is found does the server fall back to a FUZZY match on the name, so a
 # near-miss like "budget policy" still finds "Budget Policy 2024.docx". These
@@ -317,6 +361,7 @@ import sys
 import os
 import re
 import json
+import time
 import uuid
 import copy
 import difflib
@@ -358,7 +403,7 @@ try:
     from docx.oxml.table import CT_Tbl
     from docx.table import Table, _Cell
     from docx.text.paragraph import Paragraph
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
     from docx.enum.style import WD_STYLE_TYPE
     from docx.opc.exceptions import PackageNotFoundError
     from docx.oxml import OxmlElement
@@ -2860,60 +2905,94 @@ def tool_delete_paragraph(args):
     return {"para_index": para_index, "tracked": False, "text": preview}
 
 
-def tool_add_paragraph(args):
-    session = _get_session(args)
-    doc = session["doc"]
-    text = args.get("text", "")
-    style = args.get("style")
-    text, style, info = _list_marker_guard(
-        doc, text, style, bool(args.get("literal_text", False)), "create")
+def _note_single_append(session):
+    """
+    Safety net for the one-block-per-call append tools.
+
+    These tools put their block at the END of the document, so the document's
+    order is the order the CALLS arrive - and an MCP client may dispatch
+    independent tool calls concurrently, in which case the arrival order is not
+    the order the model wrote them. That is what scrambles a document (headings
+    bunched together, body text after them).
+
+    We cannot see the intended order from inside a single call, but we CAN spot
+    the shape of a parallel batch: several single appends landing on the same
+    session within a fraction of a second, which no sequential turn-by-turn
+    conversation produces. Returns a warning string (once per burst) or None.
+    """
+    now = time.monotonic()
+    burst = session.get("append_burst")
+    if burst is None or now - burst["last"] > APPEND_BURST_SECONDS:
+        session["append_burst"] = {"last": now, "count": 1, "warned": False}
+        return None
+    burst["last"] = now
+    burst["count"] += 1
+    if burst["warned"] or burst["count"] < APPEND_BURST_MIN_CALLS:
+        return None
+    burst["warned"] = True
+    return (
+        "{} single-block append calls arrived on this session within "
+        "{:.0f}ms of each other, which is what a batch of PARALLEL tool calls "
+        "looks like. Each of these tools appends to the end of the document, so "
+        "the document's order is whatever order the calls reached the server - "
+        "not necessarily the order they were written in. Check the result with "
+        "msword_get_content (mode='structured'), and build documents with "
+        "msword_add_content instead: one call, one ordered 'blocks' list, order "
+        "guaranteed.".format(burst["count"], APPEND_BURST_SECONDS * 1000)
+    )
+
+
+def _append_paragraph_block(doc, text, style, literal_text):
+    """
+    Append one paragraph at the end of the body, applying the list-marker
+    guard and resolving the style name. Returns
+    (Paragraph, final_text, resolved_style|None, guard_info|None).
+    """
+    text, style, info = _list_marker_guard(doc, text, style, literal_text, "create")
     if style:
         style = _resolve_style_name(doc, style, WD_STYLE_TYPE.PARAGRAPH)
-        doc.add_paragraph(text, style=style)
+        para = doc.add_paragraph(text, style=style)
     else:
-        doc.add_paragraph(text)
-    result = {"para_index": len(doc.paragraphs) - 1, "text": text,
-              "style": style or "Normal"}
-    if info:
-        result.update(info)
-    return result
+        para = doc.add_paragraph(text)
+    return para, text, style, info
 
 
-def tool_add_heading(args):
-    session = _get_session(args)
-    doc = session["doc"]
-    text = args.get("text", "")
-    level = int(args.get("level", 1))
+def _append_heading_block(doc, text, level):
+    """Append one heading at the end of the body. Returns the Paragraph."""
     if not 0 <= level <= 9:
         raise ToolError("heading level must be between 0 (Title) and 9")
     try:
-        doc.add_heading(text, level=level)
+        return doc.add_heading(text, level=level)
     except KeyError:
         raise ToolError(
             "Heading style for level {} is not defined in this document.".format(level)
         )
-    return {"para_index": len(doc.paragraphs) - 1, "level": level, "text": text}
 
 
-def tool_add_table(args):
-    session = _get_session(args)
-    doc = session["doc"]
-    data = args.get("data")
-    style = args.get("style")  # e.g. "Table Grid"
-
+def _table_shape(data, rows, cols):
+    """
+    Validate a table request and return its (rows, cols). Either 'data' (a
+    non-empty list of row lists) or both 'rows' and 'cols' must be given.
+    """
     if data is not None:
         if not isinstance(data, list) or not data or not all(
             isinstance(row, list) for row in data
         ):
             raise ToolError("'data' must be a non-empty list of row lists")
-        rows = len(data)
-        cols = max(len(r) for r in data)
-    else:
-        rows = int(_require(args, "rows"))
-        cols = int(_require(args, "cols"))
-        if rows < 1 or cols < 1:
-            raise ToolError("rows and cols must both be >= 1")
+        return len(data), max(len(r) for r in data)
+    if rows is None or cols is None:
+        raise ToolError("a table needs either 'data', or both 'rows' and 'cols'")
+    rows, cols = int(rows), int(cols)
+    if rows < 1 or cols < 1:
+        raise ToolError("rows and cols must both be >= 1")
+    return rows, cols
 
+
+def _append_table_block(doc, data, rows, cols, style):
+    """
+    Append one table at the end of the body, filling it from 'data' when given.
+    Returns (Table, resolved_style, style_was_defaulted).
+    """
     table = doc.add_table(rows=rows, cols=cols)
     # An unstyled Word table is borderless, which is almost never what was
     # wanted. Default to Table Grid when the document defines it; pass
@@ -2930,11 +3009,293 @@ def tool_add_table(args):
             for c_i in range(cols):
                 value = row[c_i] if c_i < len(row) else ""
                 table.rows[r_i].cells[c_i].text = "" if value is None else str(value)
+    return table, style, defaulted
+
+
+def tool_add_paragraph(args):
+    session = _get_session(args)
+    doc = session["doc"]
+    _, text, style, info = _append_paragraph_block(
+        doc, args.get("text", ""), args.get("style"),
+        bool(args.get("literal_text", False)))
+    result = {"para_index": len(doc.paragraphs) - 1, "text": text,
+              "style": style or "Normal"}
+    if info:
+        result.update(info)
+    order_warning = _note_single_append(session)
+    if order_warning:
+        result["order_warning"] = order_warning
+    return result
+
+
+def tool_add_heading(args):
+    session = _get_session(args)
+    doc = session["doc"]
+    text = args.get("text", "")
+    level = int(args.get("level", 1))
+    _append_heading_block(doc, text, level)
+    result = {"para_index": len(doc.paragraphs) - 1, "level": level, "text": text}
+    order_warning = _note_single_append(session)
+    if order_warning:
+        result["order_warning"] = order_warning
+    return result
+
+
+def tool_add_table(args):
+    session = _get_session(args)
+    doc = session["doc"]
+    data = args.get("data")
+    rows, cols = _table_shape(data, args.get("rows"), args.get("cols"))
+    _, style, defaulted = _append_table_block(
+        doc, data, rows, cols, args.get("style"))
 
     result = {"table_index": len(doc.tables) - 1, "rows": rows, "cols": cols,
               "style": style}
     if defaulted:
         result["style_defaulted"] = True
+    order_warning = _note_single_append(session)
+    if order_warning:
+        result["order_warning"] = order_warning
+    return result
+
+
+# msword_add_content block types, and the spellings accepted for each. The
+# model reaches for whatever name is natural, and a rejected batch costs a
+# whole round trip, so be forgiving about the label and strict about the rest.
+_BLOCK_TYPE_ALIASES = {
+    "heading": "heading", "head": "heading", "h": "heading",
+    "title": "title",
+    "paragraph": "paragraph", "para": "paragraph", "p": "paragraph",
+    "text": "paragraph", "body": "paragraph", "normal": "paragraph",
+    "bullet": "bullet", "bullets": "bullet", "list_bullet": "bullet",
+    "number": "number", "numbered": "number", "list_number": "number",
+    "table": "table",
+    "page_break": "page_break", "pagebreak": "page_break",
+    "page-break": "page_break", "break": "page_break",
+}
+
+MAX_CONTENT_BLOCKS = 400
+
+# Sentinels for `type: "bullet"` / `type: "number"` with no explicit style: the
+# real style name can only be chosen once the document is known, and this
+# server never hard-codes "List Bullet" (a corporate template may call its
+# bullet style something else entirely).
+_BULLET_PLACEHOLDER = "\x00bullet"
+_NUMBER_PLACEHOLDER = "\x00number"
+
+
+def _normalise_block(raw, i):
+    """
+    Turn one entry of msword_add_content's 'blocks' into a validated dict, or
+    raise ToolError naming the offending index. Nothing is written to the
+    document here: the WHOLE list is validated before any of it is applied, so a
+    single bad block can never leave a half-built document behind.
+    """
+    where = "blocks[{}]".format(i)
+    if isinstance(raw, str):                       # bare string = a paragraph
+        raw = {"type": "paragraph", "text": raw}
+    if not isinstance(raw, dict):
+        raise ToolError(
+            "{} must be an object (or a plain string for a paragraph), "
+            "got {}.".format(where, type(raw).__name__))
+
+    kind = raw.get("type")
+    if kind is None:
+        # Infer from what was supplied, so a block that names no type but
+        # clearly is one still works.
+        if raw.get("data") is not None or raw.get("rows") is not None:
+            kind = "table"
+        elif raw.get("level") is not None:
+            kind = "heading"
+        else:
+            kind = "paragraph"
+    key = str(kind).strip().lower().replace(" ", "_")
+    # 'heading 2' / 'heading2' / 'h3' carry the level in the type itself.
+    m = re.match(r"^(?:heading|head|h)_?([0-9])$", key)
+    level_from_type = None
+    if m:
+        key, level_from_type = "heading", int(m.group(1))
+    kind = _BLOCK_TYPE_ALIASES.get(key)
+    if kind is None:
+        raise ToolError(
+            "{} has unknown type {!r}. Use 'heading' (with 'level'), "
+            "'paragraph', 'bullet', 'number', 'table' or "
+            "'page_break'.".format(where, raw.get("type")))
+
+    if kind == "page_break":
+        return {"type": "page_break"}
+
+    if kind == "table":
+        data = raw.get("data")
+        rows, cols = _table_shape(data, raw.get("rows"), raw.get("cols"))
+        return {"type": "table", "data": data, "rows": rows, "cols": cols,
+                "style": raw.get("style")}
+
+    text = raw.get("text", "")
+    if text is None:
+        text = ""
+    if not isinstance(text, str):
+        text = str(text)
+
+    if kind in ("heading", "title"):
+        level = raw.get("level", level_from_type)
+        if kind == "title":
+            level = 0 if level is None else level
+        if level is None:
+            level = 1
+        try:
+            level = int(level)
+        except (TypeError, ValueError):
+            raise ToolError("{} has a non-numeric 'level'.".format(where))
+        if not 0 <= level <= 9:
+            raise ToolError(
+                "{} level must be between 0 (Title) and 9, got {}.".format(
+                    where, level))
+        return {"type": "heading", "text": text, "level": level}
+
+    # paragraph / bullet / number
+    style = raw.get("style")
+    if kind == "bullet" and not style:
+        style = _BULLET_PLACEHOLDER
+    elif kind == "number" and not style:
+        style = _NUMBER_PLACEHOLDER
+    return {"type": "paragraph", "text": text, "style": style,
+            "literal_text": bool(raw.get("literal_text", False))}
+
+
+def _resolve_list_placeholder(doc, style, where):
+    """Turn a bullet/number placeholder into this document's list style."""
+    if style == _BULLET_PLACEHOLDER:
+        kind = "bullet"
+    elif style == _NUMBER_PLACEHOLDER:
+        kind = "number"
+    else:
+        return style
+    target = _best_list_style(doc, kind)
+    if target is None:
+        raise ToolError(
+            "{} asked for a {} list item, but this document defines no {} list "
+            "style. Call msword_list_styles to see what it does define, and "
+            "pass that name as the block's 'style'.".format(where, kind, kind))
+    return target
+
+
+def tool_add_content(args):
+    """
+    Append an ORDERED list of blocks in ONE call.
+
+    This is the tool to build a document with. The one-block-per-call tools
+    (msword_add_heading / msword_add_paragraph / msword_add_table) put their
+    block at the end of the document, so the document's order is the order the
+    CALLS arrive; when a client dispatches a batch of them concurrently, the
+    arrival order is not the order they were written in and the document comes
+    out scrambled. One call carrying the whole sequence cannot be reordered.
+    """
+    session = _get_session(args)
+    doc = session["doc"]
+    blocks = args.get("blocks")
+    if not isinstance(blocks, list) or not blocks:
+        raise ToolError(
+            "'blocks' must be a non-empty list, in the order the content should "
+            "appear in the document - e.g. [{\"type\":\"heading\",\"text\":"
+            "\"Overview\",\"level\":1},{\"type\":\"paragraph\",\"text\":"
+            "\"...\"}].")
+    if len(blocks) > MAX_CONTENT_BLOCKS:
+        raise ToolError(
+            "{} blocks is more than this tool accepts in one call ({}). Split "
+            "the document into consecutive calls - each call appends after the "
+            "last, so the order still holds.".format(
+                len(blocks), MAX_CONTENT_BLOCKS))
+
+    # Validate everything BEFORE touching the document (all-or-nothing).
+    plan = [_normalise_block(raw, i) for i, raw in enumerate(blocks)]
+    for i, spec in enumerate(plan):
+        if spec["type"] == "paragraph":
+            spec["style"] = _resolve_list_placeholder(
+                doc, spec["style"], "blocks[{}]".format(i))
+
+    track = bool(args.get("track_changes", False))
+    author = args.get("author") or AUTHOR
+    date = _today_iso()
+    next_id = _make_rev_id_allocator(doc) if track else None
+
+    added = []
+    warnings = []
+    for i, spec in enumerate(plan):
+        kind = spec["type"]
+        if kind == "heading":
+            para = _append_heading_block(doc, spec["text"], spec["level"])
+            # Headings are echoed back (they are short, and they are the
+            # document's skeleton) so the caller can confirm the outline landed
+            # in the order it asked for. Body text is not, to keep the result
+            # small - verify that with msword_get_content if it matters.
+            entry = {"index": i, "type": "heading", "level": spec["level"],
+                     "text": spec["text"],
+                     "para_index": len(doc.paragraphs) - 1}
+        elif kind == "paragraph":
+            para, text, style, info = _append_paragraph_block(
+                doc, spec["text"], spec["style"], spec["literal_text"])
+            entry = {"index": i, "type": "paragraph",
+                     "style": style or "Normal",
+                     "para_index": len(doc.paragraphs) - 1}
+            if info:
+                # Keep the per-block entry small; the detail goes in warnings.
+                if info.get("list_marker_fixed"):
+                    entry["list_marker_fixed"] = True
+                    entry["text"] = text
+                warnings.append({"index": i, "warning": info["warning"]})
+        elif kind == "page_break":
+            para = doc.add_paragraph()
+            para.add_run().add_break(WD_BREAK.PAGE)
+            entry = {"index": i, "type": "page_break",
+                     "para_index": len(doc.paragraphs) - 1}
+        else:  # table
+            para = None
+            table, style, defaulted = _append_table_block(
+                doc, spec["data"], spec["rows"], spec["cols"], spec["style"])
+            entry = {"index": i, "type": "table",
+                     "table_index": len(doc.tables) - 1,
+                     "rows": spec["rows"], "cols": spec["cols"],
+                     "style": style}
+            if defaulted:
+                entry["style_defaulted"] = True
+            if track:
+                entry["tracked"] = False
+            if i and plan[i - 1]["type"] == "table":
+                warnings.append({"index": i, "warning": (
+                    "This table directly follows another one. Word renders two "
+                    "adjacent tables as a single merged table - put a "
+                    "paragraph block (even an empty one) between them to keep "
+                    "them separate.")})
+
+        if track and para is not None:
+            # Same shape as msword_insert_paragraph: the runs AND the paragraph
+            # mark are marked inserted, so rejecting removes the whole
+            # paragraph. Table rows cannot be tracked revisions (see the
+            # docstring's scope note), so table blocks stay plain.
+            for r_el in [r._r for r in para.runs]:
+                _wrap_run_in_ins(r_el, next_id(), author, date)
+            _mark_para_boundary(para._p, "w:ins", next_id(), author, date)
+            entry["tracked"] = True
+        added.append(entry)
+
+    # A batch is one arrival, so it can never be scrambled - reset the burst
+    # tracker rather than letting a batch count towards it.
+    session["append_burst"] = None
+    log("add_content: appended {} blocks{}".format(
+        len(added), " (tracked)" if track else ""))
+
+    result = {"added": len(added), "blocks": added,
+              "paragraphs": len(doc.paragraphs), "tables": len(doc.tables)}
+    if warnings:
+        result["warnings"] = warnings
+    if track:
+        result["tracked"] = True
+        result["author"] = author
+        result["date"] = date
+        if any(b["type"] == "table" for b in plan):
+            result["note"] = ("Table blocks were added as plain content - Word "
+                              "tracked changes cannot record table rows.")
     return result
 
 
@@ -3296,7 +3657,7 @@ TOOLS = [
     },
     {
         "name": "msword_create",
-        "description": "Create a NEW .docx in the server's output folder (set with --output-dir, separate from the knowledge-base folder; falls back to the document root) and open it as a session. Supply just a 'filename' (a '.docx' extension is added if missing; any folder part is ignored so files always land in the output folder). Pass 'template' to base the new document on an existing one (a name/path resolved within the templates folder and the document root, matched the same forgiving way as msword_open): its styles, headers/footers, page setup and boilerplate are inherited and the template file itself is never modified. Call msword_list_documents with location='templates' to see what blanks are available. Optionally pass 'title' to seed a Title heading (usually omitted when using a template that already has its own title). Then build the document with msword_add_heading/msword_add_paragraph/msword_add_table etc. and persist it with msword_save (omit its 'path' to save in place in the output folder).",
+        "description": "Create a NEW .docx in the server's output folder (set with --output-dir, separate from the knowledge-base folder; falls back to the document root) and open it as a session. Supply just a 'filename' (a '.docx' extension is added if missing; any folder part is ignored so files always land in the output folder). Pass 'template' to base the new document on an existing one (a name/path resolved within the templates folder and the document root, matched the same forgiving way as msword_open): its styles, headers/footers, page setup and boilerplate are inherited and the template file itself is never modified. Call msword_list_documents with location='templates' to see what blanks are available. Optionally pass 'title' to seed a Title heading (usually omitted when using a template that already has its own title). Then build the document with ONE msword_add_content call carrying the whole ordered sequence of headings, paragraphs, list items and tables (a series of separate msword_add_heading/msword_add_paragraph calls can arrive out of order and scramble the document), and persist it with msword_save (omit its 'path' to save in place in the output folder).",
         "handler": tool_create,
         "inputSchema": {
             "type": "object",
@@ -3388,7 +3749,7 @@ TOOLS = [
     },
     {
         "name": "msword_insert_paragraph",
-        "description": "Insert a new paragraph before/after a body paragraph (omit para_index to append at the end). With track_changes=true the text AND the paragraph mark are recorded as a Word tracked insertion, so rejecting the change removes the whole paragraph.",
+        "description": "Insert ONE new paragraph before/after a body paragraph (omit para_index to append at the end). With track_changes=true the text AND the paragraph mark are recorded as a Word tracked insertion, so rejecting the change removes the whole paragraph. Never issue several of these together: each insert shifts every later para_index, and parallel dispatch makes both the indices and the resulting order unpredictable. Insert them one at a time, re-reading para_index between calls - or, to append a run of new content, use msword_add_content.",
         "handler": tool_insert_paragraph,
         "inputSchema": {
             "type": "object",
@@ -3420,8 +3781,40 @@ TOOLS = [
         },
     },
     {
+        "name": "msword_add_content",
+        "description": "Append MANY blocks - headings, paragraphs, list items, tables, page breaks - in ONE call, in the exact order given. THIS IS THE TOOL TO WRITE A DOCUMENT WITH: use it for anything longer than a single block, and never fire a series of msword_add_heading/msword_add_paragraph calls instead. Those tools each append to the END of the document, so the document's order is the order the CALLS ARRIVE at the server - and independent tool calls issued together may be dispatched in parallel and arrive in any order, which is what produces a document with all the headings bunched together and the body text after them. One call carrying the whole sequence cannot be reordered. Each block is {type, ...}: {'type':'heading','text':'Overview','level':1} (level 0 = Title, 1-9 = Heading 1-9); {'type':'paragraph','text':'...'} with an optional 'style'; {'type':'bullet','text':'item'} / {'type':'number','text':'item'} for ONE list item using whatever bullet/numbered style THIS document defines (one block per item, marker left out of the text); {'type':'table','data':[['A','B'],['1','2']],'style':'Table Grid'} or rows/cols for an empty grid; {'type':'page_break'}. A plain string is taken as a paragraph. The whole list is validated before anything is written, so a bad block leaves the document untouched and names its index. Pass track_changes=true to record every added paragraph and heading as a Word tracked insertion (tables cannot be tracked).",
+        "handler": tool_add_content,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string"},
+                "blocks": {
+                    "type": "array",
+                    "minItems": 1,
+                    "description": "The blocks to append, IN DOCUMENT ORDER.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "type": {"type": "string", "enum": ["heading", "title", "paragraph", "bullet", "number", "table", "page_break"], "description": "Defaults to 'paragraph' (or 'heading' when 'level' is given, 'table' when 'data'/'rows' is given)."},
+                            "text": {"type": "string", "description": "Text for a heading/paragraph/list item. For a list item, the item text ONLY - no '- ', '* ' or '1. ' prefix, and no embedded newlines (one block per item)."},
+                            "level": {"type": "integer", "minimum": 0, "maximum": 9, "description": "Heading level: 0 = Title, 1-9 = Heading 1-9."},
+                            "style": {"type": "string", "description": "Optional explicit Word style, e.g. 'Quote' or a template's own 'DSCO Bullet' (see msword_list_styles). For a table, the table style."},
+                            "literal_text": {"type": "boolean", "default": False, "description": "Set true only when 'text' must keep a leading '-', '*' or '1.' verbatim."},
+                            "data": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}, "description": "Table only: row-major cell values."},
+                            "rows": {"type": "integer", "minimum": 1, "description": "Table only: row count for an empty grid."},
+                            "cols": {"type": "integer", "minimum": 1, "description": "Table only: column count for an empty grid."},
+                        },
+                    },
+                },
+                "track_changes": {"type": "boolean", "default": False, "description": "Record every added paragraph/heading as a Word tracked insertion."},
+                "author": {"type": "string", "description": "Override the tracked-change author for this call."},
+            },
+            "required": ["session_id", "blocks"],
+        },
+    },
+    {
         "name": "msword_add_paragraph",
-        "description": "Append ONE paragraph to the end of the document, with an optional Word paragraph style. Use real Word styles, never hand-typed markup: a bulleted item is style 'List Bullet' with the marker left OUT of 'text' (call once per item), a numbered item is 'List Number', body text is 'Normal' (the default). Text that starts with a typed marker ('- ', '* ', '1. ') is auto-corrected - the marker is stripped and the matching list style applied - and the result says so in a 'warning'; pass literal_text=true when the text genuinely must start that way (e.g. '- 5 degrees'). This matters beyond appearance: the Markdown/knowledge-base export is driven entirely by paragraph STYLE, so a hand-typed '- ' is exported as a plain paragraph and the list structure is lost. Call msword_list_styles to see what this document defines.",
+        "description": "Append ONE paragraph to the end of the document, with an optional Word paragraph style. Use this only for a genuinely single paragraph: to add two or more blocks use msword_add_content, which keeps them in order (several append calls issued together can be dispatched in parallel and arrive out of order, scrambling the document). Use real Word styles, never hand-typed markup: a bulleted item is style 'List Bullet' with the marker left OUT of 'text' (call once per item), a numbered item is 'List Number', body text is 'Normal' (the default). Text that starts with a typed marker ('- ', '* ', '1. ') is auto-corrected - the marker is stripped and the matching list style applied - and the result says so in a 'warning'; pass literal_text=true when the text genuinely must start that way (e.g. '- 5 degrees'). This matters beyond appearance: the Markdown/knowledge-base export is driven entirely by paragraph STYLE, so a hand-typed '- ' is exported as a plain paragraph and the list structure is lost. Call msword_list_styles to see what this document defines.",
         "handler": tool_add_paragraph,
         "inputSchema": {
             "type": "object",
@@ -3436,7 +3829,7 @@ TOOLS = [
     },
     {
         "name": "msword_add_heading",
-        "description": "Append a heading. level 0 = Title, 1..9 = Heading 1..9.",
+        "description": "Append ONE heading to the end of the document. level 0 = Title, 1..9 = Heading 1..9. Use this only for a single heading added on its own: a heading followed by its content, or any run of two or more blocks, must go through msword_add_content, or the blocks can arrive out of order and the document comes out with its headings bunched together.",
         "handler": tool_add_heading,
         "inputSchema": {
             "type": "object",
@@ -3450,7 +3843,7 @@ TOOLS = [
     },
     {
         "name": "msword_add_table",
-        "description": "Append a table. Either supply 'data' (list of row lists) to fill it, or 'rows' and 'cols' for an empty grid. Optional table style e.g. 'Table Grid'.",
+        "description": "Append ONE table to the end of the document. Either supply 'data' (list of row lists) to fill it, or 'rows' and 'cols' for an empty grid. Optional table style e.g. 'Table Grid' (the default when the document defines it); 'Normal Table' for a borderless one. To add a table alongside other content (a heading and an intro before it, say), use msword_add_content so the order is guaranteed.",
         "handler": tool_add_table,
         "inputSchema": {
             "type": "object",
@@ -3760,8 +4153,17 @@ def run_check():
     # sibling of the document root exactly as it is on an endpoint.
     tmpl_root = tempfile.mkdtemp(prefix="msword_check_tmpl_")
     # The self-test sandboxes itself to its own temp folder so it can run
-    # before the endpoint's real DOCS_DIR exists.
+    # before the endpoint's real DOCS_DIR exists. Every OTHER root is cleared
+    # too, so nothing here can touch the endpoint's real folders: with KB_DIR
+    # left at its configured value, every open/save below mirrored a test
+    # document into the user's actual knowledge base (two dozen files named
+    # after this test's scratch documents, which the knowledge-base plugin then
+    # indexed). The sections that exercise the output/templates/kb folders set
+    # their own temp folders as they go.
     DOCS_DIR = tmpdir
+    OUTPUT_DIR = None          # -> new documents land in DOCS_DIR (the temp dir)
+    TEMPLATES_DIR = None
+    KB_DIR = None              # -> no Markdown mirroring until a test enables it
     print("[check] sandbox     : {} (self-test only)".format(tmpdir))
     path = os.path.join(tmpdir, "roundtrip.docx")
     ok = True
@@ -4743,6 +5145,132 @@ def run_check():
             "hand-typed marker unexpectedly joined the list"
         tool_close({"session_id": s})
         print("[check] native styles / list guard: PASS")
+
+        # --- Ordered content: msword_add_content keeps document order --------
+        cpath = os.path.join(tmpdir, "ordered.docx")
+        docx.Document().save(cpath)
+        s = tool_open({"path": cpath})["session_id"]
+        cdoc = SESSIONS[s]["doc"]
+
+        r = tool_add_content({"session_id": s, "blocks": [
+            {"type": "title", "text": "Quarterly Report"},
+            {"type": "heading", "text": "Overview", "level": 1},
+            {"type": "paragraph", "text": "Intro prose."},
+            {"type": "bullet", "text": "First point"},
+            {"type": "bullet", "text": "Second point"},
+            {"type": "heading2", "text": "Detail"},          # level in the type
+            "A bare string is a paragraph.",                 # shorthand
+            {"type": "number", "text": "Step one"},
+            {"type": "table", "data": [["Item", "Cost"], ["Widget", "5"]]},
+            {"type": "page_break"},
+            {"level": 1, "text": "Appendix"},                # type inferred
+        ]})
+        assert r["added"] == 11 and len(r["blocks"]) == 11, r
+        # THE point of the tool: blocks land in the order they were given.
+        got = [(p.style.name, p.text) for p in cdoc.paragraphs if p.text]
+        assert got == [
+            ("Title", "Quarterly Report"),
+            ("Heading 1", "Overview"),
+            ("Normal", "Intro prose."),
+            ("List Bullet", "First point"),
+            ("List Bullet", "Second point"),
+            ("Heading 2", "Detail"),
+            ("Normal", "A bare string is a paragraph."),
+            ("List Number", "Step one"),
+            ("Heading 1", "Appendix"),
+        ], "add_content did not preserve document order:\n{}".format(got)
+        assert len(cdoc.tables) == 1 and \
+            cdoc.tables[0].rows[1].cells[0].text == "Widget"
+        # The table sits BETWEEN 'Step one' and the page break, not at the end
+        # (python-docx keeps paragraphs and tables in separate flat lists, so
+        # only a walk of the body proves the interleaving is right).
+        kinds = [("table" if isinstance(b, Table) else b.style.name)
+                 for b in _iter_block_items(cdoc)]
+        assert kinds.index("table") > kinds.index("List Number"), kinds
+        assert kinds.index("table") < kinds.index("Heading 1", 2), kinds
+        # A page break is a real Word page break, not just a blank paragraph.
+        brs = cdoc.paragraphs[-2]._p.findall(".//" + qn("w:br"))
+        assert brs and brs[0].get(qn("w:type")) == "page", \
+            "page_break block did not produce a <w:br w:type='page'/>"
+        # The heading outline is echoed back so the caller can verify order.
+        heads = [(b["level"], b["text"]) for b in r["blocks"]
+                 if b["type"] == "heading"]
+        assert heads == [(0, "Quarterly Report"), (1, "Overview"),
+                         (2, "Detail"), (1, "Appendix")], heads
+
+        # A second call appends AFTER the first, so order survives batching.
+        tool_add_content({"session_id": s, "blocks": [
+            {"type": "paragraph", "text": "Tail."}]})
+        assert cdoc.paragraphs[-1].text == "Tail."
+
+        # Validation is all-or-nothing: a bad block writes nothing at all.
+        before = len(cdoc.paragraphs)
+        for bad, needle in (
+            ([{"type": "paragraph", "text": "ok"},
+              {"type": "sidebar", "text": "?"}], "blocks[1]"),
+            ([{"type": "heading", "text": "x", "level": 12}], "level must be"),
+            ([{"type": "table"}], "either 'data'"),
+            ([{"type": "paragraph", "text": "a"}, 42], "blocks[1] must be"),
+        ):
+            try:
+                tool_add_content({"session_id": s, "blocks": bad})
+                raise AssertionError("expected a refusal for {!r}".format(bad))
+            except ToolError as e:
+                assert needle in str(e), "unhelpful error: {}".format(e)
+        assert len(cdoc.paragraphs) == before, \
+            "a rejected batch left half-written content behind"
+        try:
+            tool_add_content({"session_id": s, "blocks": []})
+            raise AssertionError("expected a refusal for an empty blocks list")
+        except ToolError as e:
+            assert "non-empty list" in str(e)
+
+        # The list-marker guard still applies inside a batch, per block.
+        r = tool_add_content({"session_id": s, "blocks": [
+            {"type": "paragraph", "text": "- typed marker"},
+            {"type": "paragraph", "text": "- 5 degrees", "literal_text": True},
+        ]})
+        assert r["blocks"][0]["style"] == "List Bullet" and \
+            r["blocks"][0].get("list_marker_fixed") is True, r
+        assert r["warnings"][0]["index"] == 0, r
+        assert cdoc.paragraphs[-1].text == "- 5 degrees"
+
+        # Two adjacent tables are legal but merge in Word: say so.
+        r = tool_add_content({"session_id": s, "blocks": [
+            {"type": "table", "rows": 1, "cols": 1},
+            {"type": "table", "rows": 1, "cols": 1},
+        ]})
+        assert any("merged table" in w["warning"] for w in r["warnings"]), r
+
+        # Tracked mode: paragraphs/headings become real tracked insertions.
+        r = tool_add_content({"session_id": s, "track_changes": True,
+                              "author": "Reviewer", "blocks": [
+                                  {"type": "heading", "text": "New", "level": 2},
+                                  {"type": "paragraph", "text": "New prose."},
+                                  {"type": "table", "rows": 1, "cols": 1}]})
+        assert r["tracked"] is True and r["author"] == "Reviewer"
+        assert r["blocks"][2]["tracked"] is False and "note" in r, r
+        pending = tool_list_changes({"session_id": s})
+        assert pending["count"] >= 2, pending
+        assert "New prose." in _render_linear_text(cdoc)
+        tool_reject_all_changes({"session_id": s})
+        assert "New prose." not in _render_linear_text(cdoc), \
+            "rejecting a tracked add_content block left its text behind"
+
+        # The burst safety net: a rapid run of single appends is reported,
+        # once, from the third call onwards - and a batch never trips it.
+        SESSIONS[s]["append_burst"] = None
+        warns = [tool_add_paragraph({"session_id": s, "text": "burst {}".format(i)})
+                 for i in range(4)]
+        assert "order_warning" not in warns[0] and "order_warning" not in warns[1]
+        assert "order_warning" in warns[2], "rapid append burst was not flagged"
+        assert "msword_add_content" in warns[2]["order_warning"]
+        assert "order_warning" not in warns[3], "burst warned more than once"
+        assert "order_warning" not in tool_add_content(
+            {"session_id": s, "blocks": ["batched"]}), \
+            "a single batched call must never be treated as a burst"
+        tool_close({"session_id": s})
+        print("[check] ordered content (add_content): PASS")
     except Exception as e:
         ok = False
         print("[check] round-trip: FAIL -> {}".format(e))

@@ -5,7 +5,7 @@ native Word styles, and filling out templates.
 
 | | |
 |---|---|
-| **Server** | `word.py` v5.0.0 |
+| **Server** | `word.py` v5.1.0 |
 | **pip install** | `python-docx` (pulls in `lxml` and `typing_extensions`) |
 | **Platform** | any (Word itself is not required) |
 | **Writes to disk** | yes — the only write-capable server in the suite |
@@ -54,7 +54,7 @@ Precedence is **CLI flag > environment variable > constant in the file**.
 | `--templates-dir` | `MSWORD_TEMPLATES_DIR` | Folder of blank `.docx` templates. Falls back to the `TEMPLATES_DIR` config value, default `C:\Eva\reference\templates`; pass `off` for no templates root. A **read-only** third root: its files can be listed, opened and passed as `msword_create`'s `template`, but **every save into it is refused**, so templates stay blank. Must be separate from the documents and output folders — the server refuses to start otherwise. A folder you configured yourself that does not exist is fatal; the built-in default merely not existing yet logs a warning and runs without templates |
 | `--kb-dir` | `MSWORD_KB_DIR` | **Every document opened, created or saved** is *also* written out as a Markdown file into this folder for a local RAG knowledge base. Falls back to the `KB_DIR` config value, default `C:\Eva\knowledge\word` — which sits inside the `knowledge-base` server's documents folder, so mirrored documents are actually indexed. Files are named `Word - <name>.md` and overwritten each time; the folder is created if missing. A mirror failure is logged and reported on the result, never allowed to fail the open or the save. Pass `off` to disable mirroring |
 | `--author` | `MSWORD_AUTHOR` | Author name stamped on Word tracked changes. Falls back to the `TRACKED_CHANGE_AUTHOR` config value. Can also be overridden per-call via the `author` argument on the editing tools |
-| `--check` | — | Run an offline open/edit/save/reopen self-test and exit (no server) |
+| `--check` | — | Run an offline open/edit/save/reopen self-test and exit (no server). It sandboxes itself entirely to its own temp folders, so it never touches your documents, output, templates or knowledge-base folders (before v5.1.0 it mirrored its scratch documents into the real knowledge-base folder) |
 | `--version` | — | Print version and exit (works even without `python-docx` installed) |
 
 ## What it does well
@@ -70,6 +70,54 @@ the right file, and a genuinely ambiguous name returns the tied candidates
 rather than guessing. Use **`msword_list_documents`** (optionally with a `query`
 substring) to list the `.docx` files under the root — name, relative path, size
 and modified time — when you're unsure of the exact name.
+
+**Writing a document in one call.** `msword_add_content` takes an ordered list
+of **blocks** — headings, paragraphs, bullet/numbered items, tables, page breaks
+— and appends them in exactly that order:
+
+```json
+{"session_id": "...", "blocks": [
+  {"type": "title",     "text": "Quarterly Report"},
+  {"type": "heading",   "text": "Overview", "level": 1},
+  {"type": "paragraph", "text": "Revenue grew 8% on the prior quarter."},
+  {"type": "bullet",    "text": "Widgets led the growth"},
+  {"type": "bullet",    "text": "Services were flat"},
+  {"type": "table",     "data": [["Item", "Cost"], ["Widget", "5"]]},
+  {"type": "page_break"},
+  {"type": "heading",   "text": "Appendix", "level": 1}
+]}
+```
+
+This is the tool to build a document with, and it fixes a real failure mode.
+The single-block tools (`msword_add_heading`, `msword_add_paragraph`,
+`msword_add_table`) each append to the **end** of the document, so the
+document's order is the order the *calls arrive* — and an MCP client may
+dispatch independent tool calls in parallel, in which case they need not arrive
+in the order the model wrote them. Drafting a report as thirty separate append
+calls could therefore come back scrambled, classically with every heading
+bunched together at the top and all the body text after them. One call carrying
+the whole sequence cannot be reordered.
+
+Details worth knowing:
+
+- `type` is forgiving (`heading`/`h2`/`heading 2`, `paragraph`/`para`/`p`,
+  `bullet`, `number`, `table`, `page_break`), a plain string is taken as a
+  paragraph, and an omitted `type` is inferred from what's there (`level` → a
+  heading, `data`/`rows` → a table).
+- `bullet` and `number` use whatever bullet/numbered style **this** document
+  defines, so a corporate template's own `DSCO Bullet` is picked up without you
+  naming it; pass `style` to force a specific one. One block per item.
+- The whole list is validated **before** anything is written, so a bad block
+  leaves the document untouched and the error names its index
+  (`blocks[7] has unknown type 'sidebar'`).
+- `track_changes: true` records every added paragraph and heading as a real
+  tracked insertion (tables can't be tracked, and the result says so).
+- Headings are echoed back in the result, so the outline can be checked at a
+  glance without re-reading the document.
+- Still chaining the single-block tools? Three or more of them landing on the
+  same session within a second — the signature of a parallel batch — adds an
+  `order_warning` to the result, so a scrambled document gets reported instead
+  of silently shipped.
 
 **Native Word styles.** Structure lives in paragraph *styles*, not typed
 characters, so the tools steer towards real ones: `msword_list_styles` reports
@@ -98,10 +146,9 @@ accepted/rejected all at once or individually by id. While changes are pending,
 
 **Creating documents.** `msword_create` makes a new `.docx` in the
 `--output-dir` folder (falling back to the document root) and opens it as a
-session; build it up with `msword_add_heading` / `msword_add_paragraph` /
-`msword_add_table` and persist with `msword_save` (omit its `path` to save in
-place). Any directory part in the requested filename is stripped, so new files
-always land inside the output folder.
+session; build it up with `msword_add_content` and persist with `msword_save`
+(omit its `path` to save in place). Any directory part in the requested filename
+is stripped, so new files always land inside the output folder.
 
 **From a template.** Pass `template` to `msword_create` to base the new document
 on an existing one — a corporate letterhead, report layout or contract
@@ -167,11 +214,11 @@ inside a configured folder cannot reach files outside it.
 3. "What Word documents do I have?" / "I'm not sure of the exact file name." / "What templates can I start from?" → `msword_list_documents` (optionally with a `query`, or `location: "templates"` for just the blanks), then `msword_open` on the one you want
 4. "Open the proposal.docx and show me its full text." → `msword_open` + `msword_get_content`
 5. "Open every .docx in my docs folder so it gets mirrored into the RAG knowledge base as Markdown." → `msword_open` with `--kb-dir` set (each open writes `Word - <name>.md`; so does each create and save)
-6. "Create a new status report document and draft it with a title, headings and a summary table, then save it to my generated-docs folder." → `msword_create` (writes to `--output-dir`) + `msword_add_heading` + `msword_add_paragraph` + `msword_add_table` + `msword_save`
-7. "Create a Q3 report from my report template." → `msword_create` with `template: "Report Template.docx"` (found in the templates folder or the docs folder; inherits the template's styles/headers/boilerplate into a new file, which lands in the output folder — the template is left untouched) + the add_* tools + `msword_save`
+6. "Create a new status report document and draft it with a title, headings and a summary table, then save it to my generated-docs folder." → `msword_create` (writes to `--output-dir`) + **one** `msword_add_content` call listing the blocks in order + `msword_save`
+7. "Create a Q3 report from my report template." → `msword_create` with `template: "Report Template.docx"` (found in the templates folder or the docs folder; inherits the template's styles/headers/boilerplate into a new file, which lands in the output folder — the template is left untouched) + `msword_add_content` + `msword_save`
 8. "Use my agenda template and fill it out for Monday's meeting — one row per item." → `msword_create` with `template: "Agenda Template.docx"` + `msword_replace_text` (placeholders) + `msword_add_table_row` (with `copy_from_row` to clone the example row) per item + `msword_set_cell` + `msword_delete_table_row` (drop leftover example rows) + `msword_save`
 9. "Find every mention of 'Acme Corp' in the contract and replace it with 'Acme Corporation'." → `msword_search` + `msword_replace_text`
-10. "Add a 'Next Steps' heading and a summary paragraph to the end of the report, then save it." → `msword_add_heading` + `msword_add_paragraph` + `msword_save`
+10. "Add a 'Next Steps' heading and a summary paragraph to the end of the report, then save it." → `msword_add_content` with both blocks in one call (a heading and its paragraph sent as two separate calls can land in either order) + `msword_save`
 11. "Pull out the data from every table in the document as structured rows." → `msword_get_tables`
 12. "Add a 3x4 pricing table to the end of the quote document with these values, using the 'Table Grid' style." → `msword_add_table` + `msword_save`
 13. "Fill cell B2 of the second table with 'Approved', and add a row for the new line item." → `msword_set_cell` + `msword_add_table_row`
@@ -185,17 +232,28 @@ inside a configured folder cannot reach files outside it.
 21. "Accept all the tracked changes in this document now that legal has signed off." → `msword_accept_all_changes`
 22. "Reject all the tracked changes and revert this document to its original wording." → `msword_reject_all_changes`
 23. "What styles does this template actually have — I want the corporate bullet style, not a generic one." → `msword_list_styles`
-24. "Add these five points as proper Word bullet points, not hyphens." → `msword_add_paragraph` once per point with `style: "List Bullet"` (typing "- " is auto-corrected and flagged in a `warning`)
+24. "Add these five points as proper Word bullet points, not hyphens." → one `msword_add_content` call with five `{"type": "bullet", "text": "..."}` blocks (typing "- " is auto-corrected and flagged in a `warning`)
 25. "Turn that hand-typed hyphen list into real Word bullets." → `msword_get_content` (`mode: "structured"`) + `msword_set_paragraph_text` + `msword_set_paragraph_format` with `style: "List Bullet"`
 
 ## Troubleshooting
 
+- **The document came out in the wrong order** (headings bunched together, body
+  text after them) — that is the signature of a document built with a series of
+  separate `msword_add_heading`/`msword_add_paragraph` calls: they each append
+  to the end, so the order is whatever order the calls reached the server, and
+  parallel dispatch doesn't preserve it. Build the document with **one**
+  `msword_add_content` call carrying the blocks in order. Since v5.1.0 a rapid
+  burst of single appends also comes back with an `order_warning` saying so.
 - **"dependency missing" after installing `python-docx`** — the server logs
   `sys.executable` on startup. Almost always the Python interpreter you gave the
   plugin isn't the one you pip-installed into:
 ```powershell
   & "C:\path\to\python.exe" -m pip install python-docx
   ```
+- **Junk `Word - *.md` files in the knowledge-base folder** (named after test
+  documents: `Word - roundtrip.md`, `Word - pdel2.md`, …) — a pre-v5.1.0
+  `--check` run mirrored its own scratch documents into the real knowledge-base
+  folder. Delete them and re-index; `--check` now stays inside its temp folders.
 - **Check the config before wiring it in**, which also runs a full offline
   self-test:
 ```powershell
