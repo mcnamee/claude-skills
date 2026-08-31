@@ -1,7 +1,7 @@
 {
   "name": "powerpoint",
   "displayName": "PowerPoint (.pptx)",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Build PowerPoint decks that inherit your own template's styling, and audit them against Guy Kawasaki's 10/20/30 rule.",
   "author": {
     "name": "mcnamee"

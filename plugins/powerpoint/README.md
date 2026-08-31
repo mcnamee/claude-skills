@@ -6,7 +6,7 @@ rule**.
 
 | | |
 |---|---|
-| **Server** | `powerpoint.py` v1.0.0 |
+| **Server** | `powerpoint.py` v1.1.0 |
 | **pip install** | `python-pptx` (pulls in `lxml`, `Pillow`, `XlsxWriter`, `typing_extensions`) |
 | **Platform** | any (PowerPoint itself is not required) |
 | **Writes to disk** | yes — confined to its configured folders |
@@ -70,6 +70,55 @@ style is set once and every review follows it:
 
 ## What it does well
 
+**Building a deck in one call.** `powerpoint_add_slides` takes an ordered list of
+slides and appends them in exactly that order — each with its layout, title,
+subtitle, bullets, extra placeholder fills, a table and speaker notes:
+
+```json
+{"session_id": "...", "slides": [
+  {"layout": "title",   "title": "FY26 plan", "subtitle": "Board review",
+   "notes": "Thanks for making the time."},
+  {"layout": "bullets", "title": "Unpriced risk costs us GBP 4m a year",
+   "bullets": ["Claims up 20%", {"text": "mostly EMEA", "level": 1}],
+   "notes": "Walk through where the four million goes."},
+  {"layout": "section", "title": "Our answer"},
+  {"layout": "bullets", "title": "The numbers",
+   "table": {"rows": [["Region", "Q3"], ["APAC", "1.2m"]]}},
+  {"layout": "two_content", "title": "Now vs next",
+   "bullets": ["Today: manual"],
+   "placeholders": [{"placeholder": 2, "bullets": ["Next: priced at bind"]}]}
+]}
+```
+
+This is the tool to build a deck with, and it fixes a real failure mode.
+`powerpoint_add_slide` appends to the **end** of the deck, so the deck's order is
+the order the *calls arrive* — and an MCP client may dispatch independent tool
+calls in parallel, in which case they need not arrive in the order the model
+wrote them. Building a ten-slide deck as ten separate calls is a race that can
+come back shuffled. The follow-up tools made it worse rather than better:
+`powerpoint_set_notes`, `powerpoint_set_placeholder`, `powerpoint_add_bullets`
+and `powerpoint_add_table` all address a slide by `slide_index`, so a caller that
+assumed *"the third slide I created is index 2"* wrote onto whichever slide
+actually landed there. One call carrying the whole sequence cannot be reordered.
+
+Details worth knowing:
+
+- Each entry accepts everything `powerpoint_add_slide` accepts, **plus**
+  `placeholders` (`[{"placeholder": <idx|name|type word>, "bullets": [...]}]`,
+  for a two-content layout's second column) and `table` (`{"rows": [[...]]}`) —
+  the two things that previously needed a follow-up call and a `slide_index`.
+- Every entry, **including every layout name**, is validated before any slide is
+  added, so a bad entry leaves the deck untouched and the error names its index.
+  A layout/content mismatch that can only surface mid-build (bullets onto a
+  layout with no body placeholder) unwinds the whole batch rather than leaving a
+  half-written deck.
+- The result reports each slide's real `slide_index` in order, so any later edit
+  addresses the right slide.
+- Still chaining `powerpoint_add_slide`? Three or more calls landing on the same
+  session within a second — the signature of a parallel batch — adds an
+  `order_warning` to the result, so a shuffled deck gets reported rather than
+  silently shipped.
+
 **Sticking to a template.** This is the whole point of the server. A deck's look
 lives in its masters, layouts and theme, so `powerpoint_create` with a
 `template` inherits all of it, and every content tool writes into the layout's
@@ -107,8 +156,8 @@ decisions — say less, cut a slide, choose a different layout — not font
 overrides, which would break the template adherence the server exists to
 protect. `powerpoint_save` returns the headline automatically.
 
-**Speaker notes as first-class content.** `notes` on `powerpoint_add_slide` and
-`powerpoint_set_notes`. Under the rule the slide carries the headline and the
+**Speaker notes as first-class content.** `notes` on each `powerpoint_add_slides`
+entry, or `powerpoint_set_notes` against a slide index you read back. Under the rule the slide carries the headline and the
 notes carry the argument; the notes are also the only input to the timing
 estimate, and they are mirrored into the knowledge base alongside the slides, so
 a deck you wrote is searchable by what you meant rather than by its headlines
@@ -128,8 +177,9 @@ name returns the tied candidates rather than guessing.
 | `powerpoint_create` | New deck in the output folder, optionally inheriting a `template`'s design |
 | `powerpoint_open` | Open an existing deck (or inspect a template) |
 | `powerpoint_list_layouts` | The template's layouts, placeholders, roles and **effective font sizes** |
-| `powerpoint_add_slide` | Append a slide on a layout, filling title / subtitle / bullets / notes |
-| `powerpoint_set_placeholder` | Replace one placeholder's text |
+| **`powerpoint_add_slides`** | **Append MANY slides in one call, in order** — the tool to build a deck with |
+| `powerpoint_add_slide` | Append ONE slide on a layout, filling title / subtitle / bullets / notes |
+| `powerpoint_set_placeholder` | Replace one placeholder's text on an existing slide |
 | `powerpoint_add_bullets` | Append bullets without clearing |
 | `powerpoint_set_notes` | Set speaker notes |
 | `powerpoint_add_table` | Add a table, taking over the layout's content placeholder position |
@@ -147,7 +197,7 @@ name returns the tied candidates rather than guessing.
 ```
 
 Builds a temp template, creates a deck from it, adds slides, saves, reopens and
-audits — 49 assertions, no network, nothing left behind. Expected tail:
+audits — 73 assertions, no network, nothing left behind. Expected tail:
 
 ```
 [check] ALL CHECKS PASSED

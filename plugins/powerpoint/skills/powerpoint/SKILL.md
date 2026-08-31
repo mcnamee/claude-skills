@@ -1,6 +1,6 @@
 ---
 name: powerpoint
-description: Build PowerPoint .pptx decks via the powerpoint MCP server, inheriting a corporate template's masters, layouts, theme, fonts and colours; add slides onto named layouts, fill placeholders, write speaker notes, add tables, reorder and delete slides, and audit the result against the 10/20/30 rule. Use when the user asks to create, build, edit, read or review a PowerPoint deck or .pptx file, to make slides from a template, or to check a deck's font sizes, slide count or length.
+description: Build PowerPoint .pptx decks via the powerpoint MCP server, inheriting a corporate template's masters, layouts, theme, fonts and colours; build a whole deck in one ordered call, add slides onto named layouts, fill placeholders, write speaker notes, add tables, reorder and delete slides, and audit the result against the 10/20/30 rule. Use when the user asks to create, build, edit, read or review a PowerPoint deck or .pptx file, to make slides from a template, or to check a deck's font sizes, slide count or length.
 ---
 
 # PowerPoint (via the `powerpoint` MCP server)
@@ -24,9 +24,59 @@ For *what goes on the slides* — how many, how long, how few words — follow t
    template are stripped; its design is kept.
 3. **`powerpoint_list_layouts` — do not skip this.** It reports what the
    template actually offers and what size text will really be.
-4. **`powerpoint_add_slide`** per slide, with `notes` for what you will say.
+4. **`powerpoint_add_slides`** — ONE call carrying every slide in order, each
+   with its `notes` (see the next section).
 5. **`powerpoint_review`** to check the deck against 10/20/30.
 6. **`powerpoint_save`.**
+
+## Hard rule: build the deck with ONE `powerpoint_add_slides` call
+
+`powerpoint_add_slide` appends its slide to the **end** of the deck, so the
+deck's order is the order the *calls arrive at the server*. Independent tool
+calls issued together may be dispatched in parallel, and then they need not
+arrive in the order you wrote them — which comes out as a shuffled deck. It gets
+worse downstream: `powerpoint_set_notes`, `powerpoint_set_placeholder`,
+`powerpoint_add_bullets` and `powerpoint_add_table` all address a slide by
+`slide_index`, so assuming *"the third slide I created is index 2"* writes onto
+whichever slide actually landed there.
+
+So, for **anything past a single slide**, send one `powerpoint_add_slides` call
+with the whole deck in `slides`, in order:
+
+```json
+{"session_id": "abc123", "slides": [
+  {"layout": "title",   "title": "FY26 plan", "subtitle": "Board review",
+   "notes": "Thanks for making the time."},
+  {"layout": "bullets", "title": "Unpriced risk costs us £4m a year",
+   "bullets": ["Claims up 20%", {"text": "mostly EMEA", "level": 1}],
+   "notes": "Walk through where the four million goes."},
+  {"layout": "section", "title": "Our answer"},
+  {"layout": "bullets", "title": "The numbers",
+   "table": {"rows": [["Region", "Q3"], ["APAC", "1.2m"]]},
+   "notes": "APAC carries the quarter."},
+  {"layout": "two_content", "title": "Now vs next",
+   "bullets": ["Today: manual"],
+   "placeholders": [{"placeholder": 2, "bullets": ["Next: priced at bind"]}]}
+]}
+```
+
+- Each entry takes everything `powerpoint_add_slide` takes — `layout`, `title`,
+  `subtitle`, `bullets`, `placeholder`, `notes`, `drop_empty_placeholders` —
+  **plus** two things that used to need a second call against a `slide_index`:
+  - `placeholders`: `[{"placeholder": <idx|name|type word>, "bullets": [...]}]`
+    — how a two-content layout's second column gets filled.
+  - `table`: `{"rows": [[...], [...]]}` — first row is the header.
+- Every entry, **including every layout name**, is validated before any slide is
+  added, so a bad entry leaves the deck untouched and the error names its index.
+  If a layout/content mismatch only surfaces mid-build, the whole batch unwinds.
+- The result returns each slide's real `slide_index` in order — use those for any
+  later edit, never an assumption about creation order.
+- More slides than fit one call? Send consecutive calls; each appends after the
+  last. Never split one deck across parallel calls.
+- Keep `powerpoint_add_slide` for a genuinely single slide added on its own. If a
+  result comes back with an `order_warning`, the server spotted a burst of single
+  appends: check the deck with `powerpoint_get_content` and fix the sequence with
+  `powerpoint_move_slide`.
 
 ## Hard rule: text goes in placeholders, never in a font override
 
@@ -67,20 +117,22 @@ It gives you, per layout:
 - `layouts_meeting_min_font_at_level_1` — the layouts whose body text clears
   30 points.
 
-Pass a layout to `powerpoint_add_slide` by **index**, **name**, or **role word**.
-Prefer the role word: `layout: "bullets"` works on every template.
+Pass a layout by **index**, **name**, or **role word**. Prefer the role word:
+`layout: "bullets"` works on every template.
 
 ## Adding slides
 
-`powerpoint_add_slide` takes `title`, `subtitle`, `bullets`, `notes` and
-`layout`, filling whatever the chosen layout supports:
+Each entry in `powerpoint_add_slides` (or a lone `powerpoint_add_slide`) fills
+whatever the chosen layout supports:
 
 - A **title slide**: `layout: "title"` + `title` + `subtitle`.
 - A **content slide**: `layout: "bullets"` + `title` + `bullets`.
-- A **two-column slide**: `layout: "two_content"`, then a second
-  `powerpoint_set_placeholder` call naming the other placeholder by `idx`
-  (`powerpoint_list_layouts` shows both).
+- A **two-column slide**: `layout: "two_content"` + `bullets` for the first
+  column and `placeholders: [{"placeholder": <idx>, "bullets": [...]}]` for the
+  second (`powerpoint_list_layouts` shows both idx values).
 - A **section divider**: `layout: "section"` + `title`.
+- A **table slide**: `layout: "bullets"` + `title` + `table: {"rows": [...]}`,
+  leaving `bullets` out so the table can take the content placeholder's spot.
 
 Empty **text** placeholders are removed automatically, so no "Click to add text"
 prompt survives. Picture/table/chart placeholders are **kept**, so a human can
@@ -93,7 +145,8 @@ reads.
 
 ## Speaker notes are not optional
 
-`notes` on `powerpoint_add_slide`, or `powerpoint_set_notes` later. Under the
+`notes` on each `powerpoint_add_slides` entry (or `powerpoint_set_notes` later,
+against a `slide_index` you actually read back). Under the
 10/20/30 rule the slide carries the headline and the **notes carry the
 argument** — that is what keeps text off the slide and lets it stay at 30
 points. Notes are also:
@@ -130,7 +183,12 @@ step set it** (`source`), so *"why is this 28pt?"* has an answer.
 paragraphs with levels, tables, notes) → edit → `powerpoint_save`.
 
 - `powerpoint_set_placeholder` replaces a placeholder's text;
-  `powerpoint_add_bullets` appends without clearing.
+  `powerpoint_add_bullets` appends without clearing. Both need a `slide_index`
+  from `powerpoint_get_content` or from what `powerpoint_add_slides` returned —
+  never one inferred from the order slides were created in.
+- Adding several slides to an existing deck is still one `powerpoint_add_slides`
+  call; they append after the last slide, then `powerpoint_move_slide` if they
+  belong somewhere else.
 - `powerpoint_delete_slide` — **indices shift down after each delete**, so
   delete from the highest index downwards, or re-read between deletes.
 - `powerpoint_move_slide` returns the resulting order by title; use it to check
