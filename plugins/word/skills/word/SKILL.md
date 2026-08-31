@@ -18,9 +18,53 @@ verify with `python word.py --check`.
 2. `msword_open` returns a `session_id`; every later call needs it.
 3. Read with `msword_get_content` / `msword_search` / `msword_get_tables`.
 4. Edit with `msword_replace_text`, `msword_set_paragraph_text`,
-   `msword_insert_paragraph`, `msword_delete_paragraph`,
-   `msword_add_heading` / `msword_add_paragraph` / `msword_add_table`.
+   `msword_insert_paragraph`, `msword_delete_paragraph`; **add** new content
+   with `msword_add_content` (see the next section).
 5. Persist with `msword_save` (omit `path` to save in place).
+
+## Hard rule: write content with ONE `msword_add_content` call
+
+`msword_add_heading`, `msword_add_paragraph` and `msword_add_table` each append
+their block to the **end** of the document, so the document's order is the order
+the *calls arrive at the server*. Independent tool calls issued together may be
+dispatched in parallel, and then they need not arrive in the order you wrote
+them — which is how a document ends up with all its headings bunched together
+and all the body text after them.
+
+So, for **anything longer than a single block**, send one `msword_add_content`
+call with the whole sequence in `blocks`, in document order:
+
+```json
+{"session_id": "abc123", "blocks": [
+  {"type": "heading",   "text": "Overview", "level": 1},
+  {"type": "paragraph", "text": "Revenue grew 8% on the prior quarter."},
+  {"type": "bullet",    "text": "Widgets led the growth"},
+  {"type": "bullet",    "text": "Services were flat"},
+  {"type": "table",     "data": [["Item", "Cost"], ["Widget", "5"]]},
+  {"type": "page_break"},
+  {"type": "heading",   "text": "Appendix", "level": 1}
+]}
+```
+
+- Block types: `heading` (with `level`: 0 = Title, 1–9 = Heading 1–9), `title`,
+  `paragraph`, `bullet`, `number`, `table` (`data`, or `rows`+`cols`),
+  `page_break`. A plain string is a paragraph. `bullet`/`number` pick up
+  whatever list style **this** document defines — pass `style` to force one.
+- **One block per list item.** No newlines inside a block's `text`.
+- More content than fits one call? Send consecutive calls — each appends after
+  the last, so the order still holds. Never split one section across parallel
+  calls.
+- The whole list is validated before anything is written, so a rejected batch
+  leaves the document untouched and the error names the block index.
+- `track_changes: true` records each added paragraph/heading as a real tracked
+  insertion (tables can't be tracked).
+- Keep `msword_add_heading` / `msword_add_paragraph` / `msword_add_table` for a
+  genuinely single block added on its own. If a result comes back with an
+  `order_warning`, the server spotted a burst of single appends: check the
+  document with `msword_get_content` (`mode: "structured"`) and rebuild it with
+  `msword_add_content`.
+- Never fire several `msword_insert_paragraph` calls at once either: each insert
+  shifts every later `para_index`, so they must go one at a time.
 
 ## Hard rule: use native Word styles, never typed markup
 
@@ -29,10 +73,11 @@ Type the text only, and let the style supply the bullet, the number and the
 heading.
 
 - **Never** type `- `, `* `, `• ` or `1. ` at the start of a paragraph's
-  `text`. Pass `style: "List Bullet"` or `style: "List Number"` instead,
-  **one call per item** (no newlines inside one paragraph).
-- Headings are `msword_add_heading` (`level` 0 = Title, 1–9 = Heading 1–9),
-  never bold body text. Nested list levels are `List Bullet 2`/`3`,
+  `text`. Use a `bullet`/`number` block (or `style: "List Bullet"` /
+  `"List Number"`) instead, **one block per item** (no newlines inside one
+  paragraph).
+- Headings are `heading` blocks (`level` 0 = Title, 1–9 = Heading 1–9), never
+  bold body text. Nested list levels are `List Bullet 2`/`3`,
   `List Number 2`/`3`. Other built-ins: `Normal`, `Quote`, `Intense Quote`.
 - **Discover before you style** a document you did not create:
   `msword_list_styles` lists every style the document actually defines, flags
@@ -78,8 +123,9 @@ heading.
 ## Creating documents
 
 `msword_create` makes a new .docx (written to the configured output folder)
-and opens it as a session — build it with the add_* tools, then
-`msword_save`. Directory parts in the requested filename are stripped.
+and opens it as a session — build it with **one** `msword_add_content` call
+carrying the whole document in order, then `msword_save`. Directory parts in the
+requested filename are stripped.
 
 ### From a template
 

@@ -47,7 +47,7 @@ the document library, generated output, and the reference material: **exemplars*
 
 | Plugin | Version | What it does | pip install |
 |---|---|---|---|
-| [**word**](plugins/word) | 5.0.0 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
+| [**word**](plugins/word) | 5.1.0 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
 | [**powerpoint**](plugins/powerpoint) | 1.0.0 | Build `.pptx` decks that inherit your own template's layouts and theme, and audit them against the 10/20/30 rule | `python-pptx` |
 | [**excel**](plugins/excel) | 4.0.0 | Read and analyse workbooks; parses `.xlsx` directly, so Excel isn't needed | _none_ |
 | [**outlook**](plugins/outlook) | 4.0.0 | Read local Outlook mail and calendar via COM, with a content blacklist | `pywin32` |
