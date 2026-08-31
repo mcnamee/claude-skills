@@ -2,7 +2,8 @@
 
 The working folder for the assistant — everything the plugins read, write and
 index. This copy in the repo is a **scaffold**: the folder tree with a README in
-every folder explaining what belongs there, and no content.
+every folder explaining what belongs there, Eva's own instructions in
+[`CLAUDE.md`](CLAUDE.md), and no content.
 
 Copy it to `C:\Eva` on the endpoint and every plugin default in this repo lines
 up with it, with nothing left to configure but your Python path, API keys and
@@ -26,6 +27,7 @@ The tree is organised by **what writes to a folder**, not by topic:
 
 ```
 C:\Eva\
+├─ CLAUDE.md         who Eva is, and how she writes
 ├─ knowledge\        the indexed corpus (.md / .txt only)
 │  ├─ notes\           Markdown you write by hand
 │  ├─ captures\        notes kb_capture writes back
@@ -49,6 +51,24 @@ C:\Eva\
    ├─ exemplars\       finished documents showing what good looks like
    └─ templates\       blank branded files new documents start from
 ```
+
+## The assistant's instructions
+
+[`CLAUDE.md`](CLAUDE.md) at the top of the tree is the other half of the setup:
+where the folders tell the plugins *where* to work, that file tells Claude *how*
+to. It defines Eva as an executive virtual assistant, fixes Australian spelling
+and Australian conventions for dates, times and money, bans em dashes and the
+rest of the AI tells, and sets out how she sources facts on a network with no
+internet and what she is not allowed to do on your behalf.
+
+Claude Code loads it whenever you run in `C:\Eva`, so open Claude Code *here*
+rather than somewhere else and it applies with nothing to configure. To make Eva
+the default in every folder, copy it to `%USERPROFILE%\.claude\CLAUDE.md`
+instead, remembering it will then shape coding sessions too.
+
+The one part you must fill in is the **About me** block near the top: your name,
+role, who you write to, how you sign off. Every line left blank there is
+something Eva has to ask about or guess at.
 
 ## Which setting points where
 
@@ -104,7 +124,8 @@ plugins assumes the drive or the folder name.
 
 ## Why nothing here is committed
 
-[`.gitignore`](.gitignore) ignores every file except these READMEs, because in
-real use this tree is full of your organisation's documents and this repo is
-public. The folder structure still travels with the repo: git stores no empty
-directories, so each folder is in the repo *because* of its README.
+[`.gitignore`](.gitignore) ignores every file except these READMEs and
+[`CLAUDE.md`](CLAUDE.md), because in real use this tree is full of your
+organisation's documents and this repo is public. The folder structure still
+travels with the repo: git stores no empty directories, so each folder is in the
+repo *because* of its README.

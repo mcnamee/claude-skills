@@ -15,7 +15,11 @@ Plus **[`eva/`](eva)** — the working folder they all read, write and index,
 carried here as a scaffold you copy to `C:\Eva`. It holds the knowledge base,
 the document library, generated output, and the reference material: **exemplars**
 (finished documents showing what good looks like) and **templates** (the blank
-`.docx`/`.pptx` new documents are built from).
+`.docx`/`.pptx` new documents are built from). It also carries
+[`eva/CLAUDE.md`](eva/CLAUDE.md), the standing instructions that make the
+assistant **Eva** — an executive virtual assistant who writes in Australian
+English, without em dashes or the other AI tells, and never fills a gap in the
+source material with something invented.
 
 ## Why this exists
 
@@ -80,6 +84,11 @@ servers are correctly related to each other — mirrors landing inside the index
 corpus, generated documents kept out of your source library. See
 [Folder layout](#folder-layout) for what goes where, and `eva/README.md` for
 each folder's own README.
+
+The copy brings [`eva/CLAUDE.md`](eva/CLAUDE.md) with it, which is what turns
+Claude into Eva when you run Claude Code in `C:\Eva`. Open it and fill in the
+**About me** block — your name, role, who you write to, how you sign off. See
+[The assistant's instructions](#the-assistants-instructions).
 
 **2. Install the pip dependencies** into the *same* interpreter you'll point the
 plugins at:
@@ -214,6 +223,7 @@ lays it out in one step and every default below is already correct.
 
 ```
 C:\Eva\
+├─ CLAUDE.md         who Eva is, and how she writes
 ├─ knowledge\        the RAG corpus - Markdown only, the ONE indexed root
 │  ├─ notes\           Markdown you write by hand
 │  ├─ captures\        notes kb_capture writes back
@@ -382,6 +392,40 @@ are **not committed** — see [`eva/.gitignore`](eva/.gitignore).
 `report-writer` reads `C:\Eva\reference\exemplars` for the shape of the
 document it is writing, so the index table in that folder's README is what lets
 it pick the right one without opening every file.
+
+## The assistant's instructions
+
+The plugins give Claude tools and the folders give it somewhere to work.
+[`eva/CLAUDE.md`](eva/CLAUDE.md), which the copy in step 1 puts at
+`C:\Eva\CLAUDE.md`, gives it a job. Claude Code loads it whenever you run in
+that folder, so run there rather than somewhere else.
+
+It defines **Eva**, an executive virtual assistant: correspondence, diary and
+meeting prep, minutes and actions, briefs and board papers, decks, research over
+the knowledge base, and status summaries out of Jira. Along with the role it
+fixes the things you would otherwise correct in every reply:
+
+- **Australian English throughout**, in documents as well as chat — `-ise`
+  spellings, `31 August 2026`, `2.30 pm`, financial years as `2025–26`,
+  metric, and the Australian Government Style Manual as the authority for the
+  finer mechanics.
+- **No em dashes and no other AI tells** — the openers, the vocabulary, the
+  "it's not X, it's Y" shapes. This is the always-on subset of
+  [`unslop`](skills/unslop); the full passes are still `/unslop` then
+  `/polish` before anything leaves your desk.
+- **Sourced or not stated** — on a network with no internet, an empty search is
+  a finding to report rather than a gap to fill from memory, and every fact
+  carries where it came from.
+- **Boundaries** — Eva drafts, you send. Nothing in the suite can send mail or
+  accept a meeting, and the file makes that a rule rather than an accident:
+  no committing on your behalf, protective markings carried through and never
+  downgraded, personal information kept out of the indexed corpus.
+
+Fill in the **About me** block at the top (name, role, stakeholders, sign-off)
+and edit the rest to suit — it is prose, and yours to change. To make Eva the
+default in every folder instead of just `C:\Eva`, copy the file to
+`%USERPROFILE%\.claude\CLAUDE.md`, remembering it will then shape coding
+sessions too.
 
 ## Versioning
 
