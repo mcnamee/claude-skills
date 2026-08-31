@@ -45,8 +45,8 @@
     {
       "name": "outlook",
       "source": "./plugins/outlook",
-      "description": "Read-only access to local classic Outlook mail and calendar via COM. Windows only; requires pywin32.",
-      "version": "4.0.0",
+      "description": "Read-only access to local classic Outlook mail and calendar via COM, saving an email to the knowledge base when you ask for it. Windows only; requires pywin32.",
+      "version": "5.0.0",
       "keywords": [
         "outlook",
         "email",
@@ -57,8 +57,8 @@
     {
       "name": "confluence",
       "source": "./plugins/confluence",
-      "description": "Search and read Confluence pages across one or two instances, optionally mirroring them to Markdown for a local RAG knowledge base.",
-      "version": "2.0.0",
+      "description": "Search and read Confluence pages across one or two instances, saving a page to Markdown for a local RAG knowledge base when you ask for it.",
+      "version": "3.0.0",
       "keywords": [
         "confluence",
         "wiki",

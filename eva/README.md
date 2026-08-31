@@ -19,7 +19,7 @@ The tree is organised by **what writes to a folder**, not by topic:
 
 | Zone | Holds | Written by |
 |---|---|---|
-| [`knowledge\`](knowledge) | The RAG corpus — Markdown only | every server that mirrors what it reads, plus `kb_capture` |
+| [`knowledge\`](knowledge) | The RAG corpus — Markdown only | every server that mirrors what it opens or saves what you ask it to keep, plus `kb_capture` |
 | [`index\`](index) | The ChromaDB vector store | `knowledge-base`, from `knowledge\` |
 | [`documents\`](documents) | The binary library — `.docx`, `.pptx`, `.xlsx`, `.pdf` | you |
 | [`output\`](output) | Generated files | `word`, `powerpoint` |
@@ -31,8 +31,8 @@ C:\Eva\
 ├─ knowledge\        the indexed corpus (.md / .txt only)
 │  ├─ notes\           Markdown you write by hand
 │  ├─ captures\        notes kb_capture writes back
-│  ├─ confluence\      pages the confluence plugin mirrored
-│  ├─ email\           emails the outlook plugin mirrored
+│  ├─ confluence\      pages you asked the confluence plugin to save
+│  ├─ email\           emails you asked the outlook plugin to save
 │  ├─ word\            documents the word plugin mirrored
 │  ├─ powerpoint\      decks the powerpoint plugin mirrored
 │  └─ pdf\             PDFs the pdf-to-md plugin converted
@@ -111,8 +111,8 @@ which is the single most common way to end up with a knowledge base that
 folders rot: every document belongs to three of them and you spend your time
 deciding which. Provenance is unambiguous, maps one-to-one onto a setting, and
 retrieval is semantic anyway — folder names do not affect what comes back. It
-also makes cleanup surgical: delete `knowledge\confluence\` and re-mirror after
-a space is restructured, with nothing you wrote yourself at risk.
+also makes cleanup surgical: delete `knowledge\confluence\` and save the pages
+again after a space is restructured, with nothing you wrote yourself at risk.
 
 ## Moving it somewhere else
 

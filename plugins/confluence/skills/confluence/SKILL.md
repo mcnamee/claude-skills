@@ -1,6 +1,6 @@
 ---
 name: confluence
-description: Search and read Confluence pages via the confluence MCP server, across one or two Confluence instances. Use when the user asks to find, read, summarise or pull content from Confluence (runbooks, handbooks, wiki pages, spaces), including when they name a particular Confluence server, or to mirror Confluence pages into the local knowledge base.
+description: Search and read Confluence pages via the confluence MCP server, across one or two Confluence instances. Use when the user asks to find, read, summarise or pull content from Confluence (runbooks, handbooks, wiki pages, spaces), including when they name a particular Confluence server, or when they ask for a Confluence page to be saved into the local knowledge base.
 ---
 
 # Confluence (via the `confluence` MCP server)
@@ -60,14 +60,31 @@ asked for is not wired in.
    it.
 4. For "everything under X" requests, walk `confluence_list_pages_under`.
 
+## Saving to the knowledge base
+
+Reading a page does **not** save it. `confluence_get_page` and
+`confluence_get_page_by_title` take `save_to_kb`, false by default; set it to
+true **only when the user asks for the page to be kept** — "save this to the
+knowledge base", "add that page to the KB", "pull the runbook in for offline
+search". The file lands in `C:\Eva\knowledge\confluence` and the tool reports
+the path.
+
+- **Never set it while researching.** Pages you open to answer a question are
+  not the user's filing decision, and a knowledge base full of pages nobody
+  chose returns irrelevant answers later.
+- **Asked after the fact** ("save that page") → call the same tool again for
+  that page with `save_to_kb: true`. Re-reading is cheap; guessing is not.
+- **Say what you saved** — the title and the path — so the user knows what is
+  now in the index. Suggest `kb_index` if they want it searchable immediately.
+- If the user says something is worth keeping and you are not sure they meant
+  the KB, ask in one line rather than saving.
+
 ## Notes
 
 - The server is read-only; it cannot create or edit pages.
-- Every page you read is automatically mirrored to Markdown for the local
-  knowledge-base server (on by default, to `C:\Eva\knowledge\confluence`;
-  disabled only if `--kb-dir` / `CONFLUENCE_KB_DIR` is set to `off`) —
-  reading a page IS how you import it into the RAG index. With two instances
-  configured the files are named `Confluence <server> - <title>.md`, so pages
-  that share a title on both instances stay separate.
+- With two instances configured, saved files are named
+  `Confluence <server> - <title>.md`, so pages that share a title on both
+  instances stay separate. Saving is off at the server if `--kb-dir` /
+  `CONFLUENCE_KB_DIR` is `off` — the tool says so rather than failing quietly.
 - Long pages may be truncated in the returned text if `--max-body` is set;
   say so if an answer might sit past the truncation point.

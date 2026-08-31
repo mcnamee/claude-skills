@@ -1,6 +1,6 @@
 ---
 name: outlook
-description: Read Outlook mail and calendar via the outlook MCP server (read-only COM automation, Windows). Use when the user asks about their emails, wants mail searched or summarised, asks what's on their calendar, or wants emails saved into the knowledge base.
+description: Read Outlook mail and calendar via the outlook MCP server (read-only COM automation, Windows). Use when the user asks about their emails, wants mail searched or summarised, asks what's on their calendar, or asks for an email to be saved into the knowledge base.
 ---
 
 # Outlook (via the `outlook` MCP server)
@@ -30,9 +30,24 @@ user to wire it in first (see the repo README) and to verify with
 2. If a folder-scoped search misses, `outlook_list_folders` to learn the
    actual folder names, then retry `outlook_search_recent` with `folders`.
 3. "What did I do last week?" → `outlook_list_sent_emails` + summarise.
-4. Reading an email also mirrors it to Markdown for the knowledge base
-   (on by default, to `C:\Eva\knowledge\email`) — reading IS the import
-   step. Blacklisted messages are never mirrored.
+
+## Saving to the knowledge base
+
+Reading an email does **not** save it. `outlook_get_email` takes `save_to_kb`,
+false by default; set it to true **only when the user asks for that message to
+be kept** — "save this email to the knowledge base", "add that thread to the
+KB". The file lands in `C:\Eva\knowledge\email` and the tool reports the path.
+
+- **Never set it while researching.** Mail you open to answer a question is not
+  the user's filing decision. This is correspondence: saving it makes it
+  embedded, searchable and quotable in later answers, which is a bigger step
+  than saving a wiki page.
+- **Asked after the fact** ("save that one") → call `outlook_get_email` again
+  for that EntryID with `save_to_kb: true`.
+- **Say what you saved** — the subject and the path. Suggest `kb_index` if the
+  user wants it searchable immediately.
+- Blacklisted messages are never saved: the content filter refuses them before
+  any save is considered.
 
 ## Notes
 

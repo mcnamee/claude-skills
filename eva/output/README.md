@@ -20,7 +20,7 @@ Worth knowing where files can appear, because it is a short list:
 |---|---|
 | `word`, creating a document | `output\word\` |
 | `word`, editing a document | the document itself, in `documents\word\` |
-| `confluence`, `outlook`, `word` mirroring what they read | `..\knowledge\<source>\` |
+| `word` mirroring what it reads, `confluence` and `outlook` saving what you asked to keep | `..\knowledge\<source>\` |
 | `pdf-to-md`, converting | `..\knowledge\pdf\` |
 | `knowledge-base`, capturing a note | `..\knowledge\captures\` |
 | `knowledge-base`, indexing | `..\index\` |

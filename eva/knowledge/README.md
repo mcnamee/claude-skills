@@ -20,8 +20,8 @@ plugin setting:
 |---|---|---|
 | [`notes\`](notes) | you, by hand | — |
 | [`captures\`](captures) | `kb_capture` | `knowledge-base` → output folder |
-| [`confluence\`](confluence) | the `confluence` plugin, on every page read | `--kb-dir` |
-| [`email\`](email) | the `outlook` plugin, on every email read | `--kb-dir` |
+| [`confluence\`](confluence) | the `confluence` plugin, on the pages you ask it to save | `--kb-dir` |
+| [`email\`](email) | the `outlook` plugin, on the emails you ask it to save | `--kb-dir` |
 | [`word\`](word) | the `word` plugin, on every document opened or saved | `--kb-dir` |
 | [`pdf\`](pdf) | the `pdf-to-md` plugin, on conversion | `--output-dir` |
 
@@ -36,7 +36,7 @@ and the index will never read a line of it. Every default in this repo is set
 so that cannot happen; if you move one, move it to another folder in here.
 
 **Captured notes sit beside real documents.** A research brief written by an
-agent is indexed with the same authority as a policy you mirrored from
+agent is indexed with the same authority as a policy you saved from
 Confluence. Retrieval cannot tell them apart, so anything captured carries a
 front-matter stamp saying it was agent-written — leave it in place, and treat
 `captures\` as a lead, never a source.
