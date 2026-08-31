@@ -50,7 +50,7 @@ the document library, generated output, and the reference material: **exemplars*
 | [**word**](plugins/word) | 5.1.0 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
 | [**powerpoint**](plugins/powerpoint) | 1.1.0 | Build `.pptx` decks that inherit your own template's layouts and theme, and audit them against the 10/20/30 rule | `python-pptx` |
 | [**excel**](plugins/excel) | 4.0.0 | Read and analyse workbooks; parses `.xlsx` directly, so Excel isn't needed | _none_ |
-| [**outlook**](plugins/outlook) | 4.0.0 | Read local Outlook mail and calendar via COM, with a content blacklist | `pywin32` |
+| [**outlook**](plugins/outlook) | 5.0.0 | Read local Outlook mail and calendar via COM, with a content blacklist; saves an email to the knowledge base when you ask | `pywin32` |
 | [**confluence**](plugins/confluence) | 3.0.0 | Search and read Confluence pages, across one or two instances; saves a page to the knowledge base when you ask | _none_ |
 | [**jira**](plugins/jira) | 1.1.3 | Query issues, sprints and projects (Jira Data Center v2 API) | _none_ |
 | [**knowledge-base**](plugins/knowledge-base) | 3.0.0 | True RAG over your own Markdown: local ChromaDB index + your embeddings API, and capture notes back into it | `chromadb` |
@@ -218,7 +218,7 @@ C:\Eva\
 │  ├─ notes\           Markdown you write by hand
 │  ├─ captures\        notes kb_capture writes back
 │  ├─ confluence\      pages you asked the confluence plugin to save
-│  ├─ email\           emails the outlook plugin mirrored
+│  ├─ email\           emails you asked the outlook plugin to save
 │  ├─ word\            documents the word plugin mirrored
 │  ├─ powerpoint\      decks the powerpoint plugin mirrored
 │  └─ pdf\             PDFs the pdf-to-md plugin converted
@@ -284,7 +284,7 @@ its configuration, and that configuration is **required**:
 | `knowledge-base` | Reads the documents folder; writes its vector index (`C:\Eva\index`) and captured notes (`C:\Eva\knowledge\captures`, always inside the documents folder); never edits or deletes an existing document; network only to the endpoints you configure |
 | `pdf-to-md` | Reads the PDF folder, writes the output folder |
 | `confluence` | Writes only the knowledge-base folder, and only for a page you asked to keep (`save_to_kb`); reading a page saves nothing. Set the folder to `off` and the server touches no local file |
-| `outlook` | Writes only the knowledge-base folder — every email read is mirrored there, blacklisted messages excepted. Set it to `off` and the server touches no local file |
+| `outlook` | Writes only the knowledge-base folder, and only for an email you asked to keep (`save_to_kb`); reading mail saves nothing, and a blacklisted message is never written at all. Set the folder to `off` and the server touches no local file |
 | `jira` | None — HTTP GET to Jira only |
 
 Paths are resolved (symlinks included) before the containment check, so a

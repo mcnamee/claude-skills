@@ -30,7 +30,7 @@ C:\Eva\
 │  ├─ notes\           Markdown you write by hand
 │  ├─ captures\        notes kb_capture writes back
 │  ├─ confluence\      pages you asked the confluence plugin to save
-│  ├─ email\           emails the outlook plugin mirrored
+│  ├─ email\           emails you asked the outlook plugin to save
 │  ├─ word\            documents the word plugin mirrored
 │  ├─ powerpoint\      decks the powerpoint plugin mirrored
 │  └─ pdf\             PDFs the pdf-to-md plugin converted

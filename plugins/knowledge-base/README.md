@@ -177,10 +177,12 @@ folder from PDFs. `word` also mirrors on **create and save**, so a document
 written for you lands there too.
 
 They differ in *when* they write, and it is worth knowing which is which:
-`outlook` and `word` mirror **everything they read**, while `confluence` saves
-only the pages you ask it to keep (`save_to_kb`) — a search that turns up an
-unrelated page does not put it in the index. Reach for `CONFLUENCE_KB_AUTOSAVE`
-only if you want the wiki mirrored wholesale.
+`word` and `powerpoint` mirror **everything they open or save**, while
+`confluence` and `outlook` write only what you ask them to keep (`save_to_kb`)
+— a search that turns up an unrelated page, or a mail thread skimmed for an
+answer, does not land in the index. `CONFLUENCE_KB_AUTOSAVE` and
+`OUTLOOK_KB_AUTOSAVE` turn those two back into wholesale mirrors if that is
+what you want.
 
 ## Growing it
 

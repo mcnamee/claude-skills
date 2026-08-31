@@ -21,7 +21,7 @@ plugin setting:
 | [`notes\`](notes) | you, by hand | — |
 | [`captures\`](captures) | `kb_capture` | `knowledge-base` → output folder |
 | [`confluence\`](confluence) | the `confluence` plugin, on the pages you ask it to save | `--kb-dir` |
-| [`email\`](email) | the `outlook` plugin, on every email read | `--kb-dir` |
+| [`email\`](email) | the `outlook` plugin, on the emails you ask it to save | `--kb-dir` |
 | [`word\`](word) | the `word` plugin, on every document opened or saved | `--kb-dir` |
 | [`pdf\`](pdf) | the `pdf-to-md` plugin, on conversion | `--output-dir` |
 

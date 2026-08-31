@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-outlook.py (v4.0.0)
+outlook.py (v5.0.0)
 ======================
 
 A single-file MCP (Model Context Protocol) server giving an LLM read-only
@@ -40,24 +40,30 @@ TOOLS EXPOSED (all read-only)
 - outlook_search_recent      : all mail across Inbox/Archive/Sent in a date range (configurable)
 - outlook_list_folders       : list every mail folder across all stores (to configure the above)
 
-Markdown export for a RAG knowledge base (ON by default)
---------------------------------------------------------
-Every email read with outlook_get_email is ALSO written out as a Markdown file
-into the knowledge-base folder, the same way confluence.py mirrors pages and
-word.py mirrors documents, so the content feeds a local RAG index (e.g.
-alongside knowledge-base.py). Files are named
-'Email - <date> - <subject> (<id>).md' and overwritten on re-read of the same
-message. Blocked (blacklisted) messages are NEVER written - the mirror only runs
-after a message has cleared the content filter.
+Markdown export for a RAG knowledge base (ON REQUEST)
+-----------------------------------------------------
+Reading an email does NOT save it. outlook_get_email takes an optional
+'save_to_kb' argument, false by default; only when it is true is the message
+written out as a Markdown file into the knowledge-base folder, so the content
+feeds a local RAG index (e.g. alongside knowledge-base.py). Files are named
+'Email - <date> - <subject> (<id>).md' and overwritten if the same message is
+saved again. Blocked (blacklisted) messages are NEVER written - a save only
+runs after a message has cleared the content filter.
+
+Saving on request rather than on read is what keeps a mailbox from becoming
+the knowledge base: every message opened while answering a question used to be
+embedded and quotable in later answers, whether it deserved to be or not.
 
 The folder DEFAULTS to C:\Eva\knowledge\email, the email folder of the Eva
 working tree, which sits inside the knowledge-base plugin's documents folder so
-mirrored mail is actually indexed. Override it with --kb-dir or OUTLOOK_KB_DIR,
+saved mail is actually indexed. Override it with --kb-dir or OUTLOOK_KB_DIR,
 or edit the KB_DIR config constant.
 
-To keep NO local files at all, set KB_DIR = None in the config block below (or
-pass an empty OUTLOOK_KB_DIR): mirroring then never runs and the server touches
-no disk. Worth a deliberate decision - mirroring turns correspondence into plain
+To make saving impossible, set KB_DIR = None in the config block below (or pass
+--kb-dir off): a save_to_kb request is then refused and the server touches no
+disk at all. To go the other way and save EVERY email read - how this server
+behaved before v5.0.0 - set OUTLOOK_KB_AUTOSAVE=true or pass --kb-autosave.
+Worth a deliberate decision either way: saving turns correspondence into plain
 text files that are then embedded and quotable in answers. See
 eva\knowledge\email\README.md.
 
@@ -170,7 +176,7 @@ IMPORTANT (stdio-on-Windows pitfalls)
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "4.0.0"
+__version__ = "5.0.0"
 
 import os
 import re
@@ -215,29 +221,38 @@ SEARCH_SCAN_CAP = 500       # ceiling on raw search hits scanned
 #        unaffected by this list.)
 SEARCH_ALL_FOLDERS = ["Inbox", "Sent Items", "Archive"]
 
-# --- 5. KB_DIR  (optional Markdown export for a local RAG knowledge base).
-#        If set, EVERY email read with outlook_get_email is ALSO written out as
-#        a Markdown file into this folder, the same way confluence.py mirrors
-#        pages and word.py mirrors documents, so the content can feed a local
+# --- 5. KB_DIR  (Markdown export for a local RAG knowledge base, on request).
+#        Where outlook_get_email writes a message as a Markdown file WHEN the
+#        call asks for it (save_to_kb=true), so the content can feed a local
 #        RAG index (e.g. alongside knowledge-base.py). Files are named
-#        'Email - <date> - <subject> (<id>).md' and overwritten on re-read of
-#        the same message. Blocked (blacklisted) messages are NEVER written -
-#        the mirror only runs once a message has cleared the content filter.
+#        'Email - <date> - <subject> (<id>).md' and overwritten if the same
+#        message is saved again. Blocked (blacklisted) messages are NEVER
+#        written - a save only runs once a message has cleared the content
+#        filter.
 #        Set it here, or at launch with --kb-dir / the OUTLOOK_KB_DIR
 #        environment variable (which take priority over this constant).
 #        Default: the email folder of the Eva knowledge base. It MUST stay
 #        inside the knowledge-base plugin's documents folder (C:\Eva\knowledge)
-#        or the mirrored mail would never be indexed.
-#        Set to None to disable mirroring entirely - the server then keeps no
-#        local files at all.
+#        or the saved mail would never be indexed.
+#        Set to None to forbid saving entirely - the server then keeps no
+#        local files at all and a save_to_kb request is refused.
 KB_DIR = r"C:\Eva\knowledge\email"
 
-# --- 6. DISABLE_KEYWORDS. Values that mean "explicitly turned off" for a
+# --- 6. KB_AUTOSAVE. Whether reading an email saves it WITHOUT being asked.
+#        False means a message is saved only when the call passes
+#        save_to_kb=true, which is the point: mail skimmed to answer a question
+#        is not a filing decision, and a knowledge base full of correspondence
+#        nobody chose returns irrelevant answers later. Set to True here, or at
+#        launch with --kb-autosave / OUTLOOK_KB_AUTOSAVE=true, to save every
+#        email read (how this server behaved before v5.0.0).
+KB_AUTOSAVE = False
+
+# --- 7. DISABLE_KEYWORDS. Values that mean "explicitly turned off" for a
 #        folder setting. An MCP client can only pass strings, and a BLANK
 #        string is what it substitutes for a setting the user left empty -
 #        which means "not configured", falling back to the constant above. So
 #        a keyword is needed to say "definitely off": --kb-dir off (or
-#        OUTLOOK_KB_DIR=off) disables mirroring, after which this server keeps
+#        OUTLOOK_KB_DIR=off) forbids saving, after which this server keeps
 #        no local files at all.
 DISABLE_KEYWORDS = frozenset(("off", "none", "no", "false", "disabled"))
 
@@ -259,6 +274,21 @@ for _stream in ("stdin", "stdout"):
 def log(message):
     """Write a diagnostic line to stderr ONLY. Never touch stdout here."""
     print(message, file=sys.stderr, flush=True)
+
+
+def env_flag(name, default):
+    """
+    Read a boolean environment variable, falling back to `default`.
+
+    A BLANK value means "not configured" - that is what an MCP client
+    substitutes for a setting the user left empty - as does an unexpanded
+    "${...}" placeholder, which is what a client leaves behind when the
+    variable it refers to does not exist. Either one keeps the default.
+    """
+    raw = (os.environ.get(name) or "").strip()
+    if not raw or (raw.startswith("${") and raw.endswith("}")):
+        return default
+    return raw.lower() in ("1", "true", "yes", "on")
 
 
 # --version must work even when pywin32 is not installed (or off Windows),
@@ -851,7 +881,7 @@ def tool_get_email(args):
     except Exception:
         return ("This message cannot be displayed: its body could not be read and "
                 "therefore cannot be cleared for display.")
-    # The full body is what gets mirrored to the knowledge base; only the copy
+    # The full body is what gets saved to the knowledge base; only the copy
     # returned to the model is truncated (mirrors confluence.py's MAX_BODY rule).
     body = full_body
     truncated_note = ""
@@ -881,11 +911,23 @@ def tool_get_email(args):
     ]
     result_text = "\n".join(parts)
 
-    # If a knowledge-base folder is configured, mirror the (cleared) email to
-    # Markdown for RAG ingestion. This is a side effect of reading and must
-    # never break the tool, so any failure is reported but swallowed. The FULL
-    # body is saved (MAX_BODY_CHARS only trims the copy returned to the model).
-    if KB_DIR:
+    # Save the (cleared) email to Markdown for RAG ingestion only if this call
+    # asked for it, or the endpoint turned autosave on. Saving must never break
+    # the read, so any failure is reported but swallowed. The FULL body is saved
+    # (MAX_BODY_CHARS only trims the copy returned to the model).
+    save_to_kb = args.get("save_to_kb")
+    wanted = KB_AUTOSAVE if save_to_kb is None else bool(save_to_kb)
+    if wanted and not KB_DIR:
+        # A save was asked for that this endpoint has switched off. Say so, so
+        # it cannot look done. (Autosave with no folder is a startup warning
+        # instead - repeating it on every email would be noise.)
+        if save_to_kb:
+            result_text += (
+                "\n\n[NOT saved: knowledge-base saving is switched off on this "
+                "server. Set OUTLOOK_KB_DIR (or --kb-dir) to a folder inside "
+                "the knowledge base to enable it.]"
+            )
+    elif wanted:
         try:
             kb_path = save_email_to_kb(item, full_body)
             log("Saved email to knowledge base: {0}".format(kb_path))
@@ -1385,14 +1427,28 @@ TOOLS = [
         "description": (
             "Retrieve the full details and plain-text body of a single email, "
             "identified by the EntryID from a list or search result. The message "
-            "may be withheld if it is blocked by a content policy. If a "
-            "knowledge-base folder is configured (--kb-dir), the cleared email is "
-            "also saved as a Markdown file there for a local RAG knowledge base."
+            "may be withheld if it is blocked by a content policy. Reading a "
+            "message does not save it anywhere; pass 'save_to_kb' only if the "
+            "user asks for it to be kept."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "entry_id": {"type": "string", "description": "The EntryID of the message to read."},
+                "save_to_kb": {
+                    "type": "boolean",
+                    "description": (
+                        "Save this email into the local knowledge base as "
+                        "Markdown, for the RAG index. Default false: reading a "
+                        "message does NOT save it. Set it to true ONLY when the "
+                        "user asks for the email to be kept - 'save this to the "
+                        "knowledge base', 'add that email to the KB', 'keep this "
+                        "for later'. Do not set it while merely reading mail to "
+                        "answer a question; saving correspondence nobody asked "
+                        "for is what makes the knowledge base return irrelevant "
+                        "results later."
+                    ),
+                },
             },
             "required": ["entry_id"],
         },
@@ -1602,7 +1658,13 @@ def run_check():
         cal = ns.GetDefaultFolder(OL_FOLDER_CALENDAR)
         log("Calendar folder     : {0}".format(cal.Name))
         log("Search folders      : {0}".format(", ".join(_SEARCH_FOLDERS)))
-        log("KB Markdown mirror  : {0}".format(KB_DIR if KB_DIR else "disabled (set --kb-dir to enable)"))
+        if KB_DIR:
+            log("KB save folder      : {0} ({1})".format(
+                KB_DIR,
+                "every email read (autosave on)" if KB_AUTOSAVE
+                else "on request only"))
+        else:
+            log("KB save folder      : disabled - no email can be saved")
         log("CHECK OK - Outlook COM link is working.")
         return 0
     except Exception:
@@ -1613,6 +1675,10 @@ def run_check():
 
 
 def main():
+    # Declared up front: the --kb-autosave default reads KB_AUTOSAVE below, and
+    # Python forbids a global declaration after the name has been used.
+    global KB_DIR, KB_AUTOSAVE
+
     parser = argparse.ArgumentParser(
         description=(
             "Read-only MCP server exposing local Outlook mail and calendar via COM, "
@@ -1653,15 +1719,25 @@ def main():
     parser.add_argument(
         "--kb-dir",
         default=os.environ.get("OUTLOOK_KB_DIR"),
-        help="If set, every email read with outlook_get_email is ALSO saved as a "
-             "Markdown file into this folder for a local RAG knowledge base (like "
-             "confluence.py / word.py). Files are named "
-             "'Email - <date> - <subject> (<id>).md' and overwritten on re-read. "
-             "Blocked (blacklisted) messages are never written. Falls back to the "
-             "OUTLOOK_KB_DIR environment variable, then the KB_DIR config "
-             "constant (default: C:\\Eva\\knowledge\\email). Pass 'off' "
-             "to disable mirroring, after which the server writes no local "
-             "file at all.",
+        help="Folder outlook_get_email saves a message into as Markdown for a "
+             "local RAG knowledge base WHEN the call asks for it, i.e. "
+             "save_to_kb=true. Files are named "
+             "'Email - <date> - <subject> (<id>).md' and overwritten if the "
+             "same message is saved again. Blocked (blacklisted) messages are "
+             "never written. Falls back to the OUTLOOK_KB_DIR environment "
+             "variable, then the KB_DIR config constant (default: "
+             "C:\\Eva\\knowledge\\email). Pass 'off' to forbid saving, after "
+             "which the server writes no local file at all.",
+    )
+    parser.add_argument(
+        "--kb-autosave",
+        action="store_true",
+        default=env_flag("OUTLOOK_KB_AUTOSAVE", KB_AUTOSAVE),
+        help="Save EVERY email read with outlook_get_email, without being asked "
+             "(env OUTLOOK_KB_AUTOSAVE=true). Off by default: mail is saved only "
+             "when the call passes save_to_kb=true, so a message skimmed while "
+             "answering a question does not land in the knowledge base. Turn "
+             "this on to restore the pre-5.0.0 behaviour.",
     )
     parser.add_argument(
         "--version",
@@ -1670,12 +1746,12 @@ def main():
     )
     args = parser.parse_args()
 
-    # Optional Markdown knowledge-base mirror. Resolve the folder now and make
-    # sure it is usable so a misconfiguration is caught at startup, not on the
-    # first email read.
-    global KB_DIR
+    # Markdown knowledge-base saving. Resolve the folder now and make sure it is
+    # usable so a misconfiguration is caught at startup, not on the first email
+    # a user asks to keep.
+    KB_AUTOSAVE = args.kb_autosave
     if args.kb_dir:
-        # A DISABLE_KEYWORDS value turns mirroring off; a blank value means
+        # A DISABLE_KEYWORDS value forbids saving; a blank value means
         # "not configured" and leaves the KB_DIR default in place.
         KB_DIR = (None if args.kb_dir.strip().lower() in DISABLE_KEYWORDS
                   else args.kb_dir)
@@ -1685,7 +1761,19 @@ def main():
         except OSError as exc:
             log("FATAL: could not create/use --kb-dir {0}: {1}".format(KB_DIR, exc))
             sys.exit(2)
-        log("Knowledge-base mirroring enabled -> {0}".format(KB_DIR))
+        if KB_AUTOSAVE:
+            log("Knowledge-base AUTOSAVE is on: every email read is saved -> {0}"
+                .format(KB_DIR))
+        else:
+            log("Knowledge-base saving on request only (save_to_kb=true) -> {0}"
+                .format(KB_DIR))
+    else:
+        log("Knowledge-base saving disabled (--kb-dir off); no email is written "
+            "to disk")
+        if KB_AUTOSAVE:
+            log("WARNING: --kb-autosave has no effect while the knowledge-base "
+                "folder is off. Set --kb-dir / OUTLOOK_KB_DIR to a folder to "
+                "enable saving.")
 
     # Load any external blacklist terms and compile the filter BEFORE serving.
     extra_terms = []
