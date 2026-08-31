@@ -104,8 +104,9 @@ and:
   `deeper_levels` tell you which layouts can hold 30-point text, and
   `layouts_meeting_min_font_at_level_1` lists them outright. Choosing the right
   layout is how you obey the 30-point rule without ever setting a font.
-- **`notes`** on every `powerpoint_add_slide`. Without notes the 20-minute
-  estimate has nothing to measure and the review says so.
+- **`notes`** on every slide — one `powerpoint_add_slides` entry per slide, each
+  carrying its own. Without notes the 20-minute estimate has nothing to measure
+  and the review says so.
 - **`powerpoint_review`** before saving, and again after every trim. It resolves
   each run's *effective* font size through the template inheritance chain, so it
   catches the inherited 28-point sub-bullet that reading the file would miss.

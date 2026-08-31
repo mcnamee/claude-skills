@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r"""
-powerpoint.py (v1.0.0) - A single-file MCP (Model Context Protocol) stdio server
+powerpoint.py (v1.1.0) - A single-file MCP (Model Context Protocol) stdio server
 that builds PowerPoint .pptx decks, optionally from your own template, and
 audits them against Guy Kawasaki's 10/20/30 rule.
 
@@ -43,7 +43,12 @@ WHAT IT CAN DO
       the full PowerPoint inheritance chain. A `recommended` block names the
       best layout in THIS template for a title slide, a section divider,
       bulleted content, two-column content and a bare title.
-    - Add slides onto a chosen layout (powerpoint_add_slide), filling the
+    - BUILD A WHOLE DECK IN ONE CALL (powerpoint_add_slides): an ordered list of
+      slides, each with its layout, title, subtitle, bullets, extra placeholder
+      fills, a table and speaker notes, appended in exactly the order given.
+      This is the tool to build a deck with, and the only one whose slide order
+      is guaranteed: see "DECK ORDER" below for why that matters.
+    - Add a single slide onto a chosen layout (powerpoint_add_slide), filling the
       layout's placeholders by name or index: a title, a subtitle, and bullets
       with real outline levels. Unfilled content placeholders are removed by
       default so the deck has no "Click to add text" prompts left in it.
@@ -63,6 +68,36 @@ WHAT IT CAN DO
       --kb-dir): slide titles become headings, bullets become lists, tables
       become Markdown tables and speaker notes are included. Files are named
       'PowerPoint - <name>.md' and overwritten each time.
+
+DECK ORDER - WHY powerpoint_add_slides EXISTS
+    powerpoint_add_slide appends its slide to the END of the deck. That makes
+    the deck's slide order simply the order in which the CALLS REACH this
+    server - and an MCP client is free to dispatch independent tool calls
+    concurrently, in which case their arrival order is NOT the order the model
+    wrote them. Building a ten-slide deck as ten separate add_slide calls is
+    therefore a race, and it can come back with the slides shuffled. (word.py
+    had the same flaw with its one-block-per-call append tools, where it showed
+    up as every heading bunched together ahead of the body text.)
+
+    The follow-up tools make it worse rather than better: powerpoint_set_notes,
+    powerpoint_set_placeholder, powerpoint_add_bullets and powerpoint_add_table
+    all address a slide by slide_index, so a caller that ASSUMES "the third
+    slide I created is index 2" writes its notes onto whichever slide actually
+    landed there.
+
+    Nothing inside a single add_slide call can detect this - the server sees
+    "append a slide" and has no idea what was meant to come before it. So the
+    fix is to stop splitting the sequence: powerpoint_add_slides takes the whole
+    ordered list of slides in ONE request, which cannot be reordered by
+    anything, and each entry carries that slide's own extra placeholder fills,
+    table and notes so no slide_index is ever guessed. Build decks with it; keep
+    powerpoint_add_slide for a genuinely single slide.
+
+    As a safety net for callers still chaining add_slide, three or more calls
+    landing on the same session within APPEND_BURST_SECONDS - the signature of a
+    parallel batch, not of separate conversational turns - adds an
+    `order_warning` to the result, so a shuffle is reported instead of silently
+    shipped.
 
 WHY THE FONT-SIZE AUDIT IS NOT JUST run.font.size
     In a well-built deck almost NO run carries an explicit size: it is inherited
@@ -253,7 +288,7 @@ failed transfer" rule):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 # =============================================================================
 # CONFIGURATION  (all user-editable settings live here, nothing scattered below)
@@ -355,6 +390,21 @@ MAX_SESSIONS = 32                    # guard against runaway open() calls
 MAX_LAYOUTS_RETURNED = 60            # cap powerpoint_list_layouts output
 MAX_FONT_FINDINGS = 80               # cap powerpoint_review's findings list
 
+# powerpoint_add_slide appends ONE slide to the END of the deck, so a deck's
+# slide order is simply the order the calls REACH this server. An MCP client is
+# free to dispatch independent tool calls concurrently, and concurrent calls do
+# not necessarily arrive in the order the model wrote them - which is how a deck
+# comes out with its slides shuffled (and why a slide_index guessed rather than
+# read back can address the wrong slide). powerpoint_add_slides exists to make
+# that impossible: one call, one ordered list of slides. This threshold drives
+# the safety net for callers still using the one-slide-per-call tool: when
+# several of them land on the same session inside this many seconds - the
+# signature of a parallel batch rather than of separate turns - the result
+# carries an order_warning telling the caller to verify the order and switch to
+# powerpoint_add_slides.
+APPEND_BURST_SECONDS = 1.0
+APPEND_BURST_MIN_CALLS = 3           # warn from the Nth rapid append onwards
+
 # powerpoint_open name matching. An exact filename always wins; only when no
 # exact match is found does the server fall back to a FUZZY match on the name,
 # so a near-miss like "quarterly deck" still finds "Quarterly Deck 2024.pptx".
@@ -377,6 +427,7 @@ import sys
 import os
 import re
 import json
+import time
 import uuid
 import difflib
 import argparse
@@ -2074,21 +2125,132 @@ def tool_list_layouts(args):
     }
 
 
-def tool_add_slide(args):
+def _note_single_append(session):
     """
-    Append a slide built on one of the template's layouts, filling that layout's
-    placeholders. Title, subtitle and bullets are all optional; whatever is left
-    empty is removed by default so the deck carries no prompt text.
+    Safety net for powerpoint_add_slide.
+
+    It appends its slide to the END of the deck, so the deck's order is the
+    order the CALLS arrive - and an MCP client may dispatch independent tool
+    calls concurrently, in which case the arrival order is not the order the
+    model wrote them. That is what shuffles a deck.
+
+    We cannot see the intended order from inside a single call, but we CAN spot
+    the shape of a parallel batch: several single appends landing on the same
+    session within a fraction of a second, which no sequential turn-by-turn
+    conversation produces. Returns a warning string (once per burst) or None.
     """
-    session = _get_session(args)
-    prs = session["prs"]
-    layout = _resolve_layout(prs, args.get("layout"))
+    now = time.monotonic()
+    burst = session.get("append_burst")
+    if burst is None or now - burst["last"] > APPEND_BURST_SECONDS:
+        session["append_burst"] = {"last": now, "count": 1, "warned": False}
+        return None
+    burst["last"] = now
+    burst["count"] += 1
+    if burst["warned"] or burst["count"] < APPEND_BURST_MIN_CALLS:
+        return None
+    burst["warned"] = True
+    return (
+        "{} powerpoint_add_slide calls arrived on this session within {:.0f}ms "
+        "of each other, which is what a batch of PARALLEL tool calls looks "
+        "like. Each call appends to the end of the deck, so the slide order is "
+        "whatever order the calls reached the server - not necessarily the order "
+        "they were written in. Check the deck with powerpoint_get_content, fix "
+        "the sequence with powerpoint_move_slide, and build decks with "
+        "powerpoint_add_slides instead: one call, one ordered 'slides' list, "
+        "order guaranteed.".format(burst["count"], APPEND_BURST_SECONDS * 1000)
+    )
+
+
+def _field(where, name):
+    """
+    Name a field for an error message: bare ("bullets") for a single-slide call,
+    qualified ("slides[3].bullets") inside a batch, so a message always points
+    at something the caller can actually find in what they sent.
+    """
+    return name if where is None else "{}.{}".format(where, name)
+
+
+def _normalise_slide_spec(raw, where=None):
+    """
+    Validate one slide request and return a dict ready for _build_slide, or
+    raise a ToolError naming the offending field. Everything that can be checked
+    without touching the deck is checked HERE, so powerpoint_add_slides can
+    validate a whole batch before adding a single slide.
+
+    `where` is None for a single-slide call and "slides[N]" inside a batch.
+    Note the layout is NOT resolved here: that needs the presentation, and
+    _resolve_layout is called by the caller's own validation pass.
+    """
+    if not isinstance(raw, dict):
+        raise ToolError(
+            "{} must be an object describing one slide, e.g. "
+            "{{\"layout\":\"bullets\",\"title\":\"...\",\"bullets\":[\"...\"]}} "
+            "- got {}.".format(where or "a slide", type(raw).__name__))
+
+    spec = {
+        "layout": raw.get("layout"),
+        "title": raw.get("title"),
+        "subtitle": raw.get("subtitle"),
+        "notes": raw.get("notes"),
+        "placeholder": raw.get("placeholder"),
+        "drop_empty_placeholders": bool(raw.get("drop_empty_placeholders", True)),
+        "bullets": _normalise_bullets(
+            raw.get("bullets"), argname=_field(where, "bullets")),
+        "extra": [],
+        "table": None,
+    }
+
+    # Extra placeholder fills - what a two-content layout's second column used
+    # to need a follow-up powerpoint_set_placeholder call (and therefore a
+    # slide_index) for. Keeping it in the same call removes both the extra round
+    # trip and any chance of writing onto the wrong slide.
+    extra = raw.get("placeholders")
+    if extra is not None:
+        if not isinstance(extra, list):
+            raise ToolError(
+                "{} must be a list of {{placeholder, text|bullets}} "
+                "objects.".format(_field(where, "placeholders")))
+        for j, item in enumerate(extra):
+            at = "{}[{}]".format(_field(where, "placeholders"), j)
+            if not isinstance(item, dict):
+                raise ToolError("{} must be an object.".format(at))
+            target = item.get("placeholder")
+            if target is None:
+                raise ToolError(
+                    "{} needs a 'placeholder' (its idx, name or type "
+                    "word).".format(at))
+            if item.get("text") is not None:
+                items = _normalise_bullets(
+                    [str(item["text"])], argname="{}.text".format(at))
+            elif item.get("bullets") is not None:
+                items = _normalise_bullets(
+                    item["bullets"], argname="{}.bullets".format(at))
+            else:
+                raise ToolError("{} needs either 'text' or 'bullets'.".format(at))
+            spec["extra"].append({"placeholder": target, "items": items})
+
+    table = raw.get("table")
+    if table is not None:
+        # Accept either {"rows": [[...]]} or the bare list of rows.
+        rows_data = table.get("rows") if isinstance(table, dict) else table
+        spec["table"] = _normalise_table_rows(
+            rows_data, _field(where, "table"))
+
+    return spec
+
+
+def _build_slide(prs, spec, layout):
+    """
+    Append one slide on `layout` and fill it from a normalised spec. Returns
+    (slide, result_entry). Shared by powerpoint_add_slide and
+    powerpoint_add_slides so both behave identically.
+    """
     slide = prs.slides.add_slide(layout)
 
     filled = []
     warnings = []
 
-    title = args.get("title")
+    title = spec.get("title")
     if title is not None and str(title).strip():
         try:
             ph = _placeholder_lookup(slide, "title")
@@ -2102,7 +2264,7 @@ def tool_add_slide(args):
             _fill_text_frame(ph.text_frame, [{"text": str(title), "level": 0}])
             filled.append({"placeholder": ph.name, "type": _ph_type_name(ph)})
 
-    subtitle = args.get("subtitle")
+    subtitle = spec.get("subtitle")
     if subtitle is not None and str(subtitle).strip():
         ph = None
         for candidate in slide.placeholders:
@@ -2118,10 +2280,10 @@ def tool_add_slide(args):
             _fill_text_frame(ph.text_frame, [{"text": str(subtitle), "level": 0}])
             filled.append({"placeholder": ph.name, "type": "SUBTITLE"})
 
-    bullets = _normalise_bullets(args.get("bullets"))
+    bullets = spec.get("bullets") or []
     if bullets:
-        spec = args.get("placeholder")
-        if spec is None:
+        target = spec.get("placeholder")
+        if target is None:
             # Default to the layout's first body/content placeholder.
             ph = None
             for candidate in slide.placeholders:
@@ -2135,37 +2297,161 @@ def tool_add_slide(args):
                     "each layout's placeholders), or pass 'placeholder' "
                     "explicitly.".format(layout.name))
         else:
-            ph = _placeholder_lookup(slide, spec)
+            ph = _placeholder_lookup(slide, target)
         _fill_text_frame(ph.text_frame, bullets)
         filled.append({"placeholder": ph.name, "type": _ph_type_name(ph),
                        "bullets": len(bullets)})
 
-    notes = args.get("notes")
+    # Extra placeholders (a two-content layout's second column, say). Filled
+    # BEFORE the empty-placeholder sweep, so what they write is not swept away.
+    for item in spec.get("extra") or []:
+        ph = _placeholder_lookup(slide, item["placeholder"])
+        written = _fill_text_frame(ph.text_frame, item["items"], replace=True)
+        filled.append({"placeholder": ph.name, "type": _ph_type_name(ph),
+                       "paragraphs": written})
+
+    notes = spec.get("notes")
     if notes is not None and str(notes).strip():
         slide.notes_slide.notes_text_frame.text = str(notes)
 
+    table_info = None
+    if spec.get("table"):
+        # Before the sweep as well: the table takes over an EMPTY body
+        # placeholder's position, so that placeholder must still be there.
+        table_info = _add_table_to_slide(prs, slide, spec["table"])
+
     removed = []
-    if bool(args.get("drop_empty_placeholders", True)):
+    if spec.get("drop_empty_placeholders", True):
         removed = _drop_empty_content_placeholders(slide)
 
     index = len(prs.slides) - 1
-    result = {
+    entry = {
         "slide_index": index,
         "slide_number": index + 1,
         "layout": layout.name,
         "layout_index": list(prs.slide_layouts).index(layout),
         "filled": filled,
-        "slides": len(prs.slides),
     }
+    if table_info:
+        entry["table"] = table_info
     if removed:
-        result["empty_placeholders_removed"] = removed
+        entry["empty_placeholders_removed"] = removed
     if warnings:
-        result["warnings"] = warnings
-    if len(prs.slides) > KAWASAKI_MAX_SLIDES:
-        result["kawasaki_warning"] = (
-            "This deck now has {} slides, over the {}-slide guideline. Cut, or "
+        entry["warnings"] = warnings
+    return slide, entry
+
+
+def _kawasaki_slide_warning(prs):
+    """The over-10-slides nudge, or None."""
+    if len(prs.slides) <= KAWASAKI_MAX_SLIDES:
+        return None
+    return ("This deck now has {} slides, over the {}-slide guideline. Cut, or "
             "say why the extra slides earn their place.".format(
                 len(prs.slides), KAWASAKI_MAX_SLIDES))
+
+
+def tool_add_slide(args):
+    """
+    Append ONE slide built on one of the template's layouts, filling that
+    layout's placeholders. Title, subtitle and bullets are all optional;
+    whatever is left empty is removed by default so the deck carries no prompt
+    text.
+
+    Building a whole deck this way is a race - see _note_single_append and
+    powerpoint_add_slides.
+    """
+    session = _get_session(args)
+    prs = session["prs"]
+    spec = _normalise_slide_spec(args)
+    layout = _resolve_layout(prs, spec["layout"])
+    _, entry = _build_slide(prs, spec, layout)
+
+    result = dict(entry)
+    result["slides"] = len(prs.slides)
+    if result.get("table"):
+        result["table"]["note"] = _TABLE_NOTE
+    kawasaki = _kawasaki_slide_warning(prs)
+    if kawasaki:
+        result["kawasaki_warning"] = kawasaki
+    order_warning = _note_single_append(session)
+    if order_warning:
+        result["order_warning"] = order_warning
+    return result
+
+
+MAX_BATCH_SLIDES = 200
+
+
+def tool_add_slides(args):
+    """
+    Append an ORDERED list of slides in ONE call.
+
+    This is the tool to build a deck with. powerpoint_add_slide appends its
+    slide to the end of the deck, so the deck's order is the order the CALLS
+    arrive; when a client dispatches a batch of them concurrently, the arrival
+    order is not the order they were written in and the deck comes out shuffled.
+    One call carrying the whole sequence cannot be reordered.
+    """
+    session = _get_session(args)
+    prs = session["prs"]
+    raw_slides = args.get("slides")
+    if not isinstance(raw_slides, list) or not raw_slides:
+        raise ToolError(
+            "'slides' must be a non-empty list, in the order the slides should "
+            "appear in the deck - e.g. [{\"layout\":\"title\",\"title\":\"...\"},"
+            "{\"layout\":\"bullets\",\"title\":\"...\",\"bullets\":[\"...\"],"
+            "\"notes\":\"...\"}].")
+    if len(raw_slides) > MAX_BATCH_SLIDES:
+        raise ToolError(
+            "{} slides is more than this tool accepts in one call ({}). Split "
+            "into consecutive calls - each one appends after the last, so the "
+            "order still holds.".format(len(raw_slides), MAX_BATCH_SLIDES))
+
+    # Validate EVERYTHING - including every layout - before adding any slide, so
+    # a bad entry leaves the deck untouched instead of half-built.
+    plan = []
+    for i, raw in enumerate(raw_slides):
+        where = "slides[{}]".format(i)
+        spec = _normalise_slide_spec(raw, where)
+        try:
+            layout = _resolve_layout(prs, spec["layout"])
+        except ToolError as e:
+            raise ToolError("{}: {}".format(where, e))
+        plan.append((spec, layout))
+
+    added = []
+    slides_before = len(prs.slides)
+    for i, (spec, layout) in enumerate(plan):
+        try:
+            _, entry = _build_slide(prs, spec, layout)
+        except ToolError as e:
+            # A layout-vs-content mismatch (bullets onto a layout with no body
+            # placeholder) can only be caught once the slide exists, so the
+            # batch is unwound to leave the deck exactly as it was - including
+            # the half-built slide add_slide() had already appended. Either the
+            # whole batch lands or none of it does; a deck left half-written is
+            # the state this tool exists to avoid.
+            for index in range(len(prs.slides) - 1, slides_before - 1, -1):
+                _remove_slide_at(prs, index)
+            raise ToolError(
+                "slides[{}] could not be built, so NOTHING was added (the deck "
+                "still has its {} original slide(s)): {} Fix that entry and "
+                "send the whole batch again.".format(i, slides_before, e))
+        entry["index"] = i
+        added.append(entry)
+
+    # A batch is one arrival, so it can never be scrambled - reset the burst
+    # tracker rather than letting a batch count towards it.
+    session["append_burst"] = None
+    log("add_slides: appended {} slides".format(len(added)))
+
+    result = {"added": len(added), "slides_added": added,
+              "slides": len(prs.slides)}
+    if any(e.get("table") for e in added):
+        result["table_note"] = _TABLE_NOTE
+    kawasaki = _kawasaki_slide_warning(prs)
+    if kawasaki:
+        result["kawasaki_warning"] = kawasaki
     return result
 
 
@@ -2243,29 +2529,39 @@ def tool_set_notes(args):
     }
 
 
-def tool_add_table(args):
+_TABLE_NOTE = ("Table text is styled by the deck's table style, so this server "
+               "does not resolve its font size - powerpoint_review reports "
+               "table text as unmeasured rather than guessing.")
+
+
+def _normalise_table_rows(rows_data, argname="rows"):
     """
-    Add a table to a slide. Where the layout has an empty body/content
-    placeholder, the table takes over that placeholder's exact position and size
-    (and the placeholder is removed), so the table lands where the TEMPLATE says
-    content goes rather than at some hard-coded offset.
+    Validate a table's rows and return them as a list of lists of strings.
+    Raises a ToolError naming `argname`, and touches nothing.
     """
-    session = _get_session(args)
-    prs = session["prs"]
-    index = _require(args, "slide_index")
-    slide = _get_slide(prs, index)
-    rows_data = _require(args, "rows")
     if not isinstance(rows_data, list) or not rows_data:
-        raise ToolError("rows must be a non-empty list of row lists, e.g. "
-                        "[[\"Region\",\"Q3\"],[\"APAC\",\"1.2m\"]]")
+        raise ToolError("{} must be a non-empty list of row lists, e.g. "
+                        "[[\"Region\",\"Q3\"],[\"APAC\",\"1.2m\"]]".format(argname))
     table_rows = []
     for r, row in enumerate(rows_data):
         if not isinstance(row, list):
-            raise ToolError("rows[{}] must be a list of cell strings.".format(r))
+            raise ToolError(
+                "{}[{}] must be a list of cell strings.".format(argname, r))
         table_rows.append(["" if c is None else str(c) for c in row])
+    if max(len(r) for r in table_rows) == 0:
+        raise ToolError("{} must contain at least one column.".format(argname))
+    return table_rows
+
+
+def _add_table_to_slide(prs, slide, table_rows):
+    """
+    Draw a validated table (from _normalise_table_rows) onto `slide`. Where the
+    layout has an empty body/content placeholder the table takes over that
+    placeholder's exact position and size (and the placeholder is removed), so
+    the table lands where the TEMPLATE says content goes rather than at some
+    hard-coded offset. Returns a summary dict.
+    """
     n_cols = max(len(r) for r in table_rows)
-    if n_cols == 0:
-        raise ToolError("rows must contain at least one column.")
     n_rows = len(table_rows)
 
     # Prefer the template's own content area.
@@ -2295,15 +2591,26 @@ def tool_add_table(args):
         for c in range(n_cols):
             # Setting cell.text keeps the table style's own fonts and colours.
             table.cell(r, c).text = row[c] if c < len(row) else ""
-    return {
-        "slide_index": index,
-        "rows": n_rows,
-        "columns": n_cols,
-        "placement": placement,
-        "note": "Table text is styled by the deck's table style, so this "
-                "server does not resolve its font size - powerpoint_review "
-                "reports table text as unmeasured rather than guessing.",
-    }
+    return {"rows": n_rows, "columns": n_cols, "placement": placement}
+
+
+def tool_add_table(args):
+    """
+    Add a table to a slide. Where the layout has an empty body/content
+    placeholder, the table takes over that placeholder's exact position and size
+    (and the placeholder is removed), so the table lands where the TEMPLATE says
+    content goes rather than at some hard-coded offset.
+    """
+    session = _get_session(args)
+    prs = session["prs"]
+    index = _require(args, "slide_index")
+    slide = _get_slide(prs, index)
+    table_rows = _normalise_table_rows(_require(args, "rows"))
+    info = _add_table_to_slide(prs, slide, table_rows)
+    result = {"slide_index": index}
+    result.update(info)
+    result["note"] = _TABLE_NOTE
+    return result
 
 
 # --- Slide removal / reordering ----------------------------------------------
@@ -2680,7 +2987,7 @@ TOOLS = [
     },
     {
         "name": "powerpoint_create",
-        "description": "Create a NEW .pptx in the server's output folder and open it as a session, returning the session_id every other tool needs. Pass 'template' to inherit an existing deck's masters, layouts, theme, fonts and colours - the single most important argument here, and the way to make output match a corporate deck. The template is a .pptx/.potx in the templates folder or the presentation root, resolved the same forgiving way as powerpoint_open (bare name, relative path, or a fuzzy near-miss); it is only READ and never modified, and any example slides in it are stripped so you start blank while keeping its styling. Without a template the stock Office design is used. Then call powerpoint_list_layouts to see what the template offers, powerpoint_add_slide per slide, and powerpoint_save.",
+        "description": "Create a NEW .pptx in the server's output folder and open it as a session, returning the session_id every other tool needs. Pass 'template' to inherit an existing deck's masters, layouts, theme, fonts and colours - the single most important argument here, and the way to make output match a corporate deck. The template is a .pptx/.potx in the templates folder or the presentation root, resolved the same forgiving way as powerpoint_open (bare name, relative path, or a fuzzy near-miss); it is only READ and never modified, and any example slides in it are stripped so you start blank while keeping its styling. Without a template the stock Office design is used. Then call powerpoint_list_layouts to see what the template offers, ONE powerpoint_add_slides call carrying the whole ordered deck (a series of separate powerpoint_add_slide calls can arrive out of order and shuffle the slides), and powerpoint_save.",
         "handler": tool_create,
         "inputSchema": {
             "type": "object",
@@ -2718,8 +3025,39 @@ TOOLS = [
         },
     },
     {
+        "name": "powerpoint_add_slides",
+        "description": "Append MANY slides in ONE call, in the exact order given - THE TOOL TO BUILD A DECK WITH. Use it for anything past a single slide, and never fire a series of powerpoint_add_slide calls instead: each of those appends to the END of the deck, so the deck's order is the order the CALLS ARRIVE at the server, and independent tool calls issued together may be dispatched in parallel and arrive in any order - which comes out as a shuffled deck. One call carrying the whole sequence cannot be reordered. Each entry of 'slides' takes exactly what powerpoint_add_slide takes - layout, title, subtitle, bullets, placeholder, notes, drop_empty_placeholders - plus two things that used to need a second call against a slide_index: 'placeholders' (a list of {placeholder, text|bullets} for a two-content layout's other column) and 'table' ({rows: [[...]]}). Every entry, including every layout name, is validated BEFORE any slide is added, so a bad entry leaves the deck untouched and the error names its index. Returns each slide's real slide_index in order, so any later edit addresses the right slide.",
+        "handler": tool_add_slides,
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string"},
+                "slides": {
+                    "type": "array",
+                    "minItems": 1,
+                    "description": "The slides to append, IN DECK ORDER.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "layout": {"type": ["string", "integer"], "description": _LAYOUT_HELP},
+                            "title": {"type": "string", "description": "Text for the layout's title placeholder. Make it the slide's ONE assertion, not a topic label."},
+                            "subtitle": {"type": "string", "description": "Text for the layout's subtitle placeholder, if it has one (title layouts usually do)."},
+                            "bullets": {"type": ["array", "string"], "items": {"type": ["string", "object"]}, "description": _BULLETS_HELP},
+                            "placeholder": {"type": ["string", "integer"], "description": "Optional: which placeholder the bullets go in, by idx, name or type word. Defaults to the layout's first body/content placeholder."},
+                            "placeholders": {"type": "array", "items": {"type": "object"}, "description": "Optional EXTRA placeholder fills, each {\"placeholder\": <idx|name|type word>, \"text\": \"...\"} or {\"placeholder\": ..., \"bullets\": [...]}. This is how a two-content layout's second column is filled without a separate powerpoint_set_placeholder call."},
+                            "table": {"type": "object", "description": "Optional table for this slide: {\"rows\": [[\"Region\",\"Q3\"],[\"APAC\",\"1.2m\"]]}, first row treated as the header. It takes over an empty content placeholder's position, so it lands where the template says content goes."},
+                            "notes": {"type": "string", "description": "Speaker notes for this slide - where the argument lives, so the slide can stay a headline at 30+ points. Also what powerpoint_review times the talk from."},
+                            "drop_empty_placeholders": {"type": "boolean", "default": True, "description": "Remove TEXT placeholders left empty (default true). Picture/table/chart placeholders are never removed."},
+                        },
+                    },
+                },
+            },
+            "required": ["session_id", "slides"],
+        },
+    },
+    {
         "name": "powerpoint_add_slide",
-        "description": "Append a slide built on one of the template's layouts and fill that layout's placeholders - the main content tool. Text goes into PLACEHOLDERS, so the template's own fonts, sizes, colours and positions apply automatically; there is deliberately no way to set a font here, because that is what would break template adherence. Pass 'title', 'subtitle' and/or 'bullets' as the layout supports them, and 'notes' for the speaker notes (which is where the sentences you actually say belong). Unfilled TEXT placeholders are removed by default so the deck carries no 'Click to add text' prompts; picture/table/chart placeholders are always kept so a human can fill them in. Warns when the deck passes the 10-slide guideline.",
+        "description": "Append ONE slide built on one of the template's layouts and fill that layout's placeholders. Use this only for a single slide added on its own - to build a deck, or add any run of two or more slides, use powerpoint_add_slides, which keeps them in order (several add_slide calls issued together can be dispatched in parallel and arrive out of order, shuffling the deck). Text goes into PLACEHOLDERS, so the template's own fonts, sizes, colours and positions apply automatically; there is deliberately no way to set a font here, because that is what would break template adherence. Pass 'title', 'subtitle' and/or 'bullets' as the layout supports them, and 'notes' for the speaker notes (which is where the sentences you actually say belong). Unfilled TEXT placeholders are removed by default so the deck carries no 'Click to add text' prompts; picture/table/chart placeholders are always kept so a human can fill them in. Warns when the deck passes the 10-slide guideline.",
         "handler": tool_add_slide,
         "inputSchema": {
             "type": "object",
@@ -2730,6 +3068,8 @@ TOOLS = [
                 "subtitle": {"type": "string", "description": "Text for the layout's subtitle placeholder, if it has one (title layouts usually do)."},
                 "bullets": {"type": ["array", "string"], "items": {"type": ["string", "object"]}, "description": _BULLETS_HELP},
                 "placeholder": {"type": ["string", "integer"], "description": "Optional: which placeholder the bullets go in, by idx, name or type word ('body', 'content'). Defaults to the layout's first body/content placeholder - only needed for a two-content layout, where you name the second one explicitly."},
+                "placeholders": {"type": "array", "items": {"type": "object"}, "description": "Optional EXTRA placeholder fills, each {\"placeholder\": <idx|name|type word>, \"text\": \"...\"} or {\"placeholder\": ..., \"bullets\": [...]} - a two-content layout's second column, filled in this same call rather than a follow-up powerpoint_set_placeholder."},
+                "table": {"type": "object", "description": "Optional table for this slide: {\"rows\": [[\"Region\",\"Q3\"],[\"APAC\",\"1.2m\"]]}, first row treated as the header. It takes over an empty content placeholder's position, so it lands where the template says content goes."},
                 "notes": {"type": "string", "description": "Speaker notes for this slide. Under the 10/20/30 rule this is where the argument lives, so the slide can stay a headline at 30+ points; it is also what powerpoint_review times the talk from."},
                 "drop_empty_placeholders": {"type": "boolean", "default": True, "description": "Remove TEXT placeholders left empty, so no 'Click to add text' prompt remains (default true). Picture/table/chart placeholders are never removed. Set false to keep empty placeholders for a human to fill in PowerPoint."},
             },
@@ -2738,7 +3078,7 @@ TOOLS = [
     },
     {
         "name": "powerpoint_set_placeholder",
-        "description": "Set the text of ONE placeholder on an existing slide, replacing what is there. Use it to fill in a template's own title slide, correct a line, or write into the second placeholder of a two-content layout. Address the placeholder by its idx, its name, or a type word ('title', 'body', 'content', 'subtitle'). Pass 'text' for a single line, or 'bullets' for several. As everywhere in this server, no font is set - the placeholder and the outline level carry the styling.",
+        "description": "Set the text of ONE placeholder on an existing slide, replacing what is there. Use it to fill in a template's own title slide, correct a line, or write into the second placeholder of a two-content layout. Address the placeholder by its idx, its name, or a type word ('title', 'body', 'content', 'subtitle'). Pass 'text' for a single line, or 'bullets' for several. As everywhere in this server, no font is set - the placeholder and the outline level carry the styling. Take slide_index from powerpoint_get_content or from what powerpoint_add_slides returned, never from an assumption about the order slides were created in; and when the slide is one you are still building, fill its extra placeholders in the same powerpoint_add_slides entry ('placeholders') instead of following up here.",
         "handler": tool_set_placeholder,
         "inputSchema": {
             "type": "object",
@@ -2754,7 +3094,7 @@ TOOLS = [
     },
     {
         "name": "powerpoint_add_bullets",
-        "description": "Append bullets to a placeholder that already has content, without clearing it. Use powerpoint_set_placeholder to replace instead. Defaults to the slide's first body/content placeholder.",
+        "description": "Append bullets to a placeholder that already has content, without clearing it. Use powerpoint_set_placeholder to replace instead. Defaults to the slide's first body/content placeholder. Take slide_index from powerpoint_get_content or from what powerpoint_add_slides returned - never from an assumption about creation order.",
         "handler": tool_add_bullets,
         "inputSchema": {
             "type": "object",
@@ -2783,7 +3123,7 @@ TOOLS = [
     },
     {
         "name": "powerpoint_add_table",
-        "description": "Add a table to a slide from a list of row lists (the first row is the header). Where the layout has an empty body/content placeholder the table takes over that placeholder's exact position and size, so it lands where the TEMPLATE says content goes rather than at a hard-coded offset. Table text is styled by the deck's table style; this server does not override it, and powerpoint_review reports table text as unmeasured rather than guessing its size.",
+        "description": "Add a table to a slide from a list of row lists (the first row is the header). For a slide you are still building, pass the table in its powerpoint_add_slides entry instead, so it needs no slide_index at all. Where the layout has an empty body/content placeholder the table takes over that placeholder's exact position and size, so it lands where the TEMPLATE says content goes rather than at a hard-coded offset. Table text is styled by the deck's table style; this server does not override it, and powerpoint_review reports table text as unmeasured rather than guessing its size.",
         "handler": tool_add_table,
         "inputSchema": {
             "type": "object",
@@ -3291,6 +3631,140 @@ def run_check():
                big_review["minutes"].get("reliable") is False,
                big_review["minutes"])
         tool_close({"session_id": bsid})
+
+        # --- powerpoint_add_slides: one call, guaranteed deck order ----------
+        ordered = tool_create({"filename": "ordered-deck",
+                               "template": "Check Template.pptx"})
+        osid = ordered["session_id"]
+        oprs = SESSIONS[osid]["prs"]
+        batch = tool_add_slides({"session_id": osid, "slides": [
+            {"layout": "title", "title": "One", "subtitle": "Sub",
+             "notes": "Opening remarks."},
+            {"layout": "bullets", "title": "Two",
+             "bullets": ["alpha", {"text": "nested", "level": 1}],
+             "notes": "The argument."},
+            {"layout": "section", "title": "Three"},
+            {"layout": "bullets", "title": "Four",
+             "table": {"rows": [["Region", "Q3"], ["APAC", "1.2m"]]}},
+            {"layout": "bullets", "title": "Five"},
+        ]})
+        expect("add_slides adds every slide",
+               batch["added"] == 5 and batch["slides"] == 5, batch)
+        # THE point of the tool: the slides land in the order they were given.
+        titles = [_slide_title(s) for s in oprs.slides]
+        expect("add_slides preserves deck order",
+               titles == ["One", "Two", "Three", "Four", "Five"], titles)
+        expect("add_slides reports each slide's real index",
+               [e["slide_index"] for e in batch["slides_added"]] == [0, 1, 2, 3, 4],
+               batch["slides_added"])
+        expect("add_slides keeps outline levels",
+               [p.level for p in oprs.slides[1].placeholders[1].text_frame.paragraphs
+                if p.text.strip()] == [0, 1],
+               [(p.text, p.level) for p in
+                oprs.slides[1].placeholders[1].text_frame.paragraphs])
+        expect("add_slides writes speaker notes",
+               oprs.slides[0].notes_slide.notes_text_frame.text ==
+               "Opening remarks.",
+               oprs.slides[0].notes_slide.notes_text_frame.text)
+        expect("a slide's table is built in the same call",
+               any(sh.has_table for sh in oprs.slides[3].shapes) and
+               batch["slides_added"][3]["table"]["columns"] == 2,
+               batch["slides_added"][3].get("table"))
+        expect("add_slides carries the table caveat once",
+               "table_note" in batch, sorted(batch))
+
+        # A second call appends AFTER the first, so order survives batching.
+        tool_add_slides({"session_id": osid,
+                         "slides": [{"layout": "bullets", "title": "Six"}]})
+        expect("a second batch appends after the first",
+               [_slide_title(s) for s in oprs.slides][-1] == "Six",
+               [_slide_title(s) for s in oprs.slides])
+
+        # Validation is all-or-nothing: a bad entry adds no slides at all.
+        before = len(oprs.slides)
+        for bad, needle in (
+            ([{"layout": "bullets", "title": "ok"},
+              {"layout": "No Such Layout"}], "slides[1]"),
+            ([{"layout": "bullets", "bullets": [{"level": 2}]}], "no 'text' key"),
+            ([{"layout": "bullets", "table": {"rows": []}}], "non-empty list"),
+            ([{"layout": "bullets", "placeholders": [{"text": "x"}]}],
+             "needs a 'placeholder'"),
+            (["not an object"], "must be an object"),
+        ):
+            try:
+                tool_add_slides({"session_id": osid, "slides": bad})
+                expect("bad batch refused: {}".format(needle), False, bad)
+            except ToolError as e:
+                expect("bad batch refused ({})".format(needle),
+                       needle in str(e), str(e))
+        expect("a refused batch adds no slides",
+               len(oprs.slides) == before, len(oprs.slides))
+
+        # A layout-vs-content mismatch can only surface once the slide exists,
+        # so the batch must UNWIND rather than leave the deck half-written.
+        try:
+            tool_add_slides({"session_id": osid, "slides": [
+                {"layout": "bullets", "title": "would be added"},
+                {"layout": "blank", "title": "no body", "bullets": ["boom"]},
+                {"layout": "bullets", "title": "never reached"}]})
+            expect("mid-batch failure unwinds the batch", False, "no error")
+        except ToolError as e:
+            expect("mid-batch failure says nothing was added",
+                   "NOTHING was added" in str(e), str(e))
+        expect("mid-batch failure leaves the deck untouched",
+               len(oprs.slides) == before, len(oprs.slides))
+        try:
+            tool_add_slides({"session_id": osid, "slides": []})
+            expect("empty slides list refused", False, "no error raised")
+        except ToolError as e:
+            expect("empty slides list refused", "non-empty list" in str(e), str(e))
+
+        # An extra placeholder fill lands, and survives the empty-placeholder
+        # sweep that would otherwise have removed the placeholder it wrote into.
+        two = tool_add_slides({"session_id": osid, "slides": [{
+            "layout": 3,          # stock 'Two Content'
+            "title": "Columns",
+            "bullets": ["left one"],
+            "placeholders": [{"placeholder": 2, "bullets": ["right one"]}],
+        }]})
+        col_texts = [_shape_text(sh) for sh in oprs.slides[-1].shapes]
+        expect("extra placeholder fill lands on the same slide",
+               any("right one" in t for t in col_texts) and
+               any("left one" in t for t in col_texts), col_texts)
+        expect("extra placeholder is reported as filled",
+               len(two["slides_added"][0]["filled"]) == 3,
+               two["slides_added"][0]["filled"])
+
+        # The burst safety net: a rapid run of single add_slide calls is
+        # reported, once, from the third onwards - and a batch never trips it.
+        SESSIONS[osid]["append_burst"] = None
+        burst = [tool_add_slide({"session_id": osid, "layout": "bullets",
+                                 "title": "B{}".format(i)}) for i in range(4)]
+        expect("first two rapid add_slide calls are not flagged",
+               "order_warning" not in burst[0] and "order_warning" not in burst[1],
+               [sorted(b) for b in burst[:2]])
+        expect("a rapid add_slide burst is flagged",
+               "order_warning" in burst[2] and
+               "powerpoint_add_slides" in burst[2]["order_warning"],
+               burst[2].get("order_warning"))
+        expect("the burst is flagged only once",
+               "order_warning" not in burst[3], burst[3].get("order_warning"))
+        expect("a batched call is never treated as a burst",
+               "order_warning" not in tool_add_slides(
+                   {"session_id": osid,
+                    "slides": [{"layout": "bullets", "title": "Batched"}]}),
+               "batch tripped the burst detector")
+
+        # The order survives a save and reopen - it is in the file, not just in
+        # the session's object graph.
+        osaved = tool_save({"session_id": osid})["saved"]
+        tool_close({"session_id": osid})
+        rsid = tool_open({"path": osaved})["session_id"]
+        reopened = [_slide_title(s) for s in SESSIONS[rsid]["prs"].slides]
+        expect("deck order survives save and reopen",
+               reopened[:6] == ["One", "Two", "Three", "Four", "Five", "Six"],
+               reopened)
+        tool_close({"session_id": rsid})
 
     finally:
         SESSIONS.clear()
