@@ -9,6 +9,7 @@ skills/
   <skill-name>/
     SKILL.md      ← the skill itself
     README.md     ← human-facing docs
+    exemplars/    ← optional: your own documents for the skill to learn from
 ```
 
 That layout is deliberately identical to the one Claude Code expects in
@@ -23,8 +24,14 @@ need nothing installed and work anywhere, including offline.
 
 | Skill | Invoke | What it does |
 |---|---|---|
+| [**brief-writer**](brief-writer) | `/brief-writer` | Drafts a decision or noting brief for a senior executive, following the structure of an exemplar in its own `exemplars/` folder, and finishing with `/polish` |
+| [**email-writer**](email-writer) | `/email-writer` | Drafts an email in your voice, classifying what the email is for and matching that intent to your own sent mail in its `exemplars/` folder, then running `/unslop` |
 | [**polish**](polish) | `/polish` | Rewrites a draft into Australian Public Service style — the Australian Government Style Manual — asking who the reader is and what the medium is, then picking the register from them |
 | [**unslop**](unslop) | `/unslop` | Strips AI-slop markers from writing — padding, tell-tale vocabulary, stock LLM sentence shapes — leaving meaning and voice intact |
+
+`brief-writer` and `email-writer` build on the other two: `brief-writer` runs
+`/polish` as its last step, `email-writer` runs `/unslop`. Install the pair each
+one needs, not just the writer.
 
 ## Install
 
@@ -83,6 +90,22 @@ Remove-Item -Recurse -Force "$env:USERPROFILE\.claude\skills\unslop"
    and, just as importantly, *not* on the wrong ones.
 2. Add a `README.md` beside it for the human-facing explanation.
 3. Add a row to the table above.
+
+**If the skill learns from your own documents**, give it an `exemplars/`
+sub-folder with a `README.md` saying what belongs in it and how to name the
+files, plus a `.gitignore` holding
+
+```gitignore
+*
+!*/
+!README.md
+!.gitignore
+```
+
+so the folder travels with the skill but your real documents never get
+committed. That is how `brief-writer` and `email-writer` work: fill the folder
+on a machine that has your documents, copy the skill folder to the endpoint, and
+it arrives already knowing what your writing looks like.
 
 Skills here are unversioned — they are prose, not an interface anything else
 depends on, so there is no version to keep in sync. (The MCP servers under

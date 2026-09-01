@@ -323,6 +323,8 @@ plugin. Install one by copying its folder:
 
 | Skill | Invoke | What it does |
 |---|---|---|
+| [**brief-writer**](skills/brief-writer) | `/brief-writer` | Drafts a decision or noting brief for a senior executive, following the structure of an exemplar in its own `exemplars/` folder, and finishing with `/polish` |
+| [**email-writer**](skills/email-writer) | `/email-writer` | Drafts an email in your voice, classifying what the email is for and matching that intent to your own sent mail in its `exemplars/` folder, then running `/unslop` |
 | [**polish**](skills/polish) | `/polish` | Rewrites a draft into Australian Public Service style — the Australian Government Style Manual — asking who the reader is and what the medium is, then picking the register from them |
 | [**unslop**](skills/unslop) | `/unslop` | Strips AI-slop markers from writing — padding, tell-tale vocabulary, stock LLM sentence shapes — leaving meaning and voice intact |
 
@@ -336,6 +338,13 @@ Or copy it into `.claude\skills\` inside a project to scope it there. Run
 `/doctor` or restart Claude Code if a newly copied skill doesn't appear. See
 [`skills/README.md`](skills/README.md) for the details and for how to add
 another.
+
+The two writers stack on the other two: `brief-writer` finishes through
+`/polish`, `email-writer` through `/unslop`, so install the pair each one needs.
+Both keep their own `exemplars/` folder inside the skill — your approved briefs,
+your sent mail — which is what makes the copy to an endpoint carry the house
+structure and your voice with it. Nothing in those folders is committed except
+their README.
 
 Note the difference in what they give Claude: a **plugin** adds *tools*, a
 **skill** adds *instructions*. A server's skill describes how to use it — it
@@ -354,10 +363,8 @@ agent goes away and does the work in its own.
 | Agent | Invoke | What it does |
 |---|---|---|
 | [**researcher**](agents/researcher.md) | `@agent-researcher` | Researches a topic across the local knowledge base and Confluence, corroborates what it finds, and returns a cited brief with confidence ratings and named gaps — then offers to capture the brief back into the knowledge base |
-| [**report-writer**](agents/report-writer.md) | `@agent-report-writer` | Turns research or notes into the written content of a report or official brief, following the structure of an exemplar in `C:\Eva\reference\exemplars`, then runs `/unslop` and `/polish` over it, and offers to capture the result |
 
-They chain: `researcher` produces the cited brief, `report-writer` writes it up.
-Each is one Markdown file, so installing is a file copy:
+It is one Markdown file, so installing is a file copy:
 
 ```powershell
 $dest = "$env:USERPROFILE\.claude\agents"
@@ -365,14 +372,13 @@ New-Item -ItemType Directory -Force -Path $dest | Out-Null
 Copy-Item -Force .\agents\researcher.md $dest
 ```
 
-Or into `.claude\agents\` inside a project to scope it there. Both are written
-for this suite rather than as generic agents, and assume it is installed:
-`researcher` searches `knowledge-base` and `confluence` on every question,
-`report-writer` finishes through `unslop` and `polish`. `report-writer`
-produces content and stops there — hand its Markdown to `word` when it needs to
-be a `.docx`, so a wording change doesn't mean rebuilding the document. See
-[`agents/README.md`](agents/README.md) for the details, including how
-`report-writer` picks an exemplar.
+Or into `.claude\agents\` inside a project to scope it there. It is written for
+this suite rather than as a generic agent and assumes it is installed, searching
+`knowledge-base` and `confluence` on every question. What it produces is
+research, not a document: hand the brief to [`/brief-writer`](skills/brief-writer)
+or [`/email-writer`](skills/email-writer) to write up, which keeps you in the
+conversation while the wording is settled. See
+[`agents/README.md`](agents/README.md) for the details.
 
 ## Reference material
 
@@ -390,9 +396,11 @@ corpus and its phrasing comes back with the same authority as a policy. Each
 folder's README covers naming, conventions and how to ask. Document files there
 are **not committed** — see [`eva/.gitignore`](eva/.gitignore).
 
-`report-writer` reads `C:\Eva\reference\exemplars` for the shape of the
-document it is writing, so the index table in that folder's README is what lets
-it pick the right one without opening every file.
+Point at one in the prompt and Claude follows its shape, so the index table in
+that folder's README is what lets it pick the right file without opening every
+one. The [`brief-writer`](skills/brief-writer) and
+[`email-writer`](skills/email-writer) skills keep their own exemplars folder
+instead, inside the skill, so it travels with the folder copy to an endpoint.
 
 ## The assistant's instructions
 

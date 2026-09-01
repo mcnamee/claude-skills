@@ -229,6 +229,8 @@ Two things worth knowing:
   brief on this topic, offer to replace it (`overwrite=true`) under the same
   title rather than leaving two versions to disagree with each other.
 
-**Do not write the report.** This brief is research, and the shape of a report
-depends on its audience and format. Offer the `report-writer` agent for that —
-this output is built to be its input.
+**Do not write the document.** This brief is research, and the shape of what
+gets written from it depends on its audience and format. Offer the right skill
+for that — `/brief-writer` for a paper going to a senior executive,
+`/email-writer` for a note in the user's own voice. This output is built to be
+their input.

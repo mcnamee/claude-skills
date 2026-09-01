@@ -213,8 +213,8 @@ Four things to know:
 
 - **Capture is explicit.** Claude captures when you ask for something to be kept,
   or when you accept an offer to keep it — never on its own initiative. The
-  `researcher` and `report-writer` agents finish by *offering* to capture their
-  output, naming the title they'd use.
+  `researcher` agent finishes by *offering* to capture its brief, naming the
+  title it'd use.
 - **That header stamp matters.** Captured notes come back from later searches
   sitting alongside real policy documents. The stamp is how you — and Claude —
   tell a working note from an authoritative source. Follow a note to the sources

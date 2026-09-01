@@ -1,0 +1,18 @@
+# Exemplar emails are YOUR real sent mail - names, clients, figures and all.
+# This repo is public, so nothing here is committed: every file is ignored
+# except the README that documents what belongs in the folder.
+#
+# That is also what makes the folder itself committable. Git stores no empty
+# directories, so this folder survives in the repo because of its README, and
+# the skill installs with somewhere to put your exemplars already in place.
+#
+# Drop your files in here, then copy the whole skill folder to your endpoint:
+#     Copy-Item -Recurse -Force .\skills\email-writer "$env:USERPROFILE\.claude\skills"
+#
+# To commit one deliberately (a de-identified example worth sharing):
+#     git add -f skills/email-writer/exemplars/"Reporting - Example.md"
+
+*
+!*/
+!README.md
+!.gitignore
