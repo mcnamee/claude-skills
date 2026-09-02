@@ -27,11 +27,12 @@ already in, an agent goes away and does the work in its own.
 | Agent | Invoke | What it does |
 |---|---|---|
 | [**researcher**](researcher.md) | `@agent-researcher` | Researches a topic across the local knowledge base and Confluence, corroborates what it finds, and returns a cited brief with confidence ratings and named gaps — then offers to capture the brief back into the knowledge base |
-| [**report-writer**](report-writer.md) | `@agent-report-writer` | Turns research or notes into the written content of a report or official brief, following the structure of an exemplar in `C:\Eva\reference\exemplars`, then runs `/unslop` and `/polish` over it, and offers to capture the result |
 
-They are built to run back to back: `researcher` produces the cited brief,
-`report-writer` writes it up. Neither needs the other, though —
-`report-writer` will work from any material you give it.
+`researcher` produces the material; writing it up is a skill's job, not an
+agent's. Hand its brief to [`/brief-writer`](../skills/brief-writer) for a paper
+going to an executive, or [`/email-writer`](../skills/email-writer) for a note
+in your own voice. Both keep you in the conversation to iterate, which is where
+writing actually gets done.
 
 ## Install
 
@@ -42,7 +43,6 @@ repo:
 $dest = "$env:USERPROFILE\.claude\agents"
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
 Copy-Item -Force .\agents\researcher.md $dest
-Copy-Item -Force .\agents\report-writer.md $dest
 ```
 
 `New-Item -Force` is there so the first install works before `~\.claude\agents`
@@ -54,7 +54,7 @@ instead:
 ```powershell
 $dest = ".\.claude\agents"
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
-Copy-Item -Force C:\path\to\claude-skills\agents\report-writer.md $dest
+Copy-Item -Force C:\path\to\claude-skills\agents\researcher.md $dest
 ```
 
 Useful when the agent should travel with the code, or when you want to edit it
@@ -76,82 +76,55 @@ Claude delegates on its own when a request matches an agent's `description`:
 
 ```
 research our records retention obligations for contractor emails
-write this up as a brief for the deputy secretary
 ```
 
 To force it, `@`-mention the agent:
 
 ```
 @agent-researcher what does the wiki say about the change freeze?
-@agent-report-writer turn the brief above into a Word document
 ```
 
 Each agent runs in its own context. It sees the job you hand it, not your whole
 conversation, so give it the material rather than pointing back at something
 you said earlier.
 
-## What they build on
+## What it builds on
 
-These are written for this suite, not as generic agents. They assume the rest
-of it is installed and configured, and they don't carry fallback paths for a
-server that isn't there.
+`researcher` is written for this suite, not as a generic agent. It assumes the
+rest of it is installed and configured, and it doesn't carry fallback paths for
+a server that isn't there.
 
 | Agent | Assumes | Optional |
 |---|---|---|
 | `researcher` | [`knowledge-base`](../plugins/knowledge-base) and [`confluence`](../plugins/confluence) plugins | Files you point it at |
-| `report-writer` | [`unslop`](../skills/unslop) and [`polish`](../skills/polish) skills | An exemplar in [`eva/reference/exemplars`](../eva/reference/exemplars); [`word`](../plugins/word) or [`pdf-to-md`](../plugins/pdf-to-md) to read a `.docx` or PDF one |
 
-`researcher` searches both sources on every question — the knowledge base holds
-the settled documents, Confluence holds the working knowledge that never became
-one. What it will not do is fill a gap from its own memory: on an airgapped
-network, a search that comes back empty is a finding, and it reports the
-absence and where it looked.
+It searches both sources on every question — the knowledge base holds the
+settled documents, Confluence holds the working knowledge that never became one.
+What it will not do is fill a gap from its own memory: on an airgapped network,
+a search that comes back empty is a finding, and it reports the absence and
+where it looked.
 
-`report-writer` writes content and returns Markdown. It does not produce Word
-documents. Hand the finished Markdown to [`word`](../plugins/word) for that,
-which keeps writing and formatting as two jobs you can redo independently — a
-wording change shouldn't mean rebuilding a `.docx`.
+### Capturing what it produces
 
-### Capturing what they produce
-
-Both agents finish by **offering** to put their output into the knowledge base
-with `kb_capture` — the brief as `Research - <topic>`, the report as
-`Report - <title>`. They ask; they don't file things on their own. Say yes and
-the next person to ask that question finds the work instead of redoing it.
+`researcher` finishes by **offering** to put its brief into the knowledge base
+with `kb_capture`, as `Research - <topic>`. It asks; it doesn't file things on
+its own. Say yes and the next person to ask that question finds the work instead
+of redoing it.
 
 One thing to watch. A captured note lands in the same index as your real policy
-documents and comes back from the same searches, so both agents stamp theirs as
-agent-written and `researcher` is told to treat any such file as a **prior brief
-rather than a source** — it mines it for leads, then verifies against the
-documents it cites. Without that rule a guess captured in March becomes a
-citation in June.
+documents and comes back from the same searches, so the agent stamps its own as
+agent-written and is told to treat any such file as a **prior brief rather than
+a source** — it mines it for leads, then verifies against the documents it
+cites. Without that rule a guess captured in March becomes a citation in June.
 
-### Exemplars
+### Writing it up
 
-`report-writer` reads the exemplars folder of the Eva working tree
-(`C:\Eva\reference\exemplars`, seeded from
-[`eva/reference/exemplars`](../eva/reference/exemplars)) for the shape of the
-document it is writing. The exemplar supplies **structure and emphasis —
-never content**: section order and headings, how long each section runs, what
-that audience always needs to see. Facts, figures and names come only from the
-material you hand it.
-
-It is worth setting up. An exemplar tells the agent what your readers actually
-expect far better than any generic template, and two or three strong ones — a
-brief, a report, a minute — cover most of what gets asked for.
-
-Fill in the **index table** in
-[`eva/reference/exemplars/README.md`](../eva/reference/exemplars/README.md).
-That one line per file is what lets the agent pick the right exemplar without
-opening every document, which matters because a `.docx` or PDF costs a
-conversion to read.
-`.md` exemplars are the cheapest and the easiest to review, so a Markdown copy
-beside the original earns its keep for anything you reach for often.
-
-The [`templates`](../eva/reference/templates) folder next door is a different
-thing — blank files a document is *built from*, which is the `word` server's
-business.
-`report-writer` will say so rather than treat one as an exemplar.
+The brief is research, not a document. What it becomes depends on the audience:
+[`/brief-writer`](../skills/brief-writer) for a paper going to an executive,
+[`/email-writer`](../skills/email-writer) for a note in your own voice. Both are
+skills rather than agents on purpose — a draft you iterate on in the
+conversation, and each has its own exemplars folder for the shape and the voice
+to follow.
 
 ## Adding an agent
 
@@ -170,7 +143,7 @@ business.
    system prompt — it has no other context.
 3. Add a row to the table above.
 
-Neither agent here sets `tools:`, so both inherit everything the session has.
+The agent here does not set `tools:`, so it inherits everything the session has.
 That is deliberate: naming MCP tools explicitly means an agent silently loses
 access when a server is registered under a different name, which is a worse
 failure than having a tool it doesn't use. Add `model:` if you want to pin one;

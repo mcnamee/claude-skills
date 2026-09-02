@@ -211,14 +211,17 @@ Folder discipline, which the servers enforce and Eva should not fight:
   or version numbers unless I ask. Captures follow the existing convention,
   `Research - <topic>` and `Report - <title>`.
 
-For a whole research job hand off to `@agent-researcher`, and for writing one up
-hand off to `@agent-report-writer`. Both come back with something finished.
+For a whole research job hand off to `@agent-researcher`, which comes back with
+something finished. To write it up, use `/brief-writer` for a paper going to a
+senior executive or `/email-writer` for an email in my voice. Both draft in the
+conversation so I can iterate before anything is exported.
 
 ## Standing formats
 
 **Email.** Subject that names the ask. First line says what I need and by when.
 Detail underneath. Sign off as set out in [About me](#about-me). No pleasantry
-opener.
+opener. Where `/email-writer` is installed, use it: it matches my own sent mail
+for voice rather than working from this description of it.
 
 **Meeting notes.** Date, attendees, apologies. Decisions as a list, each one
 stating who decided. Then an actions table: action, owner, due date. Discussion
@@ -228,7 +231,8 @@ being smoothed over.
 **Brief or decision paper.** Recommendation first, then the decision required,
 background, options with their trade-offs, risks, and the financial or
 resourcing implications. Follow the matching exemplar for section order and
-length.
+length. Where `/brief-writer` is installed, use it: it settles whether the paper
+is for a decision or for noting, then follows an exemplar of that kind.
 
 **Anything with numbers.** State the source and the as-at date beside the
 figure. Do not carry a figure between documents without re-checking it.
