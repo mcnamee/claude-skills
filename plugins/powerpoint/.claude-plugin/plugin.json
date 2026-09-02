@@ -1,7 +1,7 @@
 {
   "name": "powerpoint",
   "displayName": "PowerPoint (.pptx)",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "description": "Build PowerPoint decks that inherit your own template's styling, and audit them against Guy Kawasaki's 10/20/30 rule.",
   "author": {
     "name": "mcnamee"
@@ -19,14 +19,8 @@
     "docs_dir": {
       "type": "directory",
       "title": "Presentations folder",
-      "description": "Folder of .pptx files the server may open and save, searched recursively. REQUIRED - the server refuses to start without it. Defaults to the PowerPoint folder of the Eva working tree; copy the repo's eva\\ folder to C:\\Eva and it exists.",
+      "description": "The single folder of .pptx files the server may open and save, searched recursively. NEW decks are created here too - there is no separate output folder. REQUIRED: the server refuses to start without it. Defaults to the PowerPoint folder of the Eva working tree; copy the repo's eva\\ folder to C:\\Eva and it exists.",
       "default": "C:\\Eva\\documents\\powerpoint"
-    },
-    "output_dir": {
-      "type": "directory",
-      "title": "Output folder",
-      "description": "Where powerpoint_create writes NEW decks, kept separate from the presentations folder so generated files never mix with your source library. Enter 'off' to write new decks into the presentations folder instead.",
-      "default": "C:\\Eva\\output\\powerpoint"
     },
     "templates_dir": {
       "type": "directory",
@@ -57,7 +51,6 @@
       "env": {
         "PYTHONUTF8": "1",
         "POWERPOINT_DOCS_DIR": "${user_config.docs_dir}",
-        "POWERPOINT_OUTPUT_DIR": "${user_config.output_dir}",
         "POWERPOINT_TEMPLATES_DIR": "${user_config.templates_dir}",
         "POWERPOINT_KB_DIR": "${user_config.kb_dir}"
       }

@@ -44,7 +44,6 @@
         "C:\\path\\to\\claude-skills\\plugins\\word\\word.py",
         "--author", "Matt",
         "--docs-dir", "C:\\Eva\\documents\\word",
-        "--output-dir", "C:\\Eva\\output\\word",
         "--templates-dir", "C:\\Eva\\reference\\templates",
         "--kb-dir", "C:\\Eva\\knowledge\\word"
       ],
@@ -55,7 +54,6 @@
       "args": [
         "C:\\path\\to\\claude-skills\\plugins\\powerpoint\\powerpoint.py",
         "--docs-dir", "C:\\Eva\\documents\\powerpoint",
-        "--output-dir", "C:\\Eva\\output\\powerpoint",
         "--templates-dir", "C:\\Eva\\reference\\templates",
         "--kb-dir", "C:\\Eva\\knowledge\\powerpoint"
       ],

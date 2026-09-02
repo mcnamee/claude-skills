@@ -6,7 +6,7 @@ The `powerpoint` plugin's sandbox — every `.pptx` it may open, edit and save.
 |---|---|
 | **Plugin setting** | `powerpoint` → presentations folder (`--docs-dir` / `POWERPOINT_DOCS_DIR`) |
 | **Default** | `C:\Eva\documents\powerpoint` |
-| **Access** | read **and write** — decks are edited in place here |
+| **Access** | read **and write** — decks are edited in place here, and new decks are created here |
 | **Sub-folders** | yes, searched recursively |
 
 This is also the base for relative paths: `"open Kickoff.pptx"` resolves against
@@ -16,16 +16,23 @@ still finds the file.
 
 ## What belongs here
 
-Decks you already have and want Eva to read, review or edit — last quarter's
-board pack, a colleague's draft, the deck you are revising.
+Every `.pptx` in play: decks you already have and want Eva to read, review or
+edit (last quarter's board pack, a colleague's draft), **and** the decks Eva
+builds for you. This is the one presentations folder, so a deck is never
+somewhere else than you expect.
 
-Decks Eva **creates** go to [`..\..\output\powerpoint`](../../output/powerpoint)
-instead, so generated work never mixes with your source library. Blank branded
-templates go to
-[`..\..\reference\templates`](../../reference/templates), which is read-only.
+Blank branded templates are the exception. They go to
+[`..\..\reference\templates`](../../reference/templates), which is read-only,
+so the blanks stay blank.
+
+Sub-folders are searched recursively, so arrange it however suits you (by
+client, by year, a `Drafts\` folder if you like one) and a bare filename still
+finds the deck.
 
 ## What the plugin may write
 
+- **New decks** from `powerpoint_create` land here, at the top level. Ask for a
+  save-as to file one in a sub-folder.
 - **Edits** land in the file itself, here.
 - **A Markdown mirror** of every deck opened or saved goes to
   [`..\..\knowledge\powerpoint`](../../knowledge/powerpoint) — slides *and*

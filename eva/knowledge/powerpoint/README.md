@@ -34,7 +34,7 @@ save. It is a current-state mirror, not a version history.
 
 ## Why the `.pptx` files are not in here
 
-This folder holds text extracted for the index. The decks themselves live in
-[`..\..\documents\powerpoint`](../../documents/powerpoint) (source) and
-[`..\..\output\powerpoint`](../../output/powerpoint) (generated) — a `.pptx`
-dropped in here would simply be ignored by the indexer.
+This folder holds text extracted for the index. The decks themselves all live
+in [`..\..\documents\powerpoint`](../../documents/powerpoint), whether you put
+them there or Eva built them — a `.pptx` dropped in here would simply be ignored
+by the indexer.

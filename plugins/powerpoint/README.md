@@ -6,7 +6,7 @@ rule**.
 
 | | |
 |---|---|
-| **Server** | `powerpoint.py` v1.1.0 |
+| **Server** | `powerpoint.py` v2.0.0 |
 | **pip install** | `python-pptx` (pulls in `lxml`, `Pillow`, `XlsxWriter`, `typing_extensions`) |
 | **Platform** | any (PowerPoint itself is not required) |
 | **Writes to disk** | yes — confined to its configured folders |
@@ -24,12 +24,11 @@ server.
 
 Every folder is pre-filled with its place in the [Eva working
 tree](../../eva) — copy the repo's [`eva/`](../../eva) folder to `C:\Eva` and you
-can accept all four as they stand.
+can accept all three as they stand.
 
 | Prompt | Default | Env var | Purpose |
 |---|---|---|---|
-| Presentations folder | `C:\Eva\documents\powerpoint` | `POWERPOINT_DOCS_DIR` | Sandbox: every open/save must be inside this tree. **Required** — the server refuses to start without it |
-| Output folder | `C:\Eva\output\powerpoint` | `POWERPOINT_OUTPUT_DIR` | Where `powerpoint_create` writes **new** decks. `off` writes them into the presentations folder instead |
+| Presentations folder | `C:\Eva\documents\powerpoint` | `POWERPOINT_DOCS_DIR` | The one folder of `.pptx` files: every open/save must be inside this tree, and **new** decks are created here too. **Required** — the server refuses to start without it |
 | Templates folder | `C:\Eva\reference\templates` | `POWERPOINT_TEMPLATES_DIR` | Blank `.pptx`/`.potx` templates new decks are created from — **read-only**. Shared with the `word` plugin. `off` for no templates |
 | Knowledge-base folder | `C:\Eva\knowledge\powerpoint` | `POWERPOINT_KB_DIR` | Mirrors every deck opened, created or saved to Markdown — slides *and* speaker notes — which is what makes it searchable. `off` to disable mirroring |
 | Python interpreter | — | — | **Required.** Absolute path to the `python.exe` that has `python-pptx` installed |
@@ -50,9 +49,8 @@ Precedence is **CLI flag > environment variable > constant in the file**.
 
 | CLI flag | Env var | Purpose |
 |---|---|---|
-| `--docs-dir` | `POWERPOINT_DOCS_DIR` | **Required.** Path sandbox: every open/save must be inside this directory tree, and the server refuses to start without one (`--check` is exempt — the self-test sandboxes itself to its own temp folder). Falls back to the `DOCS_DIR` config value, default `C:\Eva\documents\powerpoint` |
-| `--output-dir` | `POWERPOINT_OUTPUT_DIR` | Folder where `powerpoint_create` writes **new** decks, kept **separate** from the knowledge-base folder. Falls back to the `OUTPUT_DIR` config value, default `C:\Eva\output\powerpoint`; pass `off` to fall back to the presentation root. Also a permitted open/save location, so created decks can be reopened and edited |
-| `--templates-dir` | `POWERPOINT_TEMPLATES_DIR` | Folder of blank `.pptx`/`.potx` templates. Falls back to the `TEMPLATES_DIR` config value, default `C:\Eva\reference\templates`; pass `off` for no templates root. A **read-only** third root: its files can be listed, opened and passed as `powerpoint_create`'s `template`, but **every save into it is refused**. Must be separate from the presentations and output folders — the server refuses to start otherwise. A folder you configured yourself that does not exist is fatal; the built-in default merely not existing yet logs a warning and runs without templates |
+| `--docs-dir` | `POWERPOINT_DOCS_DIR` | **Required.** Path sandbox *and* the folder `powerpoint_create` writes **new** decks into — there is no separate output folder. Every open/save must be inside this directory tree, and the server refuses to start without one (`--check` is exempt — the self-test sandboxes itself to its own temp folder). Falls back to the `DOCS_DIR` config value, default `C:\Eva\documents\powerpoint` |
+| `--templates-dir` | `POWERPOINT_TEMPLATES_DIR` | Folder of blank `.pptx`/`.potx` templates. Falls back to the `TEMPLATES_DIR` config value, default `C:\Eva\reference\templates`; pass `off` for no templates root. A **read-only** second root: its files can be listed, opened and passed as `powerpoint_create`'s `template`, but **every save into it is refused**. Must be separate from the presentations folder — the server refuses to start otherwise. A folder you configured yourself that does not exist is fatal; the built-in default merely not existing yet logs a warning and runs without templates |
 | `--kb-dir` | `POWERPOINT_KB_DIR` | **Every deck opened, created or saved** is *also* written as Markdown into this folder for a local RAG knowledge base. Falls back to the `KB_DIR` config value, default `C:\Eva\knowledge\powerpoint` — inside the `knowledge-base` server's documents folder, so mirrored decks are actually indexed. Files are named `PowerPoint - <name>.md` and overwritten each time. A mirror failure is logged and reported on the result, never allowed to fail the operation. Pass `off` to disable |
 | `--check` | — | Run an offline create/build/save/reopen/audit self-test and exit (no server) |
 | `--version` | — | Print version and exit (works even without `python-pptx` installed) |
@@ -173,8 +171,8 @@ name returns the tied candidates rather than guessing.
 
 | Tool | Does |
 |---|---|
-| `powerpoint_list_presentations` | List decks and templates, each with its `location` (`docs`/`output`/`templates`) |
-| `powerpoint_create` | New deck in the output folder, optionally inheriting a `template`'s design |
+| `powerpoint_list_presentations` | List decks and templates, each with its `location` (`docs`/`templates`) |
+| `powerpoint_create` | New deck in the presentations folder, optionally inheriting a `template`'s design |
 | `powerpoint_open` | Open an existing deck (or inspect a template) |
 | `powerpoint_list_layouts` | The template's layouts, placeholders, roles and **effective font sizes** |
 | **`powerpoint_add_slides`** | **Append MANY slides in one call, in order** — the tool to build a deck with |

@@ -198,12 +198,14 @@ from memory.
 
 Folder discipline, which the servers enforce and Eva should not fight:
 
-- New documents and decks go to [`output\`](output). Never write into
-  [`documents\`](documents), which is my library.
+- [`documents\`](documents) holds one folder per file type, and each is the only
+  folder its plugin can touch. New documents and decks are created there too,
+  alongside my own: there is no separate output folder, so nothing needs moving
+  afterwards and nothing needs deciding first.
 - [`reference\exemplars`](reference/exemplars) shows the **shape** of a
   document. It never supplies content.
 - [`reference\templates`](reference/templates) is read-only. A new document is
-  built from a template and saved into `output\`.
+  built from a template and saved into `documents\`.
 - [`knowledge\`](knowledge) is the only indexed root, and holds Markdown only.
 - Word and PowerPoint sessions hold a file in memory. Save and close them, and
   never overwrite a document I already have without asking.

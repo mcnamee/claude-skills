@@ -5,7 +5,7 @@ native Word styles, and filling out templates.
 
 | | |
 |---|---|
-| **Server** | `word.py` v5.1.0 |
+| **Server** | `word.py` v6.0.0 |
 | **pip install** | `python-docx` (pulls in `lxml` and `typing_extensions`) |
 | **Platform** | any (Word itself is not required) |
 | **Writes to disk** | yes — the only write-capable server in the suite |
@@ -22,12 +22,11 @@ installed with the server.
 
 Every folder is pre-filled with its place in the [Eva working
 tree](../../eva) — copy the repo's [`eva/`](../../eva) folder to `C:\Eva` and
-you can accept all four as they stand.
+you can accept all three as they stand.
 
 | Prompt | Default | Env var | Purpose |
 |---|---|---|---|
-| Documents folder | `C:\Eva\documents\word` | `MSWORD_DOCS_DIR` | Sandbox: every open/save must be inside this tree. **Required** — the server refuses to start without it |
-| Output folder | `C:\Eva\output\word` | `MSWORD_OUTPUT_DIR` | Where `msword_create` writes **new** documents. `off` writes them into the documents folder instead |
+| Documents folder | `C:\Eva\documents\word` | `MSWORD_DOCS_DIR` | The one folder of `.docx` files: every open/save must be inside this tree, and **new** documents are created here too. **Required** — the server refuses to start without it |
 | Templates folder | `C:\Eva\reference\templates` | `MSWORD_TEMPLATES_DIR` | Blank `.docx` templates new documents are created from — **read-only**. `off` for no templates |
 | Knowledge-base folder | `C:\Eva\knowledge\word` | `MSWORD_KB_DIR` | Mirrors every document opened, created or saved to Markdown, which is what makes it searchable. `off` to disable mirroring |
 | Tracked-change author | — | `MSWORD_AUTHOR` | Name stamped on tracked changes |
@@ -49,12 +48,11 @@ Precedence is **CLI flag > environment variable > constant in the file**.
 
 | CLI flag | Env var | Purpose |
 |---|---|---|
-| `--docs-dir` | `MSWORD_DOCS_DIR` | **Required.** Path sandbox: every open/save must be inside this directory tree, and the server refuses to start without one (`--check` is exempt — the self-test sandboxes itself to its own temp folder). Falls back to the `DOCS_DIR` config value, default `C:\Eva\documents\word`. This is the only write-capable server in the suite, and the model chooses the open/save paths |
-| `--output-dir` | `MSWORD_OUTPUT_DIR` | Folder where `msword_create` writes **new** `.docx` files, kept **separate** from the knowledge-base folder. Falls back to the `OUTPUT_DIR` config value, default `C:\Eva\output\word`; pass `off` to fall back to the document root instead. Also treated as a permitted open/save location so created documents can be reopened and edited |
-| `--templates-dir` | `MSWORD_TEMPLATES_DIR` | Folder of blank `.docx` templates. Falls back to the `TEMPLATES_DIR` config value, default `C:\Eva\reference\templates`; pass `off` for no templates root. A **read-only** third root: its files can be listed, opened and passed as `msword_create`'s `template`, but **every save into it is refused**, so templates stay blank. Must be separate from the documents and output folders — the server refuses to start otherwise. A folder you configured yourself that does not exist is fatal; the built-in default merely not existing yet logs a warning and runs without templates |
+| `--docs-dir` | `MSWORD_DOCS_DIR` | **Required.** Path sandbox *and* the folder `msword_create` writes **new** documents into — there is no separate output folder. Every open/save must be inside this directory tree, and the server refuses to start without one (`--check` is exempt — the self-test sandboxes itself to its own temp folder). Falls back to the `DOCS_DIR` config value, default `C:\Eva\documents\word`. This is the only write-capable server in the suite, and the model chooses the open/save paths |
+| `--templates-dir` | `MSWORD_TEMPLATES_DIR` | Folder of blank `.docx` templates. Falls back to the `TEMPLATES_DIR` config value, default `C:\Eva\reference\templates`; pass `off` for no templates root. A **read-only** second root: its files can be listed, opened and passed as `msword_create`'s `template`, but **every save into it is refused**, so templates stay blank. Must be separate from the documents folder — the server refuses to start otherwise. A folder you configured yourself that does not exist is fatal; the built-in default merely not existing yet logs a warning and runs without templates |
 | `--kb-dir` | `MSWORD_KB_DIR` | **Every document opened, created or saved** is *also* written out as a Markdown file into this folder for a local RAG knowledge base. Falls back to the `KB_DIR` config value, default `C:\Eva\knowledge\word` — which sits inside the `knowledge-base` server's documents folder, so mirrored documents are actually indexed. Files are named `Word - <name>.md` and overwritten each time; the folder is created if missing. A mirror failure is logged and reported on the result, never allowed to fail the open or the save. Pass `off` to disable mirroring |
 | `--author` | `MSWORD_AUTHOR` | Author name stamped on Word tracked changes. Falls back to the `TRACKED_CHANGE_AUTHOR` config value. Can also be overridden per-call via the `author` argument on the editing tools |
-| `--check` | — | Run an offline open/edit/save/reopen self-test and exit (no server). It sandboxes itself entirely to its own temp folders, so it never touches your documents, output, templates or knowledge-base folders (before v5.1.0 it mirrored its scratch documents into the real knowledge-base folder) |
+| `--check` | — | Run an offline open/edit/save/reopen self-test and exit (no server). It sandboxes itself entirely to its own temp folders, so it never touches your documents, templates or knowledge-base folders (before v5.1.0 it mirrored its scratch documents into the real knowledge-base folder) |
 | `--version` | — | Print version and exit (works even without `python-docx` installed) |
 
 ## What it does well
@@ -144,31 +142,33 @@ accepting/rejecting adds or removes the paragraph itself. Changes can be
 accepted/rejected all at once or individually by id. While changes are pending,
 `msword_get_content`/`msword_search` show the final ("No Markup") view.
 
-**Creating documents.** `msword_create` makes a new `.docx` in the
-`--output-dir` folder (falling back to the document root) and opens it as a
-session; build it up with `msword_add_content` and persist with `msword_save`
-(omit its `path` to save in place). Any directory part in the requested filename
-is stripped, so new files always land inside the output folder.
+**Creating documents.** `msword_create` makes a new `.docx` in the **documents
+folder** and opens it as a session; build it up with `msword_add_content` and
+persist with `msword_save` (omit its `path` to save in place). Any directory
+part in the requested filename is stripped, so new files land at the top of the
+documents folder — to file one in a sub-folder, save-as with
+`msword_save(path: "Reports/Q3.docx")`. There is no separate output folder: what
+Eva writes sits in the same library as what you gave it.
 
 **From a template.** Pass `template` to `msword_create` to base the new document
 on an existing one — a corporate letterhead, report layout or contract
 boilerplate. The template is a `.docx` in the **templates folder** or the
 document root, named the same forgiving way as `msword_open` (bare name,
 relative path, or a fuzzy near-miss); its styles, headers/footers, page setup
-and boilerplate are inherited into the new file, which is written to the output
-folder. **The template file itself is never modified**, and the result includes
+and boilerplate are inherited into the new file, which is written into the
+documents folder. **The template file itself is never modified**, and the result includes
 the resolved `template` so you can confirm the right one was used. `.docx`
 templates only (Word's `.dotx` is not supported — save the template as `.docx`).
 
 **A templates folder of its own.** `--templates-dir` (by default
 `C:\Eva\reference\templates`) stops templates being ordinary documents that
 happen to live in the docs folder. The folder becomes a
-**read-only** third root: `msword_list_documents` reports each file's `location`
-(`docs` / `output` / `templates`) and takes a `location: "templates"` filter to
+**read-only** second root: `msword_list_documents` reports each file's `location`
+(`docs` / `templates`) and takes a `location: "templates"` filter to
 list just the blanks; templates can be opened and inspected (`msword_list_styles`
 on one is how you learn what the corporate bullet style is really called); and
 **every save into the folder is refused** — save-as *and* save-in-place on a
-template opened by mistake. New documents always land in the output folder.
+template opened by mistake. New documents always land in the documents folder.
 Pass `off` and templates are resolved from the docs folder like any other
 document.
 
@@ -199,11 +199,11 @@ knowledge base if somebody later re-opened the `.docx`.
 
 ## File access
 
-Open/save only inside the documents folder (`C:\Eva\documents\word`) and the
-output folder (`C:\Eva\output\word`); the templates folder
-(`C:\Eva\reference\templates`) is **readable but never writable**; new
-documents written to the output folder; Markdown mirrored to the knowledge-base
-folder (`C:\Eva\knowledge\word`) on open, create and save. Paths are
+Open/save only inside the documents folder (`C:\Eva\documents\word`), which is
+also where **new** documents are written; the templates folder
+(`C:\Eva\reference\templates`) is **readable but never writable**; Markdown
+mirrored to the knowledge-base folder (`C:\Eva\knowledge\word`) on open, create
+and save. Paths are
 resolved (symlinks included) before the containment check, so a symlink dropped
 inside a configured folder cannot reach files outside it.
 
@@ -214,8 +214,8 @@ inside a configured folder cannot reach files outside it.
 3. "What Word documents do I have?" / "I'm not sure of the exact file name." / "What templates can I start from?" → `msword_list_documents` (optionally with a `query`, or `location: "templates"` for just the blanks), then `msword_open` on the one you want
 4. "Open the proposal.docx and show me its full text." → `msword_open` + `msword_get_content`
 5. "Open every .docx in my docs folder so it gets mirrored into the RAG knowledge base as Markdown." → `msword_open` with `--kb-dir` set (each open writes `Word - <name>.md`; so does each create and save)
-6. "Create a new status report document and draft it with a title, headings and a summary table, then save it to my generated-docs folder." → `msword_create` (writes to `--output-dir`) + **one** `msword_add_content` call listing the blocks in order + `msword_save`
-7. "Create a Q3 report from my report template." → `msword_create` with `template: "Report Template.docx"` (found in the templates folder or the docs folder; inherits the template's styles/headers/boilerplate into a new file, which lands in the output folder — the template is left untouched) + `msword_add_content` + `msword_save`
+6. "Create a new status report document and draft it with a title, headings and a summary table." → `msword_create` (writes into `--docs-dir`) + **one** `msword_add_content` call listing the blocks in order + `msword_save`
+7. "Create a Q3 report from my report template." → `msword_create` with `template: "Report Template.docx"` (found in the templates folder or the docs folder; inherits the template's styles/headers/boilerplate into a new file, which lands in the documents folder — the template is left untouched) + `msword_add_content` + `msword_save`
 8. "Use my agenda template and fill it out for Monday's meeting — one row per item." → `msword_create` with `template: "Agenda Template.docx"` + `msword_replace_text` (placeholders) + `msword_add_table_row` (with `copy_from_row` to clone the example row) per item + `msword_set_cell` + `msword_delete_table_row` (drop leftover example rows) + `msword_save`
 9. "Find every mention of 'Acme Corp' in the contract and replace it with 'Acme Corporation'." → `msword_search` + `msword_replace_text`
 10. "Add a 'Next Steps' heading and a summary paragraph to the end of the report, then save it." → `msword_add_content` with both blocks in one call (a heading and its paragraph sent as two separate calls can land in either order) + `msword_save`
@@ -261,11 +261,11 @@ inside a configured folder cannot reach files outside it.
   ```
 - **Server won't start after setting a templates folder** — the log says which
   of the two guards fired: the folder doesn't exist (check the path), or it is
-  the same as (or contains) the documents/output folder, which would block every
-  save. Give templates a folder of their own.
+  the same as (or contains) the documents folder, which would block every save.
+  Give templates a folder of their own.
 - **"Saving into the templates folder is not allowed"** — working as intended:
   templates are read-only. Create the document with `msword_create`
-  (`template: "..."`), which writes to the output folder, instead of opening the
-  template and saving it.
+  (`template: "..."`), which writes into the documents folder, instead of
+  opening the template and saving it.
 - For airgapped installs, the docstring at the top of `word.py` walks through
   sideloading the wheels.
