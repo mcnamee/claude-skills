@@ -6,7 +6,7 @@ rule**.
 
 | | |
 |---|---|
-| **Server** | `powerpoint.py` v2.0.0 |
+| **Server** | `powerpoint.py` v3.0.0 |
 | **pip install** | `python-pptx` (pulls in `lxml`, `Pillow`, `XlsxWriter`, `typing_extensions`) |
 | **Platform** | any (PowerPoint itself is not required) |
 | **Writes to disk** | yes — confined to its configured folders |
@@ -29,7 +29,7 @@ can accept all three as they stand.
 | Prompt | Default | Env var | Purpose |
 |---|---|---|---|
 | Presentations folder | `C:\Eva\documents\powerpoint` | `POWERPOINT_DOCS_DIR` | The one folder of `.pptx` files: every open/save must be inside this tree, and **new** decks are created here too. **Required** — the server refuses to start without it |
-| Templates folder | `C:\Eva\reference\templates` | `POWERPOINT_TEMPLATES_DIR` | Blank `.pptx`/`.potx` templates new decks are created from — **read-only**. Shared with the `word` plugin. `off` for no templates |
+| Templates folder | `C:\Eva\templates\powerpoint` | `POWERPOINT_TEMPLATES_DIR` | Blank `.pptx`/`.potx` templates new decks are created from — **read-only**. `off` for no templates |
 | Knowledge-base folder | `C:\Eva\knowledge\powerpoint` | `POWERPOINT_KB_DIR` | Mirrors every deck opened, created or saved to Markdown — slides *and* speaker notes — which is what makes it searchable. `off` to disable mirroring |
 | Python interpreter | — | — | **Required.** Absolute path to the `python.exe` that has `python-pptx` installed |
 
@@ -50,7 +50,7 @@ Precedence is **CLI flag > environment variable > constant in the file**.
 | CLI flag | Env var | Purpose |
 |---|---|---|
 | `--docs-dir` | `POWERPOINT_DOCS_DIR` | **Required.** Path sandbox *and* the folder `powerpoint_create` writes **new** decks into — there is no separate output folder. Every open/save must be inside this directory tree, and the server refuses to start without one (`--check` is exempt — the self-test sandboxes itself to its own temp folder). Falls back to the `DOCS_DIR` config value, default `C:\Eva\documents\powerpoint` |
-| `--templates-dir` | `POWERPOINT_TEMPLATES_DIR` | Folder of blank `.pptx`/`.potx` templates. Falls back to the `TEMPLATES_DIR` config value, default `C:\Eva\reference\templates`; pass `off` for no templates root. A **read-only** second root: its files can be listed, opened and passed as `powerpoint_create`'s `template`, but **every save into it is refused**. Must be separate from the presentations folder — the server refuses to start otherwise. A folder you configured yourself that does not exist is fatal; the built-in default merely not existing yet logs a warning and runs without templates |
+| `--templates-dir` | `POWERPOINT_TEMPLATES_DIR` | Folder of blank `.pptx`/`.potx` templates. Falls back to the `TEMPLATES_DIR` config value, default `C:\Eva\templates\powerpoint`; pass `off` for no templates root. A **read-only** second root: its files can be listed, opened and passed as `powerpoint_create`'s `template`, but **every save into it is refused**. Must be separate from the presentations folder — the server refuses to start otherwise. A folder you configured yourself that does not exist is fatal; the built-in default merely not existing yet logs a warning and runs without templates |
 | `--kb-dir` | `POWERPOINT_KB_DIR` | **Every deck opened, created or saved** is *also* written as Markdown into this folder for a local RAG knowledge base. Falls back to the `KB_DIR` config value, default `C:\Eva\knowledge\powerpoint` — inside the `knowledge-base` server's documents folder, so mirrored decks are actually indexed. Files are named `PowerPoint - <name>.md` and overwritten each time. A mirror failure is logged and reported on the result, never allowed to fail the operation. Pass `off` to disable |
 | `--check` | — | Run an offline create/build/save/reopen/audit self-test and exit (no server) |
 | `--version` | — | Print version and exit (works even without `python-pptx` installed) |
@@ -256,7 +256,7 @@ obvious.
 ## Making a template this server can use
 
 Put your branded deck in the templates folder (see
-[`eva/reference/templates`](../../eva/reference/templates)) and:
+[`eva/templates/powerpoint`](../../eva/templates/powerpoint)) and:
 
 - **Define the layouts you want used**, and name them clearly. Role detection
   reads the placeholders, so a `Chapter Opener` with a title and one body

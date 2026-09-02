@@ -1,7 +1,7 @@
 {
   "name": "powerpoint",
   "displayName": "PowerPoint (.pptx)",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "Build PowerPoint decks that inherit your own template's styling, and audit them against Guy Kawasaki's 10/20/30 rule.",
   "author": {
     "name": "mcnamee"
@@ -25,8 +25,8 @@
     "templates_dir": {
       "type": "directory",
       "title": "Templates folder",
-      "description": "Folder of blank .pptx/.potx templates new decks are created from - the same folder the word plugin uses, since each server reads only the file types it understands. Read-only: templates can be opened and used as a starting point, never saved over. Enter 'off' to run with no templates.",
-      "default": "C:\\Eva\\reference\\templates"
+      "description": "Folder of blank .pptx/.potx templates new decks are created from. Read-only: templates can be opened and used as a starting point, never saved over, and it must be separate from the presentations folder. Enter 'off' to run with no templates.",
+      "default": "C:\\Eva\\templates\\powerpoint"
     },
     "kb_dir": {
       "type": "directory",

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r"""
-powerpoint.py (v2.0.0) - A single-file MCP (Model Context Protocol) stdio server
+powerpoint.py (v3.0.0) - A single-file MCP (Model Context Protocol) stdio server
 that builds PowerPoint .pptx decks, optionally from your own template, and
 audits them against Guy Kawasaki's 10/20/30 rule.
 
@@ -33,7 +33,7 @@ WHAT IT CAN DO
       result is flagged (fuzzy_matched) so the caller can confirm the pick.
       List what is available with powerpoint_list_presentations.
     - Keep blank templates in a folder of their own with --templates-dir
-      (by default C:\Eva\reference\templates). It is a READ-ONLY second root:
+      (by default C:\Eva\templates\powerpoint). It is a READ-ONLY second root:
       its files can be listed, opened and used as the base for
       powerpoint_create, but every attempt to SAVE over one is refused, so a
       template cannot be turned into someone's half-finished deck.
@@ -236,7 +236,7 @@ WHAT IT CANNOT DO
     tree, so a stock C:\Eva install needs no path passed at all. To override one
     (flag beats environment variable beats the CONFIG constant):
 
-        claude mcp add powerpoint --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\powerpoint.py --docs-dir D:\Eva\documents\powerpoint --templates-dir D:\Eva\reference\templates --kb-dir D:\Eva\knowledge\powerpoint
+        claude mcp add powerpoint --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\powerpoint.py --docs-dir D:\Eva\documents\powerpoint --templates-dir D:\Eva\templates\powerpoint --kb-dir D:\Eva\knowledge\powerpoint
 
     The --docs-dir folder is REQUIRED (flag, POWERPOINT_DOCS_DIR, or the
     DOCS_DIR constant - default C:\Eva\documents\powerpoint): all open/save
@@ -245,10 +245,10 @@ WHAT IT CANNOT DO
     presentations - there is no separate output folder, so a deck Eva builds
     sits alongside the ones you gave it.
     The --templates-dir folder (POWERPOINT_TEMPLATES_DIR / TEMPLATES_DIR -
-    default C:\Eva\reference\templates) holds blank .pptx/.potx templates. It is
-    readable like the presentation root but NEVER writable. It is shared with
-    the `word` plugin: Word reads the .docx files in it and ignores the rest,
-    this server reads the .pptx/.potx files and ignores the rest.
+    default C:\Eva\templates\powerpoint) holds blank .pptx/.potx templates. It
+    is readable like the presentation root but NEVER writable. It is this
+    server's own folder: the `word` plugin has its own alongside it, at
+    C:\Eva\templates\word.
     The --kb-dir folder (POWERPOINT_KB_DIR / KB_DIR - default
     C:\Eva\knowledge\powerpoint) turns on Markdown mirroring for a local RAG
     knowledge base, on open, create and save; pass 'off' to disable.
@@ -289,7 +289,7 @@ failed transfer" rule):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "2.0.0"
+__version__ = "3.0.0"
 
 # =============================================================================
 # CONFIGURATION  (all user-editable settings live here, nothing scattered below)
@@ -327,10 +327,12 @@ DOCS_DIR = r"C:\Eva\documents\powerpoint"
 #   - every SAVE whose target lands inside it is REFUSED, so a template cannot
 #     be overwritten with a filled-in copy of itself. New decks always go to
 #     DOCS_DIR.
-# This is the SAME folder the `word` plugin uses: each server reads the file
-# types it understands and ignores the rest, so one templates folder serves
-# both. Default: the Eva working tree's templates folder.
-TEMPLATES_DIR = r"C:\Eva\reference\templates"
+# One folder per plugin, mirroring DOCS_DIR: the `word` plugin's blanks sit
+# beside these in C:\Eva\templates\word. The server also refuses to start if
+# this folder IS - or contains - DOCS_DIR, because that arrangement would refuse
+# every save.
+# Default: the powerpoint\ folder of the Eva working tree's templates zone.
+TEMPLATES_DIR = r"C:\Eva\templates\powerpoint"
 
 # OPTIONAL knowledge-base (RAG) folder. If set, EVERY deck opened, created or
 # saved is ALSO written out as a Markdown file into this folder, the same way
@@ -3815,8 +3817,8 @@ def main():
              "listed, opened and passed as powerpoint_create's 'template', but "
              "nothing can be saved over them. Falls back to the "
              "POWERPOINT_TEMPLATES_DIR environment variable, then the "
-             "TEMPLATES_DIR config value (default: C:\\Eva\\reference\\templates "
-             "- the same folder the word plugin uses); pass 'off' to run with no "
+             "TEMPLATES_DIR config value (default: "
+             "C:\\Eva\\templates\\powerpoint); pass 'off' to run with no "
              "templates root at all."
     )
     parser.add_argument(

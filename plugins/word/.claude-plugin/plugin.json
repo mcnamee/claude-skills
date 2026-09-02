@@ -1,7 +1,7 @@
 {
   "name": "word",
   "displayName": "Word (.docx)",
-  "version": "6.0.0",
+  "version": "7.0.0",
   "description": "Read, edit and create Word .docx files - including Word tracked changes, native styles and filling out templates.",
   "author": {
     "name": "mcnamee"
@@ -25,7 +25,7 @@
       "type": "directory",
       "title": "Templates folder",
       "description": "Folder of blank .docx templates new documents are created from. Read-only: templates can be opened and used as a starting point, never saved over, and it must be separate from the documents folder. Enter 'off' to run with no templates.",
-      "default": "C:\\Eva\\reference\\templates"
+      "default": "C:\\Eva\\templates\\word"
     },
     "kb_dir": {
       "type": "directory",

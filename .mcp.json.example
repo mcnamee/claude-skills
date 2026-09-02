@@ -21,9 +21,9 @@
     "    other local users in process listings.",
     "  - Pass 'off' to an optional folder to switch that feature off, e.g.",
     "    '--kb-dir', 'off' on outlook to keep no local copy of any email.",
-    "  - 'word' and 'powerpoint' share ONE templates folder,",
-    "    C:\\Eva\\reference\\templates. Each reads only the file types it",
-    "    understands (.docx / .pptx), so one folder serves both.",
+    "  - 'word' and 'powerpoint' each take their OWN templates folder,",
+    "    C:\\Eva\\templates\\word and C:\\Eva\\templates\\powerpoint. Both are",
+    "    read-only: every save into one is refused, so the blanks stay blank.",
     "  - 'confluence' is shown with TWO instances. One is enough: delete the",
     "    CONFLUENCE_NAME* and *_2 settings and it behaves as it always has.",
     "    Keep them and a prompt can say '...on Blue' to reach the second",
@@ -44,7 +44,7 @@
         "C:\\path\\to\\claude-skills\\plugins\\word\\word.py",
         "--author", "Matt",
         "--docs-dir", "C:\\Eva\\documents\\word",
-        "--templates-dir", "C:\\Eva\\reference\\templates",
+        "--templates-dir", "C:\\Eva\\templates\\word",
         "--kb-dir", "C:\\Eva\\knowledge\\word"
       ],
       "env": { "PYTHONUTF8": "1" }
@@ -54,7 +54,7 @@
       "args": [
         "C:\\path\\to\\claude-skills\\plugins\\powerpoint\\powerpoint.py",
         "--docs-dir", "C:\\Eva\\documents\\powerpoint",
-        "--templates-dir", "C:\\Eva\\reference\\templates",
+        "--templates-dir", "C:\\Eva\\templates\\powerpoint",
         "--kb-dir", "C:\\Eva\\knowledge\\powerpoint"
       ],
       "env": { "PYTHONUTF8": "1" }

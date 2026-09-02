@@ -99,8 +99,9 @@ Then:
 - **An empty folder, or no folder at all** - say so in one line, use the
   fallback in [section 4](#4-fallback-structure-when-there-is-no-exemplar), and
   offer at the end to save the approved brief as the first exemplar.
-- **The user names an exemplar somewhere else** (`C:\Eva\reference\exemplars`,
-  a path, a file in the conversation) - that beats the convention. Use it.
+- **The user names an exemplar somewhere else** (a path, a document in
+  `C:\Eva\documents\word`, a file in the conversation) - that beats the
+  convention. Use it.
 
 Reading one, by format:
 
@@ -301,7 +302,7 @@ Then expect to iterate. The user will come back with changes, and each round:
 
 When the user says it is final and wants a document, hand the finished Markdown
 to the **`/word:word`** skill, which builds the `.docx` with native Word styles
-or from a blank in `C:\Eva\reference\templates`. Do not attempt it yourself.
+or from a blank in `C:\Eva\templates\word`. Do not attempt it yourself.
 
 Keeping the writing and the formatting as two jobs is the point: a wording
 change should not mean rebuilding the document.

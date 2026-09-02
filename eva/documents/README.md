@@ -15,7 +15,7 @@ searching goes to [`..\knowledge`](../knowledge).
 Each of these folders is a **sandbox**: the plugin resolves every path against
 it (symlinks included) and refuses anything that lands outside. `word` can
 therefore open and save inside `documents\word\` and read
-`..\reference\templates\`, and nowhere else on the machine.
+[`..\templates\word`](../templates/word), and nowhere else on the machine.
 
 ## One folder, not three
 

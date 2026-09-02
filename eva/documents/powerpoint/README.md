@@ -22,8 +22,8 @@ builds for you. This is the one presentations folder, so a deck is never
 somewhere else than you expect.
 
 Blank branded templates are the exception. They go to
-[`..\..\reference\templates`](../../reference/templates), which is read-only,
-so the blanks stay blank.
+[`..\..\templates\powerpoint`](../../templates/powerpoint), which is
+read-only, so the blanks stay blank.
 
 Sub-folders are searched recursively, so arrange it however suits you (by
 client, by year, a `Drafts\` folder if you like one) and a bare filename still
@@ -42,4 +42,5 @@ finds the deck.
 
 PowerPoint's own template format is readable, but only as a *template*. Decks
 are always saved as `.pptx`. If you keep a `.potx` here it can be opened and
-read; if you want to build from it, put it in the templates folder.
+read; if you want to build from it, put it in
+[`..\..\templates\powerpoint`](../../templates/powerpoint).

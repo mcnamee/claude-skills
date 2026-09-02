@@ -65,8 +65,12 @@ which is the better arrangement anyway for an exemplar you reach for often.
 
 ## Not to be confused with
 
-[`eva/reference/exemplars`](../../../eva/reference/exemplars) is the
-general-purpose exemplars folder for the whole suite: board papers, status
-reports, proposals, decks. This folder is the brief-writer skill's own, and
-travels with the skill when you copy it to an endpoint. Point the skill at a
-file in the Eva tree in your prompt and it will use that instead.
+[`/exemplar-writer`](../../exemplar-writer)'s own
+[`exemplars/`](../../exemplar-writer/exemplars) folder, which holds the
+general-purpose ones: status reports, proposals, file notes, minutes. This
+folder is the brief-writer skill's own, and only briefs belong in it - the two
+skills never read each other's.
+
+Either way, a file you name in the prompt beats the folder, including one in
+`C:\Eva\documents\word` (which, unlike a skill folder, the `word` server can
+actually open).

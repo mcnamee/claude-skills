@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r"""
-word.py (v6.0.0) - A single-file MCP (Model Context Protocol) stdio server
+word.py (v7.0.0) - A single-file MCP (Model Context Protocol) stdio server
 that gives an AI agent read/search/edit/generate access to Word .docx files.
 
 It follows a simple open -> edit -> save workflow (msword_open ... msword_save),
@@ -20,7 +20,7 @@ WHAT IT CAN DO
       existing document via 'template' - its styles, headers/footers and
       boilerplate are inherited and the template file is left untouched.
     - Keep those blank templates in a folder of their own with --templates-dir
-      (by default C:\Eva\reference\templates). It is a READ-ONLY second root:
+      (by default C:\Eva\templates\word). It is a READ-ONLY second root:
       its .docx files can be listed, opened and used as the base for
       msword_create, but every attempt to SAVE over one is refused, so a
       template cannot be turned into someone's half-finished report.
@@ -198,7 +198,7 @@ WHAT IT CANNOT DO
     tree, so a stock C:\Eva install needs no path passed at all. To override
     one (flag beats environment variable beats the CONFIG constant):
 
-        claude mcp add word --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\word.py --author Matt --docs-dir D:\Eva\documents\word --templates-dir D:\Eva\reference\templates --kb-dir D:\Eva\knowledge\word
+        claude mcp add word --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\word.py --author Matt --docs-dir D:\Eva\documents\word --templates-dir D:\Eva\templates\word --kb-dir D:\Eva\knowledge\word
 
     The --author value (MSWORD_AUTHOR) is stamped on every tracked change;
     omit it to fall back to the TRACKED_CHANGE_AUTHOR config constant below.
@@ -209,7 +209,7 @@ WHAT IT CANNOT DO
     no separate output folder, so a document Eva writes sits alongside the ones
     you gave it.
     The --templates-dir folder (MSWORD_TEMPLATES_DIR / TEMPLATES_DIR - default
-    C:\Eva\reference\templates) holds blank .docx templates. It is readable like
+    C:\Eva\templates\word) holds blank .docx templates. It is readable like
     the document root but NEVER writable.
     The --kb-dir folder (MSWORD_KB_DIR / KB_DIR - default
     C:\Eva\knowledge\word) turns on Markdown mirroring for a local RAG
@@ -244,7 +244,7 @@ failed transfer" rule):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "6.0.0"
+__version__ = "7.0.0"
 
 # =============================================================================
 # CONFIGURATION  (all user-editable settings live here, nothing scattered below)
@@ -274,7 +274,7 @@ PROTOCOL_VERSION_FALLBACK = "2024-11-05"  # used if the client sends none
 DOCS_DIR = r"C:\Eva\documents\word"
 
 # OPTIONAL folder of blank .docx TEMPLATES (letterhead, report layout, contract
-# boilerplate ...) - the eva\reference\templates folder that ships with this
+# boilerplate ...) - the eva\templates\word folder that ships with this
 # repo is exactly this. Set it here, or at launch with --templates-dir or the
 # MSWORD_TEMPLATES_DIR environment variable (which take priority over this
 # constant). It is a READ-ONLY second root:
@@ -285,10 +285,12 @@ DOCS_DIR = r"C:\Eva\documents\word"
 #     be overwritten with a filled-in copy of itself. New documents always go
 #     to DOCS_DIR.
 # Keeping templates out of DOCS_DIR is the point: the folder stays a clean set
-# of blanks that the model can start from but can never edit in place.
-# Default: the Eva working tree's templates folder (seeded from the repo's
-# eva\reference\templates).
-TEMPLATES_DIR = r"C:\Eva\reference\templates"
+# of blanks that the model can start from but can never edit in place. The
+# server also refuses to start if this folder IS - or contains - DOCS_DIR,
+# because that arrangement would refuse every save.
+# Default: the word\ folder of the Eva working tree's templates zone (seeded
+# from the repo's eva\templates\word).
+TEMPLATES_DIR = r"C:\Eva\templates\word"
 
 # OPTIONAL knowledge-base (RAG) folder. If set, EVERY document opened with
 # msword_open is ALSO written out as a Markdown file into this folder, the same

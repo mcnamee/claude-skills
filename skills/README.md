@@ -26,12 +26,19 @@ need nothing installed and work anywhere, including offline.
 |---|---|---|
 | [**brief-writer**](brief-writer) | `/brief-writer` | Drafts a decision or noting brief for a senior executive, following the structure of an exemplar in its own `exemplars/` folder, and finishing with `/polish` |
 | [**email-writer**](email-writer) | `/email-writer` | Drafts an email in your voice, classifying what the email is for and matching that intent to your own sent mail in its `exemplars/` folder, then running `/unslop` |
+| [**exemplar-writer**](exemplar-writer) | `/exemplar-writer` | Writes a document in the shape of one you already have — pulls the structure, section order, proportions and register out of an exemplar, then writes your material to that shape and runs `/unslop` |
 | [**polish**](polish) | `/polish` | Rewrites a draft into Australian Public Service style — the Australian Government Style Manual — asking who the reader is and what the medium is, then picking the register from them |
 | [**unslop**](unslop) | `/unslop` | Strips AI-slop markers from writing — padding, tell-tale vocabulary, stock LLM sentence shapes — leaving meaning and voice intact |
 
-`brief-writer` and `email-writer` build on the other two: `brief-writer` runs
-`/polish` as its last step, `email-writer` runs `/unslop`. Install the pair each
-one needs, not just the writer.
+The three writers build on the other two: `brief-writer` runs `/polish` as its
+last step, `email-writer` and `exemplar-writer` run `/unslop`. Install the pair
+each one needs, not just the writer.
+
+They divide by what is being written, not by how well they do it: a brief goes
+to `brief-writer` (it settles decision versus noting, and writes the
+recommendation line), an email to `email-writer` (intent plus a voice profile),
+and anything else that should follow the shape of a document you already have to
+`exemplar-writer`.
 
 ## Install
 
@@ -103,9 +110,15 @@ files, plus a `.gitignore` holding
 ```
 
 so the folder travels with the skill but your real documents never get
-committed. That is how `brief-writer` and `email-writer` work: fill the folder
-on a machine that has your documents, copy the skill folder to the endpoint, and
-it arrives already knowing what your writing looks like.
+committed. That is how `brief-writer`, `email-writer` and `exemplar-writer`
+work: fill the folder on a machine that has your documents, copy the skill
+folder to the endpoint, and it arrives already knowing what your writing looks
+like.
+
+A skill folder sits outside every MCP server's sandbox, so a `.docx`, `.pptx` or
+`.pdf` exemplar in there may not be readable at all. Say so in the folder's
+`README.md`, and point at the two fixes: keep a `.md` copy beside the original,
+or keep the original in `C:\Eva\documents\<type>` and name it in the prompt.
 
 Skills here are unversioned — they are prose, not an interface anything else
 depends on, so there is no version to keep in sync. (The MCP servers under
