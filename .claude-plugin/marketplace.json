@@ -10,7 +10,7 @@
       "name": "word",
       "source": "./plugins/word",
       "description": "Read, edit and create Word .docx files - including Word tracked changes, native styles and filling out templates.",
-      "version": "5.1.0",
+      "version": "6.0.0",
       "keywords": [
         "word",
         "docx",
@@ -22,7 +22,7 @@
       "name": "powerpoint",
       "source": "./plugins/powerpoint",
       "description": "Build PowerPoint decks that inherit your own template's layouts and theme, and audit them against Guy Kawasaki's 10/20/30 rule.",
-      "version": "1.1.0",
+      "version": "2.0.0",
       "keywords": [
         "powerpoint",
         "pptx",

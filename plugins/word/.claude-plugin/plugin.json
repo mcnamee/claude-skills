@@ -1,7 +1,7 @@
 {
   "name": "word",
   "displayName": "Word (.docx)",
-  "version": "5.1.0",
+  "version": "6.0.0",
   "description": "Read, edit and create Word .docx files - including Word tracked changes, native styles and filling out templates.",
   "author": {
     "name": "mcnamee"
@@ -18,19 +18,13 @@
     "docs_dir": {
       "type": "directory",
       "title": "Documents folder",
-      "description": "Folder of .docx files the server may open and save, searched recursively. REQUIRED - the server refuses to start without it. Defaults to the Word folder of the Eva working tree; copy the repo's eva\\ folder to C:\\Eva and it exists.",
+      "description": "The single folder of .docx files the server may open, edit and save, searched recursively. NEW documents are created here too - there is no separate output folder. REQUIRED: the server refuses to start without it. Defaults to the Word folder of the Eva working tree; copy the repo's eva\\ folder to C:\\Eva and it exists.",
       "default": "C:\\Eva\\documents\\word"
-    },
-    "output_dir": {
-      "type": "directory",
-      "title": "Output folder",
-      "description": "Where msword_create writes NEW documents, kept separate from the documents folder so generated files never mix with your source library. Enter 'off' to write new documents into the documents folder instead.",
-      "default": "C:\\Eva\\output\\word"
     },
     "templates_dir": {
       "type": "directory",
       "title": "Templates folder",
-      "description": "Folder of blank .docx templates new documents are created from. Read-only: templates can be opened and used as a starting point, never saved over, and it must be separate from the documents and output folders. Enter 'off' to run with no templates.",
+      "description": "Folder of blank .docx templates new documents are created from. Read-only: templates can be opened and used as a starting point, never saved over, and it must be separate from the documents folder. Enter 'off' to run with no templates.",
       "default": "C:\\Eva\\reference\\templates"
     },
     "kb_dir": {
@@ -61,7 +55,6 @@
       "env": {
         "PYTHONUTF8": "1",
         "MSWORD_DOCS_DIR": "${user_config.docs_dir}",
-        "MSWORD_OUTPUT_DIR": "${user_config.output_dir}",
         "MSWORD_TEMPLATES_DIR": "${user_config.templates_dir}",
         "MSWORD_KB_DIR": "${user_config.kb_dir}",
         "MSWORD_AUTHOR": "${user_config.author}"

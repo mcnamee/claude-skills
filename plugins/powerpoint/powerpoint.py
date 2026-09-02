@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r"""
-powerpoint.py (v1.1.0) - A single-file MCP (Model Context Protocol) stdio server
+powerpoint.py (v2.0.0) - A single-file MCP (Model Context Protocol) stdio server
 that builds PowerPoint .pptx decks, optionally from your own template, and
 audits them against Guy Kawasaki's 10/20/30 rule.
 
@@ -19,7 +19,7 @@ THE ONE IDEA THIS SERVER IS BUILT AROUND
     layout, not a hard-coded typeface.
 
 WHAT IT CAN DO
-    - Create a NEW .pptx (powerpoint_create) in a configurable output folder.
+    - Create a NEW .pptx (powerpoint_create) in the presentations folder.
       With 'template' set to an existing .pptx/.potx, the new deck inherits that
       file's masters, layouts, theme, fonts and colours; the template file is
       only READ and is never modified. Without one, the stock Office template is
@@ -33,7 +33,7 @@ WHAT IT CAN DO
       result is flagged (fuzzy_matched) so the caller can confirm the pick.
       List what is available with powerpoint_list_presentations.
     - Keep blank templates in a folder of their own with --templates-dir
-      (by default C:\Eva\reference\templates). It is a READ-ONLY third root:
+      (by default C:\Eva\reference\templates). It is a READ-ONLY second root:
       its files can be listed, opened and used as the base for
       powerpoint_create, but every attempt to SAVE over one is refused, so a
       template cannot be turned into someone's half-finished deck.
@@ -236,13 +236,14 @@ WHAT IT CANNOT DO
     tree, so a stock C:\Eva install needs no path passed at all. To override one
     (flag beats environment variable beats the CONFIG constant):
 
-        claude mcp add powerpoint --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\powerpoint.py --docs-dir D:\Eva\documents\powerpoint --output-dir D:\Eva\output\powerpoint --templates-dir D:\Eva\reference\templates --kb-dir D:\Eva\knowledge\powerpoint
+        claude mcp add powerpoint --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\powerpoint.py --docs-dir D:\Eva\documents\powerpoint --templates-dir D:\Eva\reference\templates --kb-dir D:\Eva\knowledge\powerpoint
 
     The --docs-dir folder is REQUIRED (flag, POWERPOINT_DOCS_DIR, or the
     DOCS_DIR constant - default C:\Eva\documents\powerpoint): all open/save
-    paths must be inside it and the server refuses to start without one.
-    The --output-dir folder (POWERPOINT_OUTPUT_DIR / OUTPUT_DIR - default
-    C:\Eva\output\powerpoint) is where powerpoint_create writes NEW decks.
+    paths must be inside it, NEW decks from powerpoint_create land in it, and
+    the server refuses to start without one. It is the ONE folder of
+    presentations - there is no separate output folder, so a deck Eva builds
+    sits alongside the ones you gave it.
     The --templates-dir folder (POWERPOINT_TEMPLATES_DIR / TEMPLATES_DIR -
     default C:\Eva\reference\templates) holds blank .pptx/.potx templates. It is
     readable like the presentation root but NEVER writable. It is shared with
@@ -288,7 +289,7 @@ failed transfer" rule):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "1.1.0"
+__version__ = "2.0.0"
 
 # =============================================================================
 # CONFIGURATION  (all user-editable settings live here, nothing scattered below)
@@ -306,6 +307,8 @@ PROTOCOL_VERSION_FALLBACK = "2024-11-05"  # used if the client sends none
 # This root is ALSO the base for relative paths: a bare "Kickoff.pptx" is
 # resolved against it (not the process CWD), so the model can open a file by
 # name without knowing its absolute path.
+# It is ALSO where powerpoint_create writes new decks: one folder holds every
+# .pptx, whether you put it there or Eva built it.
 # Default: the Eva working tree's PowerPoint library, searched recursively.
 # (--check is exempt: the self-test sandboxes itself to its own temp folder.)
 # Related caution: only open .pptx files from trusted sources - a maliciously
@@ -313,27 +316,17 @@ PROTOCOL_VERSION_FALLBACK = "2024-11-05"  # used if the client sends none
 # the slide text that the model then reads.
 DOCS_DIR = r"C:\Eva\documents\powerpoint"
 
-# OPTIONAL folder where powerpoint_create writes NEW .pptx files. Set it here,
-# or at launch with --output-dir or the POWERPOINT_OUTPUT_DIR environment
-# variable (which take priority over this constant). It is also treated as a
-# permitted open/save location alongside DOCS_DIR, so freshly created decks can
-# be reopened and edited later. If left unset, powerpoint_create falls back to
-# writing inside DOCS_DIR.
-# Default: the Eva working tree's output folder, so generated decks never mix
-# with the source library in DOCS_DIR.
-OUTPUT_DIR = r"C:\Eva\output\powerpoint"
-
 # OPTIONAL folder of blank .pptx/.potx TEMPLATES (the branded deck shell with
 # your title slide, section divider and content layouts). Set it here, or at
 # launch with --templates-dir or the POWERPOINT_TEMPLATES_DIR environment
-# variable (which take priority over this constant). It is a READ-ONLY third
+# variable (which take priority over this constant). It is a READ-ONLY second
 # root:
 #   - its files can be listed (powerpoint_list_presentations), opened
 #     (powerpoint_open) and used as the base for a new deck
 #     (powerpoint_create template="..."), exactly like the presentation root;
 #   - every SAVE whose target lands inside it is REFUSED, so a template cannot
 #     be overwritten with a filled-in copy of itself. New decks always go to
-#     OUTPUT_DIR (or DOCS_DIR).
+#     DOCS_DIR.
 # This is the SAME folder the `word` plugin uses: each server reads the file
 # types it understands and ignores the rest, so one templates folder serves
 # both. Default: the Eva working tree's templates folder.
@@ -533,20 +526,18 @@ def _require(args, key):
 def _permitted_roots():
     """
     Folders the server is allowed to READ inside: the DOCS_DIR sandbox, plus the
-    OUTPUT_DIR for created decks and the TEMPLATES_DIR of blank templates (each
-    when configured). The knowledge-base folder is deliberately NOT included -
-    the model never supplies a path into it; the server writes there itself.
+    TEMPLATES_DIR of blank templates when one is configured. The knowledge-base
+    folder is deliberately NOT included - the model never supplies a path into
+    it; the server writes there itself.
 
-    Order matters: a relative name that could live in more than one root is
-    resolved against these in turn, and a not-yet-existing file (a save-as
-    target) falls back to the FIRST one, which must stay the presentation root.
-    Writes are further restricted - see _read_only_root().
+    Order matters: a relative name that could live in either root is resolved
+    against these in turn, and a not-yet-existing file (a save-as target) falls
+    back to the FIRST one, which must stay the presentation root. Writes are
+    further restricted - see _read_only_root().
     """
     roots = []
     if DOCS_DIR:
         roots.append(DOCS_DIR)
-    if OUTPUT_DIR:
-        roots.append(OUTPUT_DIR)
     if TEMPLATES_DIR:
         roots.append(TEMPLATES_DIR)
     return roots
@@ -580,21 +571,20 @@ def _refuse_if_read_only(rp, what="Saving"):
         raise ToolError(
             "{} into the templates folder is not allowed - it is read-only so "
             "templates stay blank ({}). Use powerpoint_create (which writes to "
-            "the output folder) to start a new deck from a template, or save-as "
-            "to a path inside the presentations/output folder.".format(what, root)
+            "the presentations folder) to start a new deck from a template, or "
+            "save-as to a path inside the presentations folder.".format(what, root)
         )
 
 
 def _root_label(rp):
     """
-    Which configured folder a resolved path lives in: 'docs', 'output' or
-    'templates' (None if somehow outside them all). The MOST SPECIFIC root wins,
-    so a templates folder nested inside the presentation root is still reported
-    as 'templates'.
+    Which configured folder a resolved path lives in: 'docs' or 'templates'
+    (None if somehow outside them both). The MOST SPECIFIC root wins, so a
+    templates folder nested inside the presentation root is still reported as
+    'templates'.
     """
     label, best_len = None, -1
-    for name, root in (("docs", DOCS_DIR), ("output", OUTPUT_DIR),
-                       ("templates", TEMPLATES_DIR)):
+    for name, root in (("docs", DOCS_DIR), ("templates", TEMPLATES_DIR)):
         if not root:
             continue
         real_root = os.path.realpath(os.path.expanduser(root))
@@ -629,12 +619,11 @@ def _resolve_path(path):
     Turn a caller-supplied path into an absolute, sandbox-checked path.
 
     A RELATIVE path (e.g. just "Kickoff.pptx") is resolved against the permitted
-    roots - the presentation root first, then the output folder - NOT against
+    roots - the presentation root first, then the templates folder - NOT against
     the server process's current working directory. The CWD is wherever the MCP
     client launched python and is almost never the presentation folder. When a
-    relative name maps into more than one root, an existing file is preferred;
-    otherwise the docs-dir candidate wins (the natural target for a new
-    save-as).
+    relative name maps into both roots, an existing file is preferred; otherwise
+    the docs-dir candidate wins (the natural target for a new save-as).
 
     An ABSOLUTE (or ~) path is taken as-is and must still fall inside a
     permitted root. realpath is used throughout so symlinks are resolved before
@@ -662,7 +651,6 @@ def _resolve_path(path):
     if not contained:
         raise ToolError(
             "Path is outside the permitted folder(s) (DOCS_DIR"
-            + (" / OUTPUT_DIR" if OUTPUT_DIR else "")
             + (" / TEMPLATES_DIR" if TEMPLATES_DIR else "")
             + ") and was refused."
         )
@@ -1857,13 +1845,13 @@ def tool_list_presentations(args):
     """
     List the .pptx/.potx files available under the permitted roots, so the model
     can find a deck or a template by name instead of guessing a path. Each entry
-    carries a 'location' ('docs' / 'output' / 'templates') so a blank template is
+    carries a 'location' ('docs' / 'templates') so a blank template is
     never mistaken for a real deck.
     """
     query = (args.get("query") or "").strip().lower()
     want_location = (args.get("location") or "").strip().lower()
-    if want_location and want_location not in ("docs", "output", "templates"):
-        raise ToolError("location must be one of: docs, output, templates")
+    if want_location and want_location not in ("docs", "templates"):
+        raise ToolError("location must be one of: docs, templates")
     items = []
     for p in _all_pptx_files():
         name = os.path.basename(p)
@@ -1885,7 +1873,6 @@ def tool_list_presentations(args):
     return {
         "count": len(items),
         "docs_dir": DOCS_DIR,
-        "output_dir": OUTPUT_DIR,
         "templates_dir": TEMPLATES_DIR,
         "presentations": items,
         "note": "Open any of these by passing its 'path' (or just its name) to "
@@ -1954,22 +1941,27 @@ def tool_open(args):
 
 def tool_create(args):
     """
-    Create a NEW .pptx in the output folder, open it as a session and return the
-    session_id. The model then builds it up with powerpoint_add_slide and
-    persists it with powerpoint_save.
+    Create a NEW .pptx in the presentations folder, open it as a session and
+    return the session_id. The model then builds it up with
+    powerpoint_add_slide and persists it with powerpoint_save.
 
     With no 'template', the stock Office template is used. With 'template' set
     to an existing .pptx/.potx (resolved within the permitted roots exactly as
     powerpoint_open resolves it), that file becomes the starting point - its
     masters, layouts, theme, fonts and colours are inherited - and the new deck
-    is saved to the OUTPUT folder, leaving the template untouched.
+    is saved into the PRESENTATIONS folder, leaving the template untouched.
+
+    There is no separate output folder: a deck Eva builds lands in the same
+    library as the ones you gave it. To file it elsewhere afterwards, save-as
+    with powerpoint_save(path=...) to any sub-folder of the presentation root.
     """
     filename = _require(args, "filename")
     if not isinstance(filename, str) or not filename.strip():
         raise ToolError("filename must be a non-empty string")
 
     # Confine to a bare filename: strip any directory components so the model
-    # cannot traverse out of the output folder via '..' or an absolute path.
+    # cannot traverse out of the presentations folder via '..' or an absolute
+    # path.
     name = os.path.basename(filename.strip().replace("\\", "/"))
     if not name or name in (".", ".."):
         raise ToolError("filename must be a real file name, not a path")
@@ -1979,19 +1971,18 @@ def tool_create(args):
     if ext.lower() != ".pptx":
         name = stem + ".pptx"
 
-    out_dir = OUTPUT_DIR or DOCS_DIR
-    if not out_dir:
-        raise ToolError(
-            "No output folder configured. Set --output-dir (or "
-            "POWERPOINT_OUTPUT_DIR), or --docs-dir.")
+    if not DOCS_DIR:
+        raise ToolError("No presentations folder configured. Set --docs-dir "
+                        "(or POWERPOINT_DOCS_DIR).")
+    out_dir = os.path.realpath(os.path.expanduser(DOCS_DIR))
     try:
         os.makedirs(out_dir, exist_ok=True)
     except OSError as e:
-        raise ToolError("Could not create output folder {}: {}".format(out_dir, e))
+        raise ToolError("Could not create folder {}: {}".format(out_dir, e))
 
-    target = os.path.join(os.path.realpath(os.path.expanduser(out_dir)), name)
-    # The output folder must never be (or sit inside) the read-only templates
-    # folder - creating there would grow the library of blanks with real work.
+    target = os.path.join(out_dir, name)
+    # A presentations folder that contains (or IS) the read-only templates
+    # folder would otherwise let a new deck be created among the blanks.
     _refuse_if_read_only(target, what="Creating a deck")
 
     if os.path.exists(target) and not bool(args.get("overwrite", False)):
@@ -2975,25 +2966,25 @@ _BULLETS_HELP = (
 TOOLS = [
     {
         "name": "powerpoint_list_presentations",
-        "description": "List the .pptx/.potx files available under the presentation root (and the output and templates folders, if configured), with each file's path (relative to its root), 'location' ('docs' / 'output' / 'templates'), size and last-modified time. Use this to find a deck or a TEMPLATE by name before calling powerpoint_open or powerpoint_create, instead of guessing paths - and with location='templates' to see the blank templates a new deck can be based on. Files in the templates folder are READ-ONLY: base a new deck on one with powerpoint_create(template=...) rather than opening and saving it. Optional 'query' filters the list by filename substring.",
+        "description": "List the .pptx/.potx files available under the presentation root (and the templates folder, if configured), with each file's path (relative to its root), 'location' ('docs' / 'templates'), size and last-modified time. Use this to find a deck or a TEMPLATE by name before calling powerpoint_open or powerpoint_create, instead of guessing paths - and with location='templates' to see the blank templates a new deck can be based on. Files in the templates folder are READ-ONLY: base a new deck on one with powerpoint_create(template=...) rather than opening and saving it. Optional 'query' filters the list by filename substring.",
         "handler": tool_list_presentations,
         "inputSchema": {
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Optional case-insensitive filename substring filter, e.g. 'template'."},
-                "location": {"type": "string", "enum": ["docs", "output", "templates"], "description": "Optional: list only the files in one folder - 'docs' (the presentation root), 'output' (generated decks) or 'templates' (blank templates)."},
+                "location": {"type": "string", "enum": ["docs", "templates"], "description": "Optional: list only the files in one folder - 'docs' (the presentation root, which is also where new decks are created) or 'templates' (blank templates)."},
             },
         },
     },
     {
         "name": "powerpoint_create",
-        "description": "Create a NEW .pptx in the server's output folder and open it as a session, returning the session_id every other tool needs. Pass 'template' to inherit an existing deck's masters, layouts, theme, fonts and colours - the single most important argument here, and the way to make output match a corporate deck. The template is a .pptx/.potx in the templates folder or the presentation root, resolved the same forgiving way as powerpoint_open (bare name, relative path, or a fuzzy near-miss); it is only READ and never modified, and any example slides in it are stripped so you start blank while keeping its styling. Without a template the stock Office design is used. Then call powerpoint_list_layouts to see what the template offers, ONE powerpoint_add_slides call carrying the whole ordered deck (a series of separate powerpoint_add_slide calls can arrive out of order and shuffle the slides), and powerpoint_save.",
+        "description": "Create a NEW .pptx in the server's presentations folder (--docs-dir) and open it as a session, returning the session_id every other tool needs. Pass 'template' to inherit an existing deck's masters, layouts, theme, fonts and colours - the single most important argument here, and the way to make output match a corporate deck. The template is a .pptx/.potx in the templates folder or the presentation root, resolved the same forgiving way as powerpoint_open (bare name, relative path, or a fuzzy near-miss); it is only READ and never modified, and any example slides in it are stripped so you start blank while keeping its styling. Without a template the stock Office design is used. Then call powerpoint_list_layouts to see what the template offers, ONE powerpoint_add_slides call carrying the whole ordered deck (a series of separate powerpoint_add_slide calls can arrive out of order and shuffle the slides), and powerpoint_save.",
         "handler": tool_create,
         "inputSchema": {
             "type": "object",
             "properties": {
-                "filename": {"type": "string", "description": "Name for the new file, e.g. 'series-a-pitch.pptx'. Any directory part is stripped; the file is created in the configured output folder. The extension is forced to .pptx."},
-                "template": {"type": "string", "description": "Optional: name or path of an existing .pptx/.potx whose design the new deck should inherit, e.g. 'Deck Template.pptx'. Looked up in the configured templates folder and the presentation root. The template is only read; the new deck is saved to the output folder."},
+                "filename": {"type": "string", "description": "Name for the new file, e.g. 'series-a-pitch.pptx'. Any directory part is stripped; the file is created at the top of the configured presentations folder. The extension is forced to .pptx."},
+                "template": {"type": "string", "description": "Optional: name or path of an existing .pptx/.potx whose design the new deck should inherit, e.g. 'Deck Template.pptx'. Looked up in the configured templates folder and the presentation root. The template is only read; the new deck is saved into the presentations folder."},
                 "overwrite": {"type": "boolean", "default": False, "description": "Replace the file if it already exists (default false = error out)."},
             },
             "required": ["filename"],
@@ -3304,7 +3295,6 @@ def serve():
     log(" / ".join("{} {}".format(k, v) for k, v in sorted(_versions().items())))
     if DOCS_DIR:
         log("path sandbox DOCS_DIR = {}".format(DOCS_DIR))
-    log("new-deck output folder = {}".format(OUTPUT_DIR or DOCS_DIR))
     if TEMPLATES_DIR:
         log("templates folder (read-only) = {}".format(TEMPLATES_DIR))
     else:
@@ -3370,7 +3360,7 @@ def _check_template(path, body_sz=3600, layout_name="Brand Content"):
 def run_check():
     import tempfile
     import shutil
-    global DOCS_DIR, OUTPUT_DIR, TEMPLATES_DIR, KB_DIR
+    global DOCS_DIR, TEMPLATES_DIR, KB_DIR
 
     for name, value in sorted(_versions().items()):
         print("[check] {:<12}: {}".format(name, value))
@@ -3389,11 +3379,12 @@ def run_check():
 
     root = tempfile.mkdtemp(prefix="powerpoint_check_")
     try:
+        # One documents folder holds both the source library and what the
+        # server creates; templates are the read-only second root beside it.
         DOCS_DIR = os.path.join(root, "documents")
-        OUTPUT_DIR = os.path.join(root, "output")
         TEMPLATES_DIR = os.path.join(root, "templates")
         KB_DIR = os.path.join(root, "knowledge")
-        for folder in (DOCS_DIR, OUTPUT_DIR, TEMPLATES_DIR, KB_DIR):
+        for folder in (DOCS_DIR, TEMPLATES_DIR, KB_DIR):
             os.makedirs(folder, exist_ok=True)
         SESSIONS.clear()
 
@@ -3529,9 +3520,9 @@ def run_check():
 
         # --- save, mirror, reopen -------------------------------------------
         saved = tool_save({"session_id": sid})
-        expect("saved to the output folder",
+        expect("saved into the presentations folder",
                os.path.isfile(saved["saved"]) and
-               _root_label(saved["saved"]) == "output", saved)
+               _root_label(saved["saved"]) == "docs", saved)
         expect("save carries a 10/20/30 headline", "kawasaki" in saved, saved)
         kb_file = os.path.join(KB_DIR, "PowerPoint - check-deck.md")
         expect("knowledge-base mirror written", os.path.isfile(kb_file), kb_file)
@@ -3812,18 +3803,10 @@ def main():
              "file outside this directory tree, and refuses to start without "
              "one. Falls back to the POWERPOINT_DOCS_DIR environment variable, "
              "then the DOCS_DIR config value (default: "
-             "C:\\Eva\\documents\\powerpoint). The model chooses open/save "
-             "paths, so an unconfined server could read/write any .pptx this "
-             "account can."
-    )
-    parser.add_argument(
-        "--output-dir", default=os.environ.get("POWERPOINT_OUTPUT_DIR"), metavar="DIR",
-        help="Folder where powerpoint_create writes NEW .pptx files, kept "
-             "SEPARATE from the knowledge-base folder. Falls back to the "
-             "POWERPOINT_OUTPUT_DIR environment variable, then the OUTPUT_DIR "
-             "config value (default: C:\\Eva\\output\\powerpoint); pass 'off' to "
-             "fall back to the presentation root instead. Also treated as a "
-             "permitted open/save location so created decks can be reopened."
+             "C:\\Eva\\documents\\powerpoint). It is also where "
+             "powerpoint_create writes NEW decks - there is no separate output "
+             "folder. The model chooses open/save paths, so an unconfined "
+             "server could read/write any .pptx this account can."
     )
     parser.add_argument(
         "--templates-dir", default=os.environ.get("POWERPOINT_TEMPLATES_DIR"),
@@ -3847,7 +3830,7 @@ def main():
     )
     args = parser.parse_args()
 
-    global DOCS_DIR, OUTPUT_DIR, TEMPLATES_DIR, KB_DIR
+    global DOCS_DIR, TEMPLATES_DIR, KB_DIR
 
     # Each optional folder has a real default (the Eva working tree), so "leave
     # it blank" cannot mean "turn this off": a blank value from an MCP client
@@ -3859,7 +3842,6 @@ def main():
     # has not created yet degrades quietly.
     explicit_folders = set()
     for name, value in (("docs", args.docs_dir),
-                        ("output", args.output_dir),
                         ("templates", args.templates_dir),
                         ("kb", args.kb_dir)):
         if not value:
@@ -3868,8 +3850,6 @@ def main():
         explicit_folders.add(name)
         if name == "docs":
             DOCS_DIR = chosen
-        elif name == "output":
-            OUTPUT_DIR = chosen
         elif name == "templates":
             TEMPLATES_DIR = chosen
         else:
@@ -3910,16 +3890,15 @@ def main():
 
     if TEMPLATES_DIR:
         # Templates are read-only, so the folder must not be - or contain - the
-        # folders decks are saved into; that would refuse every save.
-        for label, folder in (("presentation root", DOCS_DIR),
-                              ("output folder", OUTPUT_DIR or DOCS_DIR)):
-            real_folder = os.path.realpath(os.path.expanduser(folder))
-            if _read_only_root(real_folder) is not None:
-                log("FATAL: the templates folder ({}) is the same as - or "
-                    "contains - the {} ({}). Templates are read-only, so every "
-                    "save would be refused. Point --templates-dir at a folder "
-                    "of its own.".format(TEMPLATES_DIR, label, folder))
-                sys.exit(2)
+        # presentation root, which is the one folder decks are saved into; that
+        # would refuse every save.
+        real_docs = os.path.realpath(os.path.expanduser(DOCS_DIR))
+        if _read_only_root(real_docs) is not None:
+            log("FATAL: the templates folder ({}) is the same as - or contains "
+                "- the presentation root ({}). Templates are read-only, so "
+                "every save would be refused. Point --templates-dir at a "
+                "folder of its own.".format(TEMPLATES_DIR, DOCS_DIR))
+            sys.exit(2)
 
     try:
         serve()

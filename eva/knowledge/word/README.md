@@ -26,7 +26,7 @@ tracked changes are where revision history lives.
 
 ## Why the `.docx` files are not in here
 
-This folder holds text extracted for the index. The documents themselves live
-in [`..\..\documents\word`](../../documents/word) (source) and
-[`..\..\output\word`](../../output/word) (generated) — a `.docx` dropped in here
-would simply be ignored by the indexer.
+This folder holds text extracted for the index. The documents themselves all
+live in [`..\..\documents\word`](../../documents/word), whether you put them
+there or Eva wrote them — a `.docx` dropped in here would simply be ignored by
+the indexer.

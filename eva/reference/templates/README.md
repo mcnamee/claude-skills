@@ -23,8 +23,8 @@ template in here and there is one place to look.
 ## Point the `word` plugin at this folder
 
 The [`word`](../../../plugins/word) plugin (v4.1.0+) takes a **templates folder**
-as a read-only third root, alongside its documents and output folders. Pick
-whichever install route you use:
+as a read-only second root, alongside its documents folder. Pick whichever
+install route you use:
 
 **Plugin install** — answer the *Templates folder* prompt with the absolute path
 to this folder:
@@ -38,7 +38,7 @@ Already installed? `/plugin` → `word` → reconfigure, and set it there.
 **`claude mcp add`:**
 
 ```powershell
-claude mcp add word --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\claude-skills\plugins\word\word.py --docs-dir C:\Eva\documents\word --output-dir C:\Eva\output\word --templates-dir C:\Eva\reference\templates
+claude mcp add word --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\claude-skills\plugins\word\word.py --docs-dir C:\Eva\documents\word --templates-dir C:\Eva\reference\templates
 ```
 
 **`.mcp.json`** — add to the `word` entry's `args` (see
@@ -60,15 +60,15 @@ Identical, with the `powerpoint` names. **Plugin install** — answer its
 **`claude mcp add`:**
 
 ```powershell
-claude mcp add powerpoint --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\claude-skills\plugins\powerpoint\powerpoint.py --docs-dir C:\Eva\documents\powerpoint --output-dir C:\Eva\output\powerpoint --templates-dir C:\Eva\reference\templates
+claude mcp add powerpoint --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\claude-skills\plugins\powerpoint\powerpoint.py --docs-dir C:\Eva\documents\powerpoint --templates-dir C:\Eva\reference\templates
 ```
 
 Confirm it took with `powerpoint_list_presentations` and
 `location: "templates"`.
 
-> The folder must exist and must be **separate from** the documents and output
-> folders — the server refuses to start otherwise, rather than silently running
-> with no templates or with every save blocked.
+> The folder must exist and must be **separate from** the documents folder —
+> the server refuses to start otherwise, rather than silently running with no
+> templates or with every save blocked.
 
 ## What "read-only" buys you
 
@@ -77,7 +77,7 @@ be listed, opened and inspected (`msword_list_styles` on a template is the
 reliable way to find out what your corporate bullet style is actually called) —
 but **any save whose target lands in here is refused**, whether it is a save-as
 or a save-in-place on a template opened by mistake. New documents always land in
-the output folder. The blanks stay blank.
+the documents folder. The blanks stay blank.
 
 ## Naming
 
@@ -132,7 +132,7 @@ Also worth doing:
 
 - *"Create a Q3 report from my report template."* → `msword_create` with
   `template: "Report Template.docx"`, then the `add_*` tools, then `msword_save`
-  — the new file lands in the output folder.
+  — the new file lands in `C:\Eva\documents\word`.
 - *"Use the agenda template and fill it out for Monday's meeting, one row per
   item."* → create from the template, `msword_replace_text` for the `{{TOKEN}}`s,
   a cloned table row per item, then drop the example row.
@@ -149,7 +149,7 @@ The full workflow, including filling out example tables, is in the
 `.pptx` (and `.potx`) files here are read by the [`powerpoint`](../../../plugins/powerpoint)
 plugin, which creates a new deck **from** one — inheriting its slide masters,
 layouts, theme, fonts and colours — and writes the result to
-`C:\Eva\output\powerpoint`. The template itself is never modified, and any
+`C:\Eva\documents\powerpoint`. The template itself is never modified, and any
 example slides in it are stripped so the new deck starts blank with the styling
 intact.
 

@@ -13,7 +13,7 @@ Three things, all for Claude Code, all working **entirely offline**:
 
 Plus **[`eva/`](eva)** — the working folder they all read, write and index,
 carried here as a scaffold you copy to `C:\Eva`. It holds the knowledge base,
-the document library, generated output, and the reference material: **exemplars**
+the document library, and the reference material: **exemplars**
 (finished documents showing what good looks like) and **templates** (the blank
 `.docx`/`.pptx` new documents are built from). It also carries
 [`eva/CLAUDE.md`](eva/CLAUDE.md), the standing instructions that make the
@@ -52,8 +52,8 @@ source material with something invented.
 
 | Plugin | Version | What it does | pip install |
 |---|---|---|---|
-| [**word**](plugins/word) | 5.1.0 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
-| [**powerpoint**](plugins/powerpoint) | 1.1.0 | Build `.pptx` decks that inherit your own template's layouts and theme, and audit them against the 10/20/30 rule | `python-pptx` |
+| [**word**](plugins/word) | 6.0.0 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
+| [**powerpoint**](plugins/powerpoint) | 2.0.0 | Build `.pptx` decks that inherit your own template's layouts and theme, and audit them against the 10/20/30 rule | `python-pptx` |
 | [**excel**](plugins/excel) | 4.0.0 | Read and analyse workbooks; parses `.xlsx` directly, so Excel isn't needed | _none_ |
 | [**outlook**](plugins/outlook) | 5.0.0 | Read local Outlook mail and calendar via COM, with a content blacklist; saves an email to the knowledge base when you ask | `pywin32` |
 | [**confluence**](plugins/confluence) | 3.0.0 | Search and read Confluence pages, across one or two instances; saves a page to the knowledge base when you ask | _none_ |
@@ -82,7 +82,7 @@ Copy-Item -Recurse C:\path\to\claude-skills\eva C:\Eva
 Every folder setting in every plugin already defaults to its place in that tree,
 so this one step means you can accept each folder prompt as it stands and the
 servers are correctly related to each other — mirrors landing inside the indexed
-corpus, generated documents kept out of your source library. See
+corpus, one folder per file type with nothing to file first. See
 [Folder layout](#folder-layout) for what goes where, and `eva/README.md` for
 each folder's own README.
 
@@ -201,9 +201,11 @@ The per-plugin READMEs list each server's actual settings.
    pairs with `<PREFIX>_VERIFY_SSL=false`.
 3. **Secrets are env-var only.** No `--token`/`--password`/`--*-api-key` flags
    anywhere, because command-line arguments are visible to other local users.
-4. **Shared flag vocabulary:** `--docs-dir` (the source folder a server is
-   confined to), `--output-dir` (generated files), `--templates-dir` (blank
-   templates to create from, read-only), `--kb-dir` (Markdown mirror
+4. **Shared flag vocabulary:** `--docs-dir` (the one folder of documents a
+   server is confined to, which is also where it writes anything it creates),
+   `--output-dir` (generated Markdown, on the two servers whose *only* output is
+   Markdown), `--templates-dir` (blank templates to create from, read-only),
+   `--kb-dir` (Markdown mirror
    for the RAG knowledge base), `--index-dir` (the vector store),
    `--base-url`/`--ca-cert`/`--insecure`/`--timeout`/`--max-body` (the HTTP
    servers), `--check`, `--version`.
@@ -234,14 +236,11 @@ C:\Eva\
 │  ├─ powerpoint\      decks the powerpoint plugin mirrored
 │  └─ pdf\             PDFs the pdf-to-md plugin converted
 ├─ index\            the ChromaDB vector store - derived, disposable
-├─ documents\        the binary library the servers READ
-│  ├─ word\            .docx (searched recursively; inbox\ + library\)
+├─ documents\        one folder per file type - yours and the assistant's
+│  ├─ word\            .docx (searched recursively)
 │  ├─ powerpoint\      .pptx (searched recursively)
 │  ├─ excel\           .xlsx (top level only - excel does not recurse)
 │  └─ pdf\             source PDFs
-├─ output\           what the assistant creates
-│  ├─ word\
-│  └─ powerpoint\
 └─ reference\        style, not facts - deliberately NOT indexed
    ├─ exemplars\       finished documents showing what good looks like
    └─ templates\       blank branded files new documents/decks start from
@@ -261,12 +260,19 @@ C:\Eva\
 | `documents\powerpoint\` | `powerpoint` → `--docs-dir` |
 | `documents\excel\` | `excel` → `--docs-dir` |
 | `documents\pdf\` | `pdf-to-md` → `--docs-dir` |
-| `output\word\` | `word` → `--output-dir` |
-| `output\powerpoint\` | `powerpoint` → `--output-dir` |
 | `reference\templates\` | `word` and `powerpoint` → `--templates-dir` |
 
-Two rules make it hold together, and both are worth knowing before you move a
-folder:
+Three rules make it hold together, and all three are worth knowing before you
+move a folder:
+
+**One folder per file type.** Every `.docx` lives in `documents\word\`, every
+`.pptx` in `documents\powerpoint\`, whether you put it there or the assistant
+wrote it. There is no `input\`, no `output\`, and no `inbox\` vs `library\`
+split: each plugin can open nothing outside its single folder, so the extras
+were either unreachable or one more setting to keep in sync — and each made you
+decide where a file belonged before you could ask a question about it. Organise
+inside the folder however you like; `word` and `powerpoint` search recursively
+and a bare filename still finds the file.
 
 **There is one indexed root.** `knowledge\` is the only folder the RAG index
 reads, so every server that produces Markdown writes inside it. Point a mirror
@@ -289,8 +295,8 @@ its configuration, and that configuration is **required**:
 
 | Plugin | Local file access |
 |---|---|
-| `word` | Read/write, confined to the documents folder plus the output and knowledge-base folders; the templates folder is read-only. Opening, creating and saving each mirror to the knowledge-base folder |
-| `powerpoint` | Read/write, confined to the presentations folder plus the output and knowledge-base folders; the templates folder is read-only. Opening, creating and saving each mirror to the knowledge-base folder |
+| `word` | Read/write, confined to the one documents folder (where new documents are created too) plus the knowledge-base folder; the templates folder is read-only. Opening, creating and saving each mirror to the knowledge-base folder |
+| `powerpoint` | Read/write, confined to the one presentations folder (where new decks are created too) plus the knowledge-base folder; the templates folder is read-only. Opening, creating and saving each mirror to the knowledge-base folder |
 | `excel` | Read-only, confined to the workbook folder (top level only) |
 | `knowledge-base` | Reads the documents folder; writes its vector index (`C:\Eva\index`) and captured notes (`C:\Eva\knowledge\captures`, always inside the documents folder); never edits or deletes an existing document; network only to the endpoints you configure |
 | `pdf-to-md` | Reads the PDF folder, writes the output folder |

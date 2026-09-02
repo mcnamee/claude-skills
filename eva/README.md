@@ -21,8 +21,7 @@ The tree is organised by **what writes to a folder**, not by topic:
 |---|---|---|
 | [`knowledge\`](knowledge) | The RAG corpus — Markdown only | every server that mirrors what it opens or saves what you ask it to keep, plus `kb_capture` |
 | [`index\`](index) | The ChromaDB vector store | `knowledge-base`, from `knowledge\` |
-| [`documents\`](documents) | The binary library — `.docx`, `.pptx`, `.xlsx`, `.pdf` | you |
-| [`output\`](output) | Generated files | `word`, `powerpoint` |
+| [`documents\`](documents) | The binary library — `.docx`, `.pptx`, `.xlsx`, `.pdf` | you **and** the assistant |
 | [`reference\`](reference) | Templates and exemplars — style, not facts | you |
 
 ```
@@ -37,16 +36,11 @@ C:\Eva\
 │  ├─ powerpoint\      decks the powerpoint plugin mirrored
 │  └─ pdf\             PDFs the pdf-to-md plugin converted
 ├─ index\            ChromaDB — derived, disposable
-├─ documents\
+├─ documents\        one folder per file type — yours and Eva's together
 │  ├─ word\            .docx  (searched recursively)
-│  │  ├─ inbox\          drop files here to work on
-│  │  └─ library\        documents you keep
 │  ├─ powerpoint\      .pptx  (searched recursively)
 │  ├─ excel\           .xlsx  (top level only — see its README)
 │  └─ pdf\             .pdf   source PDFs
-├─ output\
-│  ├─ word\            documents the assistant creates
-│  └─ powerpoint\      decks the assistant creates
 └─ reference\
    ├─ exemplars\       finished documents showing what good looks like
    └─ templates\       blank branded files new documents start from
@@ -91,15 +85,23 @@ default.
 | `documents\powerpoint\` | `powerpoint` → presentations folder | `--docs-dir` / `POWERPOINT_DOCS_DIR` |
 | `documents\excel\` | `excel` → workbook folder | `--docs-dir` / `EXCEL_DOCS_DIR` |
 | `documents\pdf\` | `pdf-to-md` → documents folder | `--docs-dir` / `PDF2MD_DOCS_DIR` |
-| `output\word\` | `word` → output folder | `--output-dir` / `MSWORD_OUTPUT_DIR` |
-| `output\powerpoint\` | `powerpoint` → output folder | `--output-dir` / `POWERPOINT_OUTPUT_DIR` |
 | `reference\templates\` | `word` → templates folder | `--templates-dir` / `MSWORD_TEMPLATES_DIR` |
 | `reference\templates\` | `powerpoint` → templates folder | `--templates-dir` / `POWERPOINT_TEMPLATES_DIR` |
 | `reference\exemplars\` | none — read as ordinary files | — |
 
 `jira` touches no local folder at all.
 
-## The two rules that keep it tidy
+## The three rules that keep it tidy
+
+**One folder per file type.** Everything `.docx` lives in `documents\word\`,
+everything `.pptx` in `documents\powerpoint\`, and so on — whether you put it
+there or Eva wrote it. There is no `input\`, no `output\`, and no `inbox\` vs
+`library\` split. Those were the tree's own idea of your workflow, and every one
+of them made you decide which folder a file belonged in before you could ask a
+question about it. One folder per type has no such decision, and each plugin
+takes exactly one folder setting to match. Organise inside it however you like —
+`word` and `powerpoint` search recursively, and a bare filename still finds the
+file.
 
 **One indexed root.** `knowledge\` is the only folder the RAG index reads, so
 every server that produces Markdown writes *inside* it. Point a mirror somewhere

@@ -122,10 +122,13 @@ heading.
 
 ## Creating documents
 
-`msword_create` makes a new .docx (written to the configured output folder)
-and opens it as a session — build it with **one** `msword_add_content` call
-carrying the whole document in order, then `msword_save`. Directory parts in the
-requested filename are stripped.
+`msword_create` makes a new .docx in the configured **documents folder** — the
+same one your existing documents live in, since there is no separate output
+folder — and opens it as a session. Build it with **one** `msword_add_content`
+call carrying the whole document in order, then `msword_save`. Directory parts
+in the requested filename are stripped, so a new file lands at the top of the
+documents folder; to file it in a sub-folder, save-as with
+`msword_save(path: "Reports/Q3 Report.docx")`.
 
 ### From a template
 
@@ -137,21 +140,21 @@ boilerplate, etc.), pass `template` to `msword_create`:
   the **templates folder** (if one is configured) or the docs folder, resolved
   the same forgiving way as `msword_open` (bare name, relative path, or a fuzzy
   near-miss). Its styles, headers/footers, page setup and boilerplate are
-  inherited into the new file, which is written to the output folder. The
+  inherited into the new file, which is written into the documents folder. The
   template file itself is never modified, and the result includes `template`
   (the resolved template) so you can confirm the right one was used.
 - Then edit and `msword_save` as usual. Omit `title` when the template already
   carries its own title.
 - **To discover templates:** `msword_list_documents` with
-  `location: "templates"` (every entry also carries a `location` of `docs` /
-  `output` / `templates`, so a blank is never mistaken for a real document). If
+  `location: "templates"` (every entry also carries a `location` of `docs` or
+  `templates`, so a blank is never mistaken for a real document). If
   no templates folder is configured, fall back to
   `msword_list_documents` with `query: "template"` over the docs folder.
 - **The templates folder is read-only.** Open a template to read it or to run
   `msword_list_styles` on it — that is how you find the corporate bullet/heading
   style names before drafting — but never try to save into that folder: both
-  save-as and save-in-place are refused. Anything you produce goes to the output
-  folder via `msword_create`.
+  save-as and save-in-place are refused. Anything you produce goes to the
+  documents folder via `msword_create`.
 - Only `.docx` templates are supported (`.dotx` is not). Any `.pptx` sitting in
   the templates folder is not readable by this server.
 
@@ -188,9 +191,8 @@ more values than the row has cells is an error.
 
 ## Notes
 
-- All paths must be inside the configured docs folder (plus the output folder,
-  and the read-only templates folder); requests outside it are refused — don't
-  fight the sandbox.
+- All paths must be inside the configured docs folder (plus the read-only
+  templates folder); requests outside it are refused — don't fight the sandbox.
 - Opening, creating and saving a document each mirror it to Markdown for the
   knowledge base (on by default, to `C:\Eva\knowledge\word`). Saving is the
   one that matters for work you author here — no need to reopen a document to

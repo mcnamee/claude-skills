@@ -196,9 +196,10 @@ paragraphs with levels, tables, notes) → edit → `powerpoint_save`.
 
 ## Notes
 
-- All paths must be inside the configured presentations folder (plus the output
-  folder, and the read-only templates folder); requests outside it are refused —
-  don't fight the sandbox.
+- All paths must be inside the configured presentations folder (plus the
+  read-only templates folder); requests outside it are refused — don't fight the
+  sandbox. New decks are created in that same presentations folder — there is no
+  separate output folder.
 - **Templates are read-only.** Open one to read it or to run
   `powerpoint_list_layouts` on it — that is how you learn a corporate deck's
   layout names before drafting — but every save into that folder is refused.
