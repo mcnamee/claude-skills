@@ -6,7 +6,7 @@ AI entirely.
 
 | | |
 |---|---|
-| **Server** | `outlook.py` v5.0.0 |
+| **Server** | `outlook.py` v6.0.0 |
 | **pip install** | `pywin32` |
 | **Platform** | **Windows only** — requires classic Win32 Outlook (not "New Outlook") installed, running, and logged into a profile |
 | **Writes to disk** | only when you ask an email to be saved — then one Markdown file in `C:\Eva\knowledge\email` |
@@ -18,17 +18,14 @@ AI entirely.
 /plugin install outlook@mcnamee-claude-skills
 ```
 
-| Prompt | Default | Env var | Purpose |
-|---|---|---|---|
-| Knowledge-base folder | `C:\Eva\knowledge\email` | `OUTLOOK_KB_DIR` | Where an email is saved as Markdown **when you ask for it**, for the `knowledge-base` plugin to index. `off` to forbid saving |
-| Search folders | — | `OUTLOOK_SEARCH_FOLDERS` | Comma-separated default folder set for `outlook_search_recent`, e.g. `Inbox,Sent Items,Archive` |
-| Blacklist file | — | `OUTLOOK_BLACKLIST_FILE` | Path to a file of extra content-blacklist terms |
-| Python interpreter | — | — | **Required.** Absolute path to the `python.exe` that has `pywin32` installed |
+Claude Code prompts only for the two optional settings below; the Python
+interpreter and the folder saved email goes to come from the shared environment
+variables in [Configuration](#configuration).
 
-> **Blank does not mean off.** Leaving the folder prompt empty means "not
-> configured", so the default above applies. To forbid saving outright, type
-> `off` (`none`, `no`, `false` and `disabled` work too), after which the server
-> writes no local file at all.
+| Prompt | Env var | Purpose |
+|---|---|---|
+| Search folders | `OUTLOOK_SEARCH_FOLDERS` | Comma-separated default folder set for `outlook_search_recent`, e.g. `Inbox,Sent Items,Archive` |
+| Blacklist file | `OUTLOOK_BLACKLIST_FILE` | Path to a file of extra content-blacklist terms |
 
 ## Saving to the knowledge base
 
@@ -62,19 +59,73 @@ setx OUTLOOK_KB_AUTOSAVE "true"
 
 See [`eva/knowledge/email`](../../eva/knowledge/email).
 
-## Configuration reference
+## Configuration
 
-Precedence is **CLI flag > environment variable > constant in the file**.
+**Four environment variables configure every plugin in this suite.** Set them
+once for your Windows account and this plugin has nothing else to configure -
+there are no folder prompts at install time and no folder command-line flags.
 
-| CLI flag | Env var | Purpose |
+| Variable | Purpose | Default |
 |---|---|---|
-| `--kb-dir` | `OUTLOOK_KB_DIR` | Folder `outlook_get_email` saves a message into as Markdown when the call asks for it (`save_to_kb=true`), for a local RAG knowledge base. Files are named `Email - <date> - <subject> (<id>).md` and overwritten if the same message is saved again; the folder is created at startup. **Blocked (blacklisted) messages are never written** — a save only runs after a message clears the content filter. Falls back to the `KB_DIR` config constant, default `C:\Eva\knowledge\email` — inside the `knowledge-base` server's documents folder, so saved mail is actually indexed. Pass `off` to forbid saving and keep the server file-free |
-| `--kb-autosave` | `OUTLOOK_KB_AUTOSAVE` | Save **every** email read, without being asked (default false). The pre-5.0.0 behaviour; needs `--kb-dir` to be set |
-| `--search-folders` | `OUTLOOK_SEARCH_FOLDERS` | Comma-separated folder names used as the **default** folder set for `outlook_search_recent`, overriding the `SEARCH_ALL_FOLDERS` value in the file (e.g. `"Inbox,Sent Items,Archive"`). A per-call `folders` argument still takes priority |
-| `--blacklist-file` | `OUTLOOK_BLACKLIST_FILE` | Path to a file of extra content-blacklist terms (one per line, `#` for comments), added to the built-in list |
-| `--require-blacklist` | `OUTLOOK_REQUIRE_BLACKLIST=1` | Fail closed: refuse to start unless the content blacklist has at least one active term, so a missing/empty terms file cannot silently disable the compliance filter. Also settable via the `REQUIRE_BLACKLIST` constant |
-| `--check` | — | Connect to Outlook, print diagnostics + blacklist status to stderr, then exit (no server) |
-| `--version` | — | Print version and exit (works even without `pywin32` installed) |
+| `EVA_PYTHON` | The `python.exe` every server runs under - the same one you installed the pip dependencies into | *(none - you must set it)* |
+| `EVA_DOCUMENTS_DIR` | Root of the document library | `C:\Eva\documents` |
+| `EVA_TEMPLATES_DIR` | Root of the template library | `C:\Eva\reference\templates` |
+| `EVA_KNOWLEDGE_DIR` | Root of the RAG corpus - the one folder the index reads | `C:\Eva\knowledge` |
+
+```powershell
+[Environment]::SetEnvironmentVariable("EVA_PYTHON",        "C:\Python311\python.exe",     "User")
+[Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "C:\Eva\documents",             "User")
+[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\reference\templates",   "User")
+[Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "C:\Eva\knowledge",             "User")
+```
+
+`setx NAME "value"` does the same thing from `cmd`. Neither affects processes
+that are already running, so quit and reopen your editor afterwards.
+
+Of the four, this server uses two: `EVA_PYTHON` and `EVA_KNOWLEDGE_DIR`. Mail
+comes from Outlook over COM, so it reads no local folder at all.
+
+### The folders this plugin uses
+
+Every server works in its **own sub-folder** of those roots, named after
+the plugin. This one uses `email`, and **each folder below must exist** -
+create them, or copy the repo's [`eva/`](../../eva) folder to `C:\Eva` and
+they all do.
+
+| Folder | What it is for | Missing? |
+|---|---|---|
+| `%EVA_KNOWLEDGE_DIR%\email` | Where `outlook_get_email` saves a message as Markdown **when the call asks for it** (`Email - <date> - <subject> (<id>).md`, overwritten if the same message is saved again), for the `knowledge-base` plugin to index. Blacklisted messages are never written | Created at startup. If it cannot be created the server refuses to start, rather than failing on the first email you ask it to keep |
+
+> This server reads no local folder at all - mail comes from Outlook over COM.
+> The knowledge folder is the only thing it ever writes to.
+
+### Overriding one folder, and this server's own settings
+
+The shared roots are normally all you need. These variables are this
+server's own, and a folder variable here beats the matching root - use one
+only when an endpoint's layout really differs.
+
+| Variable | Purpose |
+|---|---|
+| `OUTLOOK_KB_DIR` | Full path to the save folder, instead of `%EVA_KNOWLEDGE_DIR%\email`. `off` forbids saving outright, after which the server writes no local file at all |
+| `OUTLOOK_KB_AUTOSAVE=true` | Save **every** email read, without being asked (default false). Needs a save folder to be on |
+| `OUTLOOK_SEARCH_FOLDERS` | Comma-separated folder names used as the **default** set for `outlook_search_recent`, overriding the `SEARCH_ALL_FOLDERS` value in the file (e.g. `"Inbox,Sent Items,Archive"`). A per-call `folders` argument still takes priority |
+| `OUTLOOK_BLACKLIST_FILE` | Path to a file of extra content-blacklist terms (one per line, `#` for comments), added to the built-in list |
+| `OUTLOOK_REQUIRE_BLACKLIST=1` | Fail closed: refuse to start unless the content blacklist has at least one active term, so a missing or empty terms file cannot silently disable the compliance filter. Also settable via the `REQUIRE_BLACKLIST` constant in the file |
+
+**Blank does not mean off.** A blank value means "not configured", so the shared
+root still applies. To forbid saving outright, set `OUTLOOK_KB_DIR=off` (`none`,
+`no`, `false` and `disabled` work too).
+
+### Command-line flags
+
+Configuration is environment variables only, so nothing here sets a path. The
+flags are actions:
+
+| Flag | Purpose |
+|---|---|
+| `--check` | Connect to Outlook, print diagnostics + blacklist status to stderr, then exit (no server) |
+| `--version` | Print version and exit (works even without `pywin32` installed) |
 
 ## The content blacklist
 
@@ -92,7 +143,7 @@ top of `outlook.py` directly (there are no CLI flags/env vars for these):
 | `BLACKLIST_TERMS` | Built-in list of classification/compliance terms that cause an item to be withheld from the AI entirely |
 | `BLACKLIST_MATCH_MODE` | `"word"` (default, whole-term match) or `"substring"` (for terms containing punctuation) |
 | `MAX_BODY_CHARS` / `CALENDAR_HARD_CAP` / `SEARCH_SCAN_CAP` | Safety caps on body length / items scanned |
-| `SEARCH_ALL_FOLDERS` | Folder names (matched across every store) that `outlook_search_recent` searches by default — `["Inbox", "Sent Items", "Archive"]`; use `outlook_list_folders` to see real folder names first. This is only the built-in default: override it at launch with `--search-folders`, or per call by passing a `folders` argument |
+| `SEARCH_ALL_FOLDERS` | Folder names (matched across every store) that `outlook_search_recent` searches by default — `["Inbox", "Sent Items", "Archive"]`; use `outlook_list_folders` to see real folder names first. This is only the built-in default: override it with `OUTLOOK_SEARCH_FOLDERS`, or per call by passing a `folders` argument |
 
 ## File access
 
@@ -112,13 +163,14 @@ optional blacklist file is read once at startup.
 8. "Search only my 'Projects' and 'Sent Items' folders for anything about the budget review." → `outlook_search_recent` with a `folders` argument overriding the default set
 9. "What are my actual Outlook folder names, so I can point the search at the right archive?" → `outlook_list_folders`
 
-Point `--kb-dir` at the same folder your `knowledge-base` server indexes so the
-emails you keep land alongside your Confluence pages and Word documents.
+The save folder sits inside the same knowledge root the `knowledge-base` server
+indexes - which is what `EVA_KNOWLEDGE_DIR` being one shared setting buys you -
+so the emails you keep land alongside your Confluence pages and Word documents.
 
 ## Troubleshooting
 
 ```powershell
-& "C:\path\to\python.exe" outlook.py --check
+& $env:EVA_PYTHON outlook.py --check
 ```
 
 connects to Outlook and prints diagnostics plus the blacklist status. If it

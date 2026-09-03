@@ -1,7 +1,7 @@
 {
   "name": "word",
   "displayName": "Word (.docx)",
-  "version": "6.0.0",
+  "version": "7.0.0",
   "description": "Read, edit and create Word .docx files - including Word tracked changes, native styles and filling out templates.",
   "author": {
     "name": "mcnamee"
@@ -15,48 +15,21 @@
     "documents"
   ],
   "userConfig": {
-    "docs_dir": {
-      "type": "directory",
-      "title": "Documents folder",
-      "description": "The single folder of .docx files the server may open, edit and save, searched recursively. NEW documents are created here too - there is no separate output folder. REQUIRED: the server refuses to start without it. Defaults to the Word folder of the Eva working tree; copy the repo's eva\\ folder to C:\\Eva and it exists.",
-      "default": "C:\\Eva\\documents\\word"
-    },
-    "templates_dir": {
-      "type": "directory",
-      "title": "Templates folder",
-      "description": "Folder of blank .docx templates new documents are created from. Read-only: templates can be opened and used as a starting point, never saved over, and it must be separate from the documents folder. Enter 'off' to run with no templates.",
-      "default": "C:\\Eva\\reference\\templates"
-    },
-    "kb_dir": {
-      "type": "directory",
-      "title": "Knowledge-base folder",
-      "description": "Every document opened, created or saved is also mirrored to Markdown here, which is what makes it searchable by the knowledge-base plugin. Keep it inside that plugin's documents folder (C:\\Eva\\knowledge) or the mirrors are never indexed. Enter 'off' to disable mirroring.",
-      "default": "C:\\Eva\\knowledge\\word"
-    },
     "author": {
       "type": "string",
       "title": "Tracked-change author",
-      "description": "Optional. Name stamped on Word tracked changes, e.g. your own name."
-    },
-    "python": {
-      "type": "string",
-      "title": "Python interpreter",
-      "description": "Absolute path to the python.exe that has this server's pip dependencies installed (e.g. C:\\Python311\\python.exe). Use plain 'python' only if the right interpreter is first on PATH - a mismatch here is the most common cause of 'dependency missing' errors.",
-      "required": true
+      "description": "Optional. Name stamped on Word tracked changes, e.g. your own name. Every folder and the Python interpreter come from the suite-wide EVA_PYTHON, EVA_DOCUMENTS_DIR, EVA_TEMPLATES_DIR and EVA_KNOWLEDGE_DIR environment variables - this server uses the 'word' sub-folder of each. All three folders must exist; see the plugin README."
     }
   },
   "mcpServers": {
     "word": {
       "type": "stdio",
-      "command": "${user_config.python}",
+      "command": "${EVA_PYTHON}",
       "args": [
         "${CLAUDE_PLUGIN_ROOT}/word.py"
       ],
       "env": {
         "PYTHONUTF8": "1",
-        "MSWORD_DOCS_DIR": "${user_config.docs_dir}",
-        "MSWORD_TEMPLATES_DIR": "${user_config.templates_dir}",
-        "MSWORD_KB_DIR": "${user_config.kb_dir}",
         "MSWORD_AUTHOR": "${user_config.author}"
       }
     }

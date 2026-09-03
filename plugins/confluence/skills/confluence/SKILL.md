@@ -84,7 +84,8 @@ the path.
 - The server is read-only; it cannot create or edit pages.
 - With two instances configured, saved files are named
   `Confluence <server> - <title>.md`, so pages that share a title on both
-  instances stay separate. Saving is off at the server if `--kb-dir` /
+  instances stay separate. Saving is off at the server if
   `CONFLUENCE_KB_DIR` is `off` — the tool says so rather than failing quietly.
-- Long pages may be truncated in the returned text if `--max-body` is set;
+- Long pages may be truncated in the returned text if `CONFLUENCE_MAX_BODY` is
+  set;
   say so if an answer might sit past the truncation point.

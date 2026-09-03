@@ -5,13 +5,24 @@ index. This copy in the repo is a **scaffold**: the folder tree with a README in
 every folder explaining what belongs there, Eva's own instructions in
 [`CLAUDE.md`](CLAUDE.md), and no content.
 
-Copy it to `C:\Eva` on the endpoint and every plugin default in this repo lines
-up with it, with nothing left to configure but your Python path, API keys and
-Confluence/Jira URLs.
+Copy it to `C:\Eva` on the endpoint, set four environment variables, and every
+plugin in this repo lines up with it - with nothing left to configure but your
+API keys and Confluence/Jira URLs.
 
 ```powershell
 Copy-Item -Recurse C:\path\to\claude-skills\eva C:\Eva
+
+[Environment]::SetEnvironmentVariable("EVA_PYTHON",        "C:\Python311\python.exe",        "User")
+[Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "C:\Eva\documents",               "User")
+[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\reference\templates",     "User")
+[Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "C:\Eva\knowledge",               "User")
 ```
+
+Those four are the *whole* configuration story for folders. Each plugin appends
+its own name as a sub-folder - `word` reads `documents\word`, writes
+`knowledge\word` and takes its blanks from `reference\templates\word` - so no
+plugin has a folder setting of its own to keep in sync, and there are no folder
+command-line flags at all.
 
 ## The four zones
 
@@ -44,6 +55,8 @@ C:\Eva\
 └─ reference\
    ├─ exemplars\       finished documents showing what good looks like
    └─ templates\       blank branded files new documents start from
+      ├─ word\           .docx blanks
+      └─ powerpoint\     .pptx / .potx deck shells
 ```
 
 ## The assistant's instructions
@@ -66,30 +79,52 @@ something Eva has to ask about or guess at.
 
 ## Which setting points where
 
-Every path below is the **default** baked into the plugin, so a stock install
-needs none of these set. Each still takes a flag and an environment variable if
-you want the folder somewhere else — flag beats environment variable beats the
-default.
+Four environment variables, set once for your Windows account. Every folder
+below is one of those roots plus the plugin's own name, so there is nothing
+per-plugin to configure and nothing that can drift out of step.
 
-| Folder | Plugin → setting | Flag / env var |
+| Variable | Root | Default |
 |---|---|---|
-| `knowledge\` | `knowledge-base` → documents folder | `--docs-dir` / `KB_DOCS_DIR` |
-| `knowledge\captures\` | `knowledge-base` → output folder | `--output-dir` / `KB_OUTPUT_DIR` |
-| `knowledge\confluence\` | `confluence` → knowledge-base folder | `--kb-dir` / `CONFLUENCE_KB_DIR` |
-| `knowledge\email\` | `outlook` → knowledge-base folder | `--kb-dir` / `OUTLOOK_KB_DIR` |
-| `knowledge\word\` | `word` → knowledge-base folder | `--kb-dir` / `MSWORD_KB_DIR` |
-| `knowledge\powerpoint\` | `powerpoint` → knowledge-base folder | `--kb-dir` / `POWERPOINT_KB_DIR` |
-| `knowledge\pdf\` | `pdf-to-md` → output folder | `--output-dir` / `PDF2MD_OUTPUT_DIR` |
-| `index\` | `knowledge-base` → index folder | `--index-dir` / `KB_INDEX_DIR` |
-| `documents\word\` | `word` → documents folder | `--docs-dir` / `MSWORD_DOCS_DIR` |
-| `documents\powerpoint\` | `powerpoint` → presentations folder | `--docs-dir` / `POWERPOINT_DOCS_DIR` |
-| `documents\excel\` | `excel` → workbook folder | `--docs-dir` / `EXCEL_DOCS_DIR` |
-| `documents\pdf\` | `pdf-to-md` → documents folder | `--docs-dir` / `PDF2MD_DOCS_DIR` |
-| `reference\templates\` | `word` → templates folder | `--templates-dir` / `MSWORD_TEMPLATES_DIR` |
-| `reference\templates\` | `powerpoint` → templates folder | `--templates-dir` / `POWERPOINT_TEMPLATES_DIR` |
-| `reference\exemplars\` | none — read as ordinary files | — |
+| `EVA_PYTHON` | the `python.exe` every server runs under | *(no default - set it)* |
+| `EVA_DOCUMENTS_DIR` | `documents\` | `C:\Eva\documents` |
+| `EVA_TEMPLATES_DIR` | `reference\templates\` | `C:\Eva\reference\templates` |
+| `EVA_KNOWLEDGE_DIR` | `knowledge\` | `C:\Eva\knowledge` |
 
-`jira` touches no local folder at all.
+Where each plugin lands, and **which folders must exist**:
+
+| Plugin | Documents | Templates | Knowledge |
+|---|---|---|---|
+| `word` | `documents\word\` | `reference\templates\word\` | `knowledge\word\` |
+| `powerpoint` | `documents\powerpoint\` | `reference\templates\powerpoint\` | `knowledge\powerpoint\` |
+| `excel` | `documents\excel\` | — | — |
+| `pdf-to-md` | `documents\pdf\` | — | `knowledge\pdf\` |
+| `outlook` | — | — | `knowledge\email\` |
+| `confluence` | — | — | `knowledge\confluence\` |
+| `knowledge-base` | `knowledge\` *(the whole root - it indexes everything)* | — | `knowledge\captures\` |
+| `jira` | — | — | — |
+
+`knowledge-base` is the one exception to the sub-folder rule, and necessarily
+so: it indexes the entire `knowledge\` root, which is exactly the point of
+every other plugin writing into a sub-folder of it. Its vector store lives
+outside the corpus in `index\` (`KB_INDEX_DIR`, default `C:\Eva\index`).
+`reference\exemplars\` needs no setting - those files are read as ordinary
+documents.
+
+### Overriding one folder
+
+The suite-wide root is normally all you need. If one endpoint has to put a
+single folder somewhere else, each plugin still reads a variable of its own,
+which beats the root: `MSWORD_DOCS_DIR`, `MSWORD_TEMPLATES_DIR`,
+`MSWORD_KB_DIR`, `POWERPOINT_*` likewise, `EXCEL_DOCS_DIR`, `PDF2MD_DOCS_DIR`,
+`PDF2MD_KB_DIR`, `OUTLOOK_KB_DIR`, `CONFLUENCE_KB_DIR`, `KB_DOCS_DIR`,
+`KB_INDEX_DIR`, `KB_OUTPUT_DIR`. Each takes a full path, and an optional one
+takes `off` to switch that feature off altogether (`OUTLOOK_KB_DIR=off` and no
+email is ever written to disk).
+
+There are **no folder command-line flags** on any server - configuration is
+environment variables only, so two settings can never disagree about a path.
+The only flags are `--check`, `--version`, and the `knowledge-base` actions
+(`--reindex`, `--search`, `--ask`).
 
 ## The three rules that keep it tidy
 
@@ -98,10 +133,10 @@ everything `.pptx` in `documents\powerpoint\`, and so on — whether you put it
 there or Eva wrote it. There is no `input\`, no `output\`, and no `inbox\` vs
 `library\` split. Those were the tree's own idea of your workflow, and every one
 of them made you decide which folder a file belonged in before you could ask a
-question about it. One folder per type has no such decision, and each plugin
-takes exactly one folder setting to match. Organise inside it however you like —
-`word` and `powerpoint` search recursively, and a bare filename still finds the
-file.
+question about it. One folder per type has no such decision, and it is why the
+plugins need no folder settings of their own: the folder name is the plugin
+name. Organise inside it however you like — `word` and `powerpoint` search
+recursively, and a bare filename still finds the file.
 
 **One indexed root.** `knowledge\` is the only folder the RAG index reads, so
 every server that produces Markdown writes *inside* it. Point a mirror somewhere
@@ -118,11 +153,11 @@ again after a space is restructured, with nothing you wrote yourself at risk.
 
 ## Moving it somewhere else
 
-`C:\Eva` is a literal path in each plugin's config block — short, on the system
-drive, the same for every user, and free of the spaces and `%USERPROFILE%`
-expansion that break command lines. To put the tree elsewhere, copy it there and
-set the environment variables above (or the flags) to match; nothing in the
-plugins assumes the drive or the folder name.
+`C:\Eva` is the fallback baked into each plugin's config block — short, on the
+system drive, the same for every user, and free of the spaces and
+`%USERPROFILE%` expansion that break command lines. To put the tree elsewhere,
+copy it there and point the four environment variables at the new location;
+nothing in the plugins assumes the drive or the folder name.
 
 ## Why nothing here is committed
 

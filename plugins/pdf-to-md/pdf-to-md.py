@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 r"""
-pdf-to-md.py (v5.1.0) - Self-contained MCP (Model Context Protocol) stdio
+pdf-to-md.py (v6.0.0) - Self-contained MCP (Model Context Protocol) stdio
 server that converts PDFs in a folder to Markdown, including tables (both
 bordered and borderless).
 
@@ -36,6 +36,54 @@ Notes:
     no text and are reported as a per-file failure.
 
 =============================================================================
+ CONFIGURATION  (four environment variables, no folder flags)
+=============================================================================
+The whole plugin suite is configured by FOUR environment variables. Set them
+once for your Windows account and every plugin in this repo picks them up;
+this server uses three:
+
+    EVA_PYTHON          full path to the python.exe that has pymupdf4llm
+                        installed, e.g. C:\Python311\python.exe (read by the
+                        plugin manifest, not by this file)
+    EVA_DOCUMENTS_DIR   root of the document library (default C:\Eva\documents)
+    EVA_KNOWLEDGE_DIR   root of the RAG corpus       (default C:\Eva\knowledge)
+
+This server works in the "pdf" sub-folder of each root - the same arrangement
+as every other plugin. BOTH FOLDERS MUST EXIST:
+
+    %EVA_DOCUMENTS_DIR%\pdf   REQUIRED. The source PDFs, read-only: conversion
+                              never alters a PDF. Only the top level is
+                              converted unless PDF2MD_RECURSIVE=1.
+    %EVA_KNOWLEDGE_DIR%\pdf   REQUIRED. Where the converted Markdown is
+                              written. It sits inside the knowledge-base
+                              plugin's corpus on purpose: converting a PDF is
+                              then the same act as adding it to the RAG index.
+
+To set them permanently for your account (PowerShell, one-off):
+
+    [Environment]::SetEnvironmentVariable("EVA_PYTHON", "C:\Python311\python.exe", "User")
+    [Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "C:\Eva\documents", "User")
+    [Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "C:\Eva\knowledge", "User")
+
+Copy the repo's eva\ folder to C:\Eva and both folders exist, correctly
+related to each other - see eva\README.md.
+
+Server-specific settings, all optional and all environment variables:
+
+    PDF2MD_DOCS_DIR         override ONE folder with a full path of its own,
+    PDF2MD_KB_DIR           for an endpoint whose layout differs.
+    PDF2MD_RECURSIVE=1      also convert sub-folders of the PDF folder; the
+                            sub-folder structure is mirrored in the output.
+    PDF2MD_KEEP_IMAGE_REFS=1
+                            KEEP the image references and "missing image"
+                            placeholder text that are stripped by default.
+                            See "IMAGES" below for exactly what is removed.
+
+There are NO folder command-line flags: configuration is environment
+variables only, so two settings can never disagree about a path. The only
+flags this server takes are --check and --version.
+
+=============================================================================
  INSTALLING INTO CLAUDE CODE
 =============================================================================
 This server ships as the "pdf-to-md" Claude Code plugin (its manifest is
@@ -44,30 +92,15 @@ This server ships as the "pdf-to-md" Claude Code plugin (its manifest is
     /plugin marketplace add C:\path\to\claude-skills
     /plugin install pdf-to-md@mcnamee-claude-skills
 
-Claude Code then prompts for the PDF folder, the output folder and the Python
-interpreter. PYTHONUTF8=1 (which prevents stdout encoding crashes on Windows)
-is set for you by the manifest.
+It prompts for nothing: the interpreter and both folders come from the
+environment variables above. PYTHONUTF8=1 (which prevents stdout encoding
+crashes on Windows) is set for you by the manifest.
 
-To register the server by hand instead:
+To register the server by hand instead (PowerShell):
 
-    claude mcp add pdf2md --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\pdf-to-md.py
+    claude mcp add pdf2md --scope user -e PYTHONUTF8=1 -- $env:EVA_PYTHON C:\path\to\pdf-to-md.py
 
-  * Both folders DEFAULT to the Eva working tree - PDFs are read from
-    C:\Eva\documents\pdf and Markdown is written to C:\Eva\knowledge\pdf,
-    which sits inside the knowledge-base plugin's documents folder so a
-    converted PDF is indexed without any further wiring. Copy the repo's eva\
-    folder to C:\Eva and both exist. Override either with --docs-dir /
-    --output-dir, the PDF2MD_DOCS_DIR / PDF2MD_OUTPUT_DIR environment
-    variables, or the CONFIG constants below the imports.
-  * Give the FULL path to a specific python.exe (e.g. C:\Python311\python.exe)
-    rather than a bare "python", so the exact interpreter that has pymupdf4llm
-    installed is the one launched.
-  * Add  --recursive  (or set PDF2MD_RECURSIVE=1) to also process sub-folders;
-    the sub-folder structure is mirrored under the output folder.
-  * Add  --keep-image-refs  (or set PDF2MD_KEEP_IMAGE_REFS=1) to KEEP the
-    image references and "missing image" placeholder text that are stripped
-    by default. See "IMAGES" below for exactly what is removed.
-  * See README.md next to this file for the full settings reference.
+See README.md next to this file for the full settings reference.
 
 =============================================================================
  MANUAL TESTING (PowerShell, on the target box, outside the MCP client)
@@ -80,7 +113,8 @@ echo with nested JSON, which silently drops the "arguments" object):
     {"jsonrpc":"2.0","id":2,"method":"tools/list"}
     {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"convert_all_pdfs","arguments":{}}}
     '@
-    $msgs | python C:\path\to\pdf-to-md.py --docs-dir "C:\Eva\documents\pdf" --output-dir "C:\Eva\knowledge\pdf"
+    $env:EVA_DOCUMENTS_DIR = "C:\Eva\documents"; $env:EVA_KNOWLEDGE_DIR = "C:\Eva\knowledge"
+    $msgs | python C:\path\to\pdf-to-md.py
 
 Expected: three JSON lines on stdout (initialize result, tool list, conversion
 summary). Diagnostics appear on stderr and never on stdout.
@@ -143,8 +177,8 @@ base. Those are removed by default. What goes:
 A line left holding nothing but its bullet or number once a reference is
 removed collapses to a blank line, so no stray markers are left behind.
 
-Pass --keep-image-refs (or set PDF2MD_KEEP_IMAGE_REFS=1) to turn all of
-this off and get the raw pymupdf4llm output back.
+Set PDF2MD_KEEP_IMAGE_REFS=1 to turn all of this off and get the raw
+pymupdf4llm output back.
 
 =============================================================================
  TRANSPORT NOTES (MCP over stdio)
@@ -161,7 +195,7 @@ this off and get the raw pymupdf4llm output back.
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "5.1.0"
+__version__ = "6.0.0"
 
 import argparse
 import contextlib
@@ -220,27 +254,45 @@ SERVER_NAME = "pdf2md-mcp"
 SERVER_VERSION = __version__
 
 # ---------------------------------------------------------------------------
-# CONFIG: folder defaults. A CLI flag beats the environment variable, which
-# beats the constant here (the suite-wide convention). Both point at the Eva
-# working tree - copy the repo's eva\ folder to C:\Eva and they exist. See
-# eva\README.md.
+# CONFIG: folders come from the environment; these are the fallbacks.
 # ---------------------------------------------------------------------------
+# Four environment variables configure the whole plugin suite. Set them once
+# for your Windows account and every plugin picks them up; each server works in
+# its OWN sub-folder of each root, named after the plugin. This server's
+# sub-folder is "pdf":
+#
+#   EVA_DOCUMENTS_DIR   -> %EVA_DOCUMENTS_DIR%\pdf   source PDFs, read-only
+#   EVA_KNOWLEDGE_DIR   -> %EVA_KNOWLEDGE_DIR%\pdf   the converted Markdown
+#
+# The two roots below are the fallback when a variable is not set, and match
+# the Eva working tree - copy the repo's eva\ folder to C:\Eva and both folders
+# exist. See eva\README.md. There are NO folder command-line flags:
+# configuration is environment variables only, so two settings can never
+# disagree about a path. To point ONE folder somewhere else, set
+# PDF2MD_DOCS_DIR / PDF2MD_KB_DIR to a full path of its own.
+# ---------------------------------------------------------------------------
+SUBFOLDER = "pdf"                  # this server's sub-folder in each root
+EVA_DOCUMENTS_DIR = r"C:\Eva\documents"
+EVA_KNOWLEDGE_DIR = r"C:\Eva\knowledge"
 
+# Resolved from the environment in parse_args(); the literals here are what a
+# stock C:\Eva install resolves to.
+#
 # Where the source PDFs live. Read-only: conversion never alters a PDF. Only
-# the top level is converted unless --recursive is passed.
+# the top level is converted unless PDF2MD_RECURSIVE=1.
 DOCS_DIR = r"C:\Eva\documents\pdf"
 
 # Where the converted Markdown is written. This sits INSIDE the knowledge-base
-# plugin's documents folder (C:\Eva\knowledge) on purpose: converting a PDF is
-# then the same act as adding it to the RAG corpus. Point it somewhere outside
-# that folder and the Markdown will pile up unindexed.
+# plugin's corpus (C:\Eva\knowledge) on purpose: converting a PDF is then the
+# same act as adding it to the RAG corpus. Point it somewhere outside that
+# folder and the Markdown will pile up unindexed.
 OUTPUT_DIR = r"C:\Eva\knowledge\pdf"
 
 # Keep image references and "missing image" placeholder text in the Markdown?
 # Default False: this server never writes or embeds image files, so every image
 # reference in the raw output is dangling, and placeholder wording carried over
 # from Outlook/Word is noise in a knowledge base. Override with
-# --keep-image-refs or PDF2MD_KEEP_IMAGE_REFS=1.
+# PDF2MD_KEEP_IMAGE_REFS=1.
 KEEP_IMAGE_REFS = False
 
 DEFAULT_PROTOCOL_VERSION = "2024-11-05"
@@ -276,7 +328,7 @@ LEADING_BULLET_RE = re.compile(r"^\s*[\u2022\u25aa\u25e6\u00b7\u2023]\s+")
 
 
 # --------------------------------------------------------------------------
-# Image artefacts (removed unless --keep-image-refs is given)
+# Image artefacts (removed unless PDF2MD_KEEP_IMAGE_REFS=1)
 # --------------------------------------------------------------------------
 # pymupdf4llm wraps text it finds INSIDE a picture in these two comments,
 # joining the picture's lines with <br> on a single line. The text itself is
@@ -534,7 +586,7 @@ def find_pdfs(folder, recursive):
 
 def md_output_path(pdf_path, docs_dir, output_dir):
     """Map an input PDF to its .md path in the output folder, preserving any
-    sub-folder structure (relevant when --recursive is used)."""
+    sub-folder structure (relevant when PDF2MD_RECURSIVE=1)."""
     rel = Path(pdf_path).resolve().relative_to(Path(docs_dir).resolve())
     return Path(output_dir) / rel.with_suffix(".md")
 
@@ -838,44 +890,53 @@ def handle_message(msg, config):
             send(make_error(msg_id, -32603, "Internal error: {}".format(exc)))
 
 
+def env(name):
+    """Read an environment variable, treating blank as unset.
+
+    A blank value is what an MCP client substitutes for a setting the user left
+    empty, and an unexpanded "${...}" placeholder is what it leaves behind when
+    the variable it refers to does not exist. Both mean "not configured", so
+    the CONFIG default still applies.
+    """
+    value = (os.environ.get(name) or "").strip()
+    if not value or (value.startswith("${") and value.endswith("}")):
+        return None
+    return value
+
+
+def env_flag(name, default=False):
+    """Boolean environment variable; blank or unset keeps the default."""
+    value = env(name)
+    if value is None:
+        return default
+    return value.lower() in ("1", "true", "yes", "on")
+
+
+def folder(own_var, root_var, root_default):
+    """Resolve one of this server's folders from the environment.
+
+    Precedence: this server's own override variable, then the suite-wide root
+    variable, then the root default from the CONFIG block - with this server's
+    "pdf" sub-folder appended to either root. Returns
+    (path, user_configured); user_configured is False only when nothing was
+    set at all, which decides how a missing folder is reported.
+    """
+    own = env(own_var)
+    if own:
+        return own, True
+    root = env(root_var)
+    if root:
+        return os.path.join(root, SUBFOLDER), True
+    return os.path.join(root_default, SUBFOLDER), False
+
+
 def parse_args(argv):
     parser = argparse.ArgumentParser(
-        description="Self-contained MCP stdio server: convert PDFs in a folder to Markdown (with tables)."
-    )
-    # "or CONSTANT" rather than a two-argument env lookup: an MCP client
-    # substitutes a BLANK string for a setting the user left empty, and blank
-    # must mean "not configured" so the CONFIG default still applies.
-    parser.add_argument("--docs-dir",
-                        default=os.environ.get("PDF2MD_DOCS_DIR") or DOCS_DIR,
-                        help="Folder containing the source PDFs. Falls back to "
-                             "the PDF2MD_DOCS_DIR environment variable, then "
-                             "the DOCS_DIR config value (default: "
-                             "C:\\Eva\\documents\\pdf).")
-    parser.add_argument("--output-dir",
-                        default=os.environ.get("PDF2MD_OUTPUT_DIR") or OUTPUT_DIR,
-                        help="Folder to write .md files into. Falls back to "
-                             "the PDF2MD_OUTPUT_DIR environment variable, then "
-                             "the OUTPUT_DIR config value (default: "
-                             "C:\\Eva\\knowledge\\pdf, inside the "
-                             "knowledge-base corpus so conversions are "
-                             "indexed).")
-    parser.add_argument(
-        "--recursive",
-        action="store_true",
-        default=(os.environ.get("PDF2MD_RECURSIVE", "").strip().lower()
-                 in ("1", "true", "yes", "on")),
-        help="Search sub-folders of --docs-dir (sub-folder structure is "
-             "mirrored in the output). Also via PDF2MD_RECURSIVE=1.",
-    )
-    parser.add_argument(
-        "--keep-image-refs",
-        action="store_true",
-        default=(os.environ.get("PDF2MD_KEEP_IMAGE_REFS", "").strip().lower()
-                 in ("1", "true", "yes", "on")) or KEEP_IMAGE_REFS,
-        help="Keep image references and \"missing image\" placeholder text in "
-             "the Markdown. By default they are removed: nothing here writes "
-             "image files, so every reference is dangling. Also via "
-             "PDF2MD_KEEP_IMAGE_REFS=1.",
+        description="Self-contained MCP stdio server: convert PDFs in a folder "
+                    "to Markdown (with tables). Configuration is environment "
+                    "variables only: EVA_DOCUMENTS_DIR and EVA_KNOWLEDGE_DIR "
+                    "(this server uses the 'pdf' sub-folder of each). See the "
+                    "CONFIGURATION section of this file's docstring."
     )
     parser.add_argument("--check", action="store_true",
                         help="Print environment/config diagnostics (interpreter, "
@@ -884,14 +945,24 @@ def parse_args(argv):
     parser.add_argument("--version", action="version",
                         version="{0} {1}".format(SERVER_NAME, __version__))
     args = parser.parse_args(argv)
-    if not args.check:
-        missing = [name for name, value in
-                   (("--docs-dir / PDF2MD_DOCS_DIR", args.docs_dir),
-                    ("--output-dir / PDF2MD_OUTPUT_DIR", args.output_dir))
-                   if not value]
-        if missing:
-            parser.error("missing required setting(s): " + ", ".join(missing))
+    # Folders and behaviour flags come from the environment, and are attached
+    # to the parsed args so the rest of the file keeps one config object.
+    args.docs_dir, args.docs_chosen = folder(
+        "PDF2MD_DOCS_DIR", "EVA_DOCUMENTS_DIR", EVA_DOCUMENTS_DIR)
+    args.output_dir, args.output_chosen = folder(
+        "PDF2MD_KB_DIR", "EVA_KNOWLEDGE_DIR", EVA_KNOWLEDGE_DIR)
+    args.recursive = env_flag("PDF2MD_RECURSIVE")
+    args.keep_image_refs = env_flag("PDF2MD_KEEP_IMAGE_REFS", KEEP_IMAGE_REFS)
     return args
+
+
+def _folder_source(chosen, docs):
+    """Where a resolved folder came from, for --check output."""
+    if chosen:
+        return "PDF2MD_{0}_DIR / EVA_{1}_DIR".format(
+            "DOCS" if docs else "KB", "DOCUMENTS" if docs else "KNOWLEDGE")
+    return "built-in default (no EVA_{0}_DIR set)".format(
+        "DOCUMENTS" if docs else "KNOWLEDGE")
 
 
 def run_check(args):
@@ -900,10 +971,12 @@ def run_check(args):
     print("  version           : {0}".format(__version__))
     print("  python executable : {0}".format(sys.executable))
     print("  python version    : {0}".format(sys.version.split()[0]))
-    print("  docs dir          : {0}".format(args.docs_dir or "(NOT SET - required)"))
-    print("  docs dir exists   : {0}".format(bool(args.docs_dir) and os.path.isdir(args.docs_dir)))
-    print("  output dir        : {0}".format(args.output_dir or "(NOT SET - required)"))
-    print("  output dir exists : {0}".format(bool(args.output_dir) and os.path.isdir(args.output_dir)))
+    print("  docs dir          : {0}".format(args.docs_dir))
+    print("  docs dir from     : {0}".format(_folder_source(args.docs_chosen, True)))
+    print("  docs dir exists   : {0}".format(os.path.isdir(args.docs_dir)))
+    print("  output dir        : {0}".format(args.output_dir))
+    print("  output dir from   : {0}".format(_folder_source(args.output_chosen, False)))
+    print("  output dir exists : {0}".format(os.path.isdir(args.output_dir)))
     print("  recursive         : {0}".format(args.recursive))
     print("  keep image refs   : {0}".format(args.keep_image_refs))
     print("  dependencies      : {0}".format(

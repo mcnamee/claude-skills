@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-jira.py (v1.1.3) - A single-file, READ-ONLY MCP (Model Context Protocol)
+jira.py (v2.0.0) - A single-file, READ-ONLY MCP (Model Context Protocol)
 server for querying Jira Data Center (v2 REST API) using only the Python 3
 standard library.
 
@@ -26,11 +26,20 @@ Tools exposed (read-only / query):
 
 CONFIGURATION
 -------------
-Read from environment variables (the natural fit for an MCP client's `env`
-block); non-secret settings can be overridden by command-line arguments.
-CREDENTIALS ARE ENV-VAR ONLY - there are no --token/--user/--password flags,
-because command-line arguments are visible to other local users in process
-listings:
+EVERY setting is an environment variable - the natural fit for an MCP client's
+`env` block, and the reason there are no configuration flags: two settings can
+then never disagree, and no token can end up in a command line where other
+local users can read it out of a process listing. The only command-line flags
+are --check and --version.
+
+This server touches no local folder, so of the four suite-wide variables it
+uses just one:
+
+  EVA_PYTHON        full path to the python.exe the MCP client launches, e.g.
+                    C:\Python311\python.exe (read by the plugin manifest, not
+                    by this file)
+
+The rest are this server's own:
 
   JIRA_BASE_URL     e.g. https://jira.internal.example.com
                     (include any context path, no trailing slash)
@@ -58,11 +67,15 @@ This server ships as the "jira" Claude Code plugin (its manifest is
     /plugin marketplace add C:\\path\\to\\claude-skills
     /plugin install jira@mcnamee-claude-skills
 
-Claude Code prompts for the base URL, the optional project allowlist and the
-Python interpreter. JIRA_TOKEN is NOT stored in the plugin - set it as a
-Windows user environment variable before starting Claude Code, and the plugin
-picks it up from there. See README.md next to this file for the full
-settings reference.
+Claude Code prompts for the base URL and the optional project allowlist; the
+interpreter comes from EVA_PYTHON. JIRA_TOKEN is NOT stored in the plugin - set
+it, like EVA_PYTHON, as a Windows user environment variable before starting
+Claude Code, and the plugin picks it up from there:
+
+    setx EVA_PYTHON "C:\Python311\python.exe"
+    setx JIRA_TOKEN "..."
+
+See README.md next to this file for the full settings reference.
 
 VALIDATE BEFORE WIRING IN (PowerShell, on the endpoint)
 --------------------------------------------------------
@@ -115,7 +128,7 @@ failed transfer" rule):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "1.1.3"
+__version__ = "2.0.0"
 
 import argparse
 import base64
@@ -910,36 +923,48 @@ def env_bool(name, default=True):
     return val.strip().lower() not in ("0", "false", "no", "off", "")
 
 
+def env_str(name):
+    """
+    Read an environment variable, treating blank as unset.
+
+    A blank value is what an MCP client substitutes for a setting the user left
+    empty, and an unexpanded "${...}" placeholder is what it leaves behind when
+    the variable it refers to does not exist. Both mean "not configured".
+    """
+    val = (os.environ.get(name) or "").strip()
+    if not val or (val.startswith("${") and val.endswith("}")):
+        return None
+    return val
+
+
+def env_int(name, default):
+    """Integer env var, falling back to the default if unset or not a number."""
+    val = env_str(name)
+    if val is None:
+        return default
+    try:
+        return int(val)
+    except ValueError:
+        log("WARNING: {} is not a whole number ({!r}); using {}.".format(
+            name, val, default))
+        return default
+
+
 def build_arg_parser():
+    """
+    The command line carries no configuration - every setting is an
+    environment variable (see the CONFIGURATION section of the docstring), so
+    two settings can never disagree and no token can end up in a process
+    listing. Only --check and --version are flags.
+    """
     p = argparse.ArgumentParser(
         description="READ-ONLY MCP server for querying Jira Data Center "
-                    "(stdio transport). Credentials are environment-variable "
-                    "only: JIRA_TOKEN, or JIRA_USER + JIRA_PASSWORD.",
+                    "(stdio transport). Configured entirely by environment "
+                    "variables: JIRA_BASE_URL, JIRA_TOKEN (or JIRA_USER + "
+                    "JIRA_PASSWORD), and the optional JIRA_PROJECTS "
+                    "allowlist. See the CONFIGURATION section of this file's "
+                    "docstring.",
     )
-    p.add_argument("--base-url", default=os.environ.get("JIRA_BASE_URL"),
-                   help="Jira base URL incl. any context path, no trailing slash "
-                        "(env JIRA_BASE_URL).")
-    # SECURITY: credentials are deliberately env-var ONLY (JIRA_TOKEN, or
-    # JIRA_USER + JIRA_PASSWORD). Command-line arguments are visible to other
-    # local users in process listings, so no --token/--user/--password flags
-    # are offered.
-    p.add_argument("--projects", default=os.environ.get("JIRA_PROJECTS"),
-                   help="Optional comma-separated project-key allowlist "
-                        "confining every tool (env JIRA_PROJECTS).")
-    p.add_argument("--ca-cert", default=os.environ.get("JIRA_CA_CERT"),
-                   help="Path to a PEM CA bundle for an internal CA "
-                        "(env JIRA_CA_CERT).")
-    p.add_argument("--insecure", action="store_true",
-                   default=not env_bool("JIRA_VERIFY_SSL", True),
-                   help="Disable TLS certificate verification "
-                        "(env JIRA_VERIFY_SSL=false).")
-    p.add_argument("--timeout", type=int,
-                   default=int(os.environ.get("JIRA_TIMEOUT", "30")),
-                   help="HTTP request timeout in seconds (env JIRA_TIMEOUT).")
-    p.add_argument("--max-body", type=int,
-                   default=int(os.environ.get("JIRA_MAX_BODY", "0")),
-                   help="Truncate issue descriptions to N characters, "
-                        "0 = unlimited (env JIRA_MAX_BODY).")
     p.add_argument("--check", action="store_true",
                    help="Connect to Jira, print who you are authenticated as "
                         "and how many projects are visible (to stderr), then "
@@ -978,13 +1003,20 @@ def main(argv=None):
 
     args = build_arg_parser().parse_args(argv)
 
-    # Credentials come from the environment ONLY (never argv).
+    # Every setting comes from the environment - credentials because argv is
+    # visible in process listings, the rest so nothing can disagree.
     token = os.environ.get("JIRA_TOKEN")
     user = os.environ.get("JIRA_USER")
     password = os.environ.get("JIRA_PASSWORD")
+    base_url = env_str("JIRA_BASE_URL")
+    projects = env_str("JIRA_PROJECTS")
+    ca_cert = env_str("JIRA_CA_CERT")
+    insecure = not env_bool("JIRA_VERIFY_SSL", True)
+    timeout = env_int("JIRA_TIMEOUT", 30)
+    max_body = env_int("JIRA_MAX_BODY", 0)
 
-    if not args.base_url:
-        log("FATAL: no base URL. Set JIRA_BASE_URL or pass --base-url.")
+    if not base_url:
+        log("FATAL: no base URL. Set the JIRA_BASE_URL environment variable.")
         return 2
     if not token and not (user and password):
         log("FATAL: no credentials. Set the JIRA_TOKEN environment variable, "
@@ -993,22 +1025,22 @@ def main(argv=None):
 
     try:
         client = JiraClient(
-            base_url=args.base_url,
+            base_url=base_url,
             token=token,
             user=user,
             password=password,
-            projects=args.projects,
-            verify_ssl=not args.insecure,
-            ca_cert=args.ca_cert,
-            timeout=args.timeout,
-            max_body=args.max_body,
+            projects=projects,
+            verify_ssl=not insecure,
+            ca_cert=ca_cert,
+            timeout=timeout,
+            max_body=max_body,
         )
     except (ValueError, ssl.SSLError, OSError) as e:
         log("FATAL: could not initialise client: {}".format(e))
         return 2
 
-    if args.insecure:
-        log("WARNING: TLS verification is disabled (--insecure).")
+    if insecure:
+        log("WARNING: TLS verification is disabled (JIRA_VERIFY_SSL=false).")
     if client.projects:
         log("project allowlist: {}".format(", ".join(client.projects)))
     log("configured for base URL {}".format(client.base_url))

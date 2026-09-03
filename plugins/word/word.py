@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r"""
-word.py (v6.0.0) - A single-file MCP (Model Context Protocol) stdio server
+word.py (v7.0.0) - A single-file MCP (Model Context Protocol) stdio server
 that gives an AI agent read/search/edit/generate access to Word .docx files.
 
 It follows a simple open -> edit -> save workflow (msword_open ... msword_save),
@@ -19,17 +19,19 @@ WHAT IT CAN DO
       up with the add_/insert_ tools and save it. Optionally base it on an
       existing document via 'template' - its styles, headers/footers and
       boilerplate are inherited and the template file is left untouched.
-    - Keep those blank templates in a folder of their own with --templates-dir
-      (by default C:\Eva\reference\templates). It is a READ-ONLY second root:
+    - Keep those blank templates in a folder of their own - the "word"
+      sub-folder of the suite's template root, by default
+      C:\Eva\reference\templates\word. It is a READ-ONLY second root:
       its .docx files can be listed, opened and used as the base for
       msword_create, but every attempt to SAVE over one is refused, so a
       template cannot be turned into someone's half-finished report.
     - On open, create AND save, optionally MIRROR the document to Markdown into
       a knowledge-base folder for a local RAG index (the same idea as
-      confluence.py's --kb-dir): headings, bullet/numbered lists and tables are
-      converted; files are named 'Word - <name>.md' and overwritten each time.
-      Mirroring on save is what puts a document you WROTE into the knowledge
-      base, without anyone having to re-open it. Enabled with --kb-dir.
+      confluence.py's knowledge folder): headings, bullet/numbered lists and
+      tables are converted; files are named 'Word - <name>.md' and overwritten
+      each time. Mirroring on save is what puts a document you WROTE into the
+      knowledge base, without anyone having to re-open it. On by default,
+      writing to C:\Eva\knowledge\word.
     - Read full content (linear text, or a structured block list).
     - Search text (body paragraphs and table cells).
     - Replace text, correctly handling matches that span multiple runs.
@@ -177,6 +179,56 @@ WHAT IT CANNOT DO
         [check] ALL CHECKS PASSED
 
 =============================================================================
+ CONFIGURATION  (four environment variables, shared by every plugin)
+=============================================================================
+    The whole suite is configured by FOUR environment variables. Set them once
+    for your Windows account and every plugin in this repo picks them up:
+
+        EVA_PYTHON          full path to the python.exe that has the
+                            dependencies installed, e.g. C:\Python311\python.exe
+        EVA_DOCUMENTS_DIR   root of the document library (C:\Eva\documents)
+        EVA_TEMPLATES_DIR   root of the template library (C:\Eva\reference\templates)
+        EVA_KNOWLEDGE_DIR   root of the RAG corpus       (C:\Eva\knowledge)
+
+    This server works in the "word" sub-folder of each root. ALL THREE FOLDERS
+    MUST EXIST:
+
+        %EVA_DOCUMENTS_DIR%\word    REQUIRED. Every .docx this server may open
+                                    or save, searched recursively, and where
+                                    msword_create writes NEW documents - there
+                                    is no separate output folder. The server
+                                    refuses to start if it is missing.
+        %EVA_TEMPLATES_DIR%\word    Blank .docx templates. READ-ONLY: they can
+                                    be listed, opened and used as the base for
+                                    a new document, never saved over.
+        %EVA_KNOWLEDGE_DIR%\word    Markdown mirror of every document opened,
+                                    created or saved, for the knowledge-base
+                                    plugin to index.
+
+    To set them permanently for your account (PowerShell, one-off):
+
+        [Environment]::SetEnvironmentVariable("EVA_PYTHON", "C:\Python311\python.exe", "User")
+        [Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "C:\Eva\documents", "User")
+        [Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\reference\templates", "User")
+        [Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "C:\Eva\knowledge", "User")
+
+    Copy the repo's eva\ folder to C:\Eva and every folder above exists,
+    correctly related to the others - see eva\README.md.
+
+    Server-specific settings, all optional:
+
+        MSWORD_AUTHOR       name stamped on Word tracked changes (default
+                            "AI Assistant")
+        MSWORD_DOCS_DIR     override ONE folder with a full path of its own,
+        MSWORD_TEMPLATES_DIR  for an endpoint whose layout differs. Set an
+        MSWORD_KB_DIR       optional one to "off" to switch that feature off
+                            entirely (MSWORD_KB_DIR=off stops all mirroring).
+
+    There are NO folder command-line flags: configuration is environment
+    variables only, so two settings can never disagree about a path. The only
+    flags this server takes are --check and --version.
+
+=============================================================================
  INSTALLING INTO CLAUDE CODE
 =============================================================================
     This server ships as the "word" Claude Code plugin (its manifest is
@@ -185,39 +237,13 @@ WHAT IT CANNOT DO
         /plugin marketplace add C:\path\to\claude-skills
         /plugin install word@mcnamee-claude-skills
 
-    Claude Code then prompts for each setting below and for the Python
-    interpreter - use the SAME python.exe you installed the wheels with.
-    PYTHONUTF8=1 (so Windows cp1252 cannot corrupt the stdio JSON stream) is
-    set for you by the manifest.
+    It prompts for nothing: the interpreter and all three folders come from the
+    environment variables above. PYTHONUTF8=1 (so Windows cp1252 cannot corrupt
+    the stdio JSON stream) is set for you by the manifest.
 
-    To register the server by hand instead:
+    To register the server by hand instead (PowerShell):
 
-        claude mcp add word --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\word.py --author Matt
-
-    Every folder setting DEFAULTS to the matching folder of the Eva working
-    tree, so a stock C:\Eva install needs no path passed at all. To override
-    one (flag beats environment variable beats the CONFIG constant):
-
-        claude mcp add word --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\word.py --author Matt --docs-dir D:\Eva\documents\word --templates-dir D:\Eva\reference\templates --kb-dir D:\Eva\knowledge\word
-
-    The --author value (MSWORD_AUTHOR) is stamped on every tracked change;
-    omit it to fall back to the TRACKED_CHANGE_AUTHOR config constant below.
-    The --docs-dir folder is REQUIRED (flag, MSWORD_DOCS_DIR, or the DOCS_DIR
-    constant - default C:\Eva\documents\word): all open/save paths must be
-    inside it, NEW documents from msword_create land in it, and the server
-    refuses to start without one. It is the ONE folder of documents - there is
-    no separate output folder, so a document Eva writes sits alongside the ones
-    you gave it.
-    The --templates-dir folder (MSWORD_TEMPLATES_DIR / TEMPLATES_DIR - default
-    C:\Eva\reference\templates) holds blank .docx templates. It is readable like
-    the document root but NEVER writable.
-    The --kb-dir folder (MSWORD_KB_DIR / KB_DIR - default
-    C:\Eva\knowledge\word) turns on Markdown mirroring for a local RAG
-    knowledge base, on open, create and save; clear it to disable.
-
-    Every one of those folders is part of the Eva working tree: copy the repo's
-    eva\ folder to C:\Eva and they all exist, correctly related to each other.
-    See eva\README.md for the layout and the reasoning behind it.
+        claude mcp add word --scope user -e PYTHONUTF8=1 -- $env:EVA_PYTHON C:\path\to\word.py
 
     See README.md next to this file for the full settings reference.
 
@@ -244,7 +270,7 @@ failed transfer" rule):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "6.0.0"
+__version__ = "7.0.0"
 
 # =============================================================================
 # CONFIGURATION  (all user-editable settings live here, nothing scattered below)
@@ -253,31 +279,55 @@ SERVER_NAME = "word"               # advertised to the MCP client
 SERVER_VERSION = __version__
 PROTOCOL_VERSION_FALLBACK = "2024-11-05"  # used if the client sends none
 
-# REQUIRED path sandbox. The server refuses to open or save any file outside
-# this directory tree, and REFUSES TO START if no root is configured - the
-# model chooses open/save paths, so an unconfined server could read/write any
-# .docx this account can. Set it here, or at launch with --docs-dir or
-# the MSWORD_DOCS_DIR environment variable (which take priority over
-# this constant). Symlinks are resolved before the containment check.
-# This root is ALSO the base for relative paths: a bare "Policy 103.docx" is
-# resolved against it (not the process CWD), so the model can open a file by
-# name without knowing its absolute path.
-# It is ALSO where msword_create writes new documents: one folder holds every
-# .docx, whether you put it there or Eva wrote it. Sub-folders are searched
-# recursively, so organise it however suits you and a bare filename still
-# finds the file.
-# Default: the Eva working tree's Word folder.
+# -----------------------------------------------------------------------------
+# FOLDERS - four environment variables configure the whole plugin suite
+# -----------------------------------------------------------------------------
+# Set these once for your Windows account and every plugin in this repo picks
+# them up; each server then works in its OWN sub-folder of each root, named
+# after the plugin. This server's sub-folder is "word":
+#
+#   EVA_PYTHON          the python.exe the MCP client launches (read by the
+#                       plugin manifest, not by this file)
+#   EVA_DOCUMENTS_DIR   -> %EVA_DOCUMENTS_DIR%\word  .docx files, read/written
+#   EVA_TEMPLATES_DIR   -> %EVA_TEMPLATES_DIR%\word  blank templates, READ-ONLY
+#   EVA_KNOWLEDGE_DIR   -> %EVA_KNOWLEDGE_DIR%\word  Markdown for the RAG index
+#
+# The three roots below are the fallback when a variable is not set, and match
+# the Eva working tree: copy the repo's eva\ folder to C:\Eva and every folder
+# exists. There are NO folder command-line flags - configuration is environment
+# variables only, so two settings can never disagree about a path.
+#
+# To point ONE folder somewhere else on an endpoint whose layout differs, set
+# MSWORD_DOCS_DIR / MSWORD_TEMPLATES_DIR / MSWORD_KB_DIR to a full path; a
+# server-specific variable beats the suite-wide root. Set an optional one to
+# "off" (any of the DISABLE_KEYWORDS) to switch that feature off entirely.
+# -----------------------------------------------------------------------------
+SUBFOLDER = "word"                 # this server's sub-folder in each root
+EVA_DOCUMENTS_DIR = r"C:\Eva\documents"
+EVA_TEMPLATES_DIR = r"C:\Eva\reference\templates"
+EVA_KNOWLEDGE_DIR = r"C:\Eva\knowledge"
+
+# Resolved from the environment in main(); the literals here are what a stock
+# C:\Eva install resolves to.
+#
+# DOCS_DIR is the REQUIRED path sandbox. The server refuses to open or save any
+# file outside this directory tree, and REFUSES TO START if the folder is
+# missing - the model chooses open/save paths, so an unconfined server could
+# read/write any .docx this account can. Symlinks are resolved before the
+# containment check. It is ALSO the base for relative paths: a bare
+# "Policy 103.docx" is resolved against it (not the process CWD), so the model
+# can open a file by name without knowing its absolute path. And it is where
+# msword_create writes new documents: one folder holds every .docx, whether you
+# put it there or Eva wrote it. Sub-folders are searched recursively, so
+# organise it however suits you and a bare filename still finds the file.
 # (--check is exempt: the self-test sandboxes itself to its own temp folder.)
 # Related caution: only open .docx files from trusted sources - a maliciously
 # crafted file could use XML entity tricks to pull local file contents into
 # the document text that the model then reads.
 DOCS_DIR = r"C:\Eva\documents\word"
 
-# OPTIONAL folder of blank .docx TEMPLATES (letterhead, report layout, contract
-# boilerplate ...) - the eva\reference\templates folder that ships with this
-# repo is exactly this. Set it here, or at launch with --templates-dir or the
-# MSWORD_TEMPLATES_DIR environment variable (which take priority over this
-# constant). It is a READ-ONLY second root:
+# TEMPLATES_DIR holds blank .docx TEMPLATES (letterhead, report layout,
+# contract boilerplate ...). It is a READ-ONLY second root:
 #   - its .docx files can be listed (msword_list_documents), opened
 #     (msword_open) and used as the base for a new document
 #     (msword_create template="..."), exactly like the document root;
@@ -286,21 +336,15 @@ DOCS_DIR = r"C:\Eva\documents\word"
 #     to DOCS_DIR.
 # Keeping templates out of DOCS_DIR is the point: the folder stays a clean set
 # of blanks that the model can start from but can never edit in place.
-# Default: the Eva working tree's templates folder (seeded from the repo's
-# eva\reference\templates).
-TEMPLATES_DIR = r"C:\Eva\reference\templates"
+TEMPLATES_DIR = r"C:\Eva\reference\templates\word"
 
-# OPTIONAL knowledge-base (RAG) folder. If set, EVERY document opened with
-# msword_open is ALSO written out as a Markdown file into this folder, the same
-# way confluence.py mirrors pages, so the content can feed a local RAG index.
-# The Markdown files are named 'Word - <name>.md' and overwritten each time.
-# This folder is written to by the server only (the model never chooses the
-# path), so it does not need to sit inside DOCS_DIR. Set it here, or at
-# launch with --kb-dir or the MSWORD_KB_DIR environment variable (which take
-# priority over this constant). Leave unset to disable mirroring.
-# Default: the word\ sub-folder of the Eva knowledge base. It MUST stay inside
-# the knowledge-base plugin's documents folder (C:\Eva\knowledge) or the
-# mirrored Markdown would never be indexed. Clear it to disable mirroring.
+# KB_DIR is the knowledge-base (RAG) folder: EVERY document opened, created or
+# saved is ALSO written out as a Markdown file into it, the same way
+# confluence.py mirrors pages, so the content can feed a local RAG index. The
+# files are named 'Word - <name>.md' and overwritten each time. The server
+# writes there itself (the model never chooses the path), so it does not need
+# to sit inside DOCS_DIR - but it MUST stay inside the knowledge-base plugin's
+# corpus (C:\Eva\knowledge) or the mirrored Markdown is never indexed.
 KB_DIR = r"C:\Eva\knowledge\word"
 
 MAX_SESSIONS = 32                    # guard against runaway open() calls
@@ -333,10 +377,10 @@ APPEND_BURST_MIN_CALLS = 3           # warn from the Nth rapid append onwards
 FUZZY_MIN_RATIO = 0.40
 FUZZY_AMBIGUITY_DELTA = 0.05
 
-# Default author name stamped on tracked changes (w:author). Override per
-# launch with --author "Matt" (or MSWORD_AUTHOR / the plugin's "Tracked-change
-# author" prompt). The date on each change is always the current date,
-# computed at edit time.
+# Default author name stamped on tracked changes (w:author). Override with the
+# MSWORD_AUTHOR environment variable (the plugin's "Tracked-change author"
+# prompt sets it). The date on each change is always the current date, computed
+# at edit time.
 TRACKED_CHANGE_AUTHOR = "AI Assistant"
 
 # When a tracked edit deletes text that is itself a PENDING INSERTION BY THE
@@ -434,7 +478,7 @@ def _versions():
 SESSIONS = {}
 
 # Author stamped on tracked changes. Seeded from config, optionally replaced
-# by the --author launch flag in main().
+# from MSWORD_AUTHOR in main().
 AUTHOR = TRACKED_CHANGE_AUTHOR
 
 # XML namespace literal for the reserved 'xml' prefix (qn() does not map it).
@@ -2184,7 +2228,7 @@ def _save_to_kb(doc, source_path):
 def _mirror_to_kb(doc, source_path, result):
     """
     Mirror a document to the knowledge-base folder if one is configured, and
-    record the outcome on the tool's result dict. No-op when --kb-dir is unset.
+    record the outcome on the tool's result dict. No-op when KB_DIR is unset.
 
     Called on open (what you READ enters the knowledge base) and on create and
     save (so does what you WRITE). Mirroring is always a side effect of the real
@@ -2462,8 +2506,8 @@ def tool_create(args):
         name += ".docx"
 
     if not DOCS_DIR:
-        raise ToolError("No documents folder configured. Set --docs-dir (or "
-                        "MSWORD_DOCS_DIR).")
+        raise ToolError("No documents folder configured. Set "
+                        "EVA_DOCUMENTS_DIR (or MSWORD_DOCS_DIR).")
     out_dir = os.path.realpath(os.path.expanduser(DOCS_DIR))
 
     try:
@@ -3644,7 +3688,7 @@ TOOLS = [
     },
     {
         "name": "msword_create",
-        "description": "Create a NEW .docx in the server's documents folder (--docs-dir) and open it as a session. Supply just a 'filename' (a '.docx' extension is added if missing; any folder part is ignored so files always land at the top of the documents folder - move it afterwards with msword_save(path=...) if it belongs in a sub-folder). Pass 'template' to base the new document on an existing one (a name/path resolved within the templates folder and the document root, matched the same forgiving way as msword_open): its styles, headers/footers, page setup and boilerplate are inherited and the template file itself is never modified. Call msword_list_documents with location='templates' to see what blanks are available. Optionally pass 'title' to seed a Title heading (usually omitted when using a template that already has its own title). Then build the document with ONE msword_add_content call carrying the whole ordered sequence of headings, paragraphs, list items and tables (a series of separate msword_add_heading/msword_add_paragraph calls can arrive out of order and scramble the document), and persist it with msword_save (omit its 'path' to save in place).",
+        "description": "Create a NEW .docx in the server's documents folder and open it as a session. Supply just a 'filename' (a '.docx' extension is added if missing; any folder part is ignored so files always land at the top of the documents folder - move it afterwards with msword_save(path=...) if it belongs in a sub-folder). Pass 'template' to base the new document on an existing one (a name/path resolved within the templates folder and the document root, matched the same forgiving way as msword_open): its styles, headers/footers, page setup and boilerplate are inherited and the template file itself is never modified. Call msword_list_documents with location='templates' to see what blanks are available. Optionally pass 'title' to seed a Title heading (usually omitted when using a template that already has its own title). Then build the document with ONE msword_add_content call carrying the whole ordered sequence of headings, paragraphs, list items and tables (a series of separate msword_add_heading/msword_add_paragraph calls can arrive out of order and scramble the document), and persist it with msword_save (omit its 'path' to save in place).",
         "handler": tool_create,
         "inputSchema": {
             "type": "object",
@@ -3713,7 +3757,7 @@ TOOLS = [
                 "replace": {"type": "string", "default": ""},
                 "count": {"type": "integer", "description": "Optional max total replacements; omit to replace all."},
                 "track_changes": {"type": "boolean", "default": False, "description": "Record edits as Word tracked changes."},
-                "author": {"type": "string", "description": "Override the tracked-change author for this call (defaults to the server's --author)."},
+                "author": {"type": "string", "description": "Override the tracked-change author for this call (defaults to the server's MSWORD_AUTHOR)."},
             },
             "required": ["session_id", "find"],
         },
@@ -4092,11 +4136,13 @@ def serve():
     if TEMPLATES_DIR:
         log("templates folder (read-only) = {}".format(TEMPLATES_DIR))
     else:
-        log("no templates folder configured (set --templates-dir to add one)")
+        log("no templates folder configured (create "
+            "%EVA_TEMPLATES_DIR%\\{} to add one)".format(SUBFOLDER))
     if KB_DIR:
         log("knowledge-base mirroring enabled -> {}".format(KB_DIR))
     else:
-        log("knowledge-base mirroring disabled (set --kb-dir to enable)")
+        log("knowledge-base mirroring disabled (create "
+            "%EVA_KNOWLEDGE_DIR%\\{} to enable)".format(SUBFOLDER))
 
     for line in sys.stdin:
         line = line.strip()
@@ -4616,7 +4662,7 @@ def run_check():
 
         print("[check] create-new-document: PASS")
 
-        # --- Templates folder (--templates-dir): readable, never writable ----
+        # --- Templates folder: readable, never writable ---------------------
         # Configured as a root of its own, the way an endpoint points it at
         # context\templates.
         TEMPLATES_DIR = tmpl_root
@@ -4747,11 +4793,11 @@ def run_check():
         tool_close({"session_id": cres["session_id"]})
 
         KB_DIR = None
-        # With no --kb-dir, saving must still work and mirror nothing.
+        # With no knowledge folder, saving must still work and mirror nothing.
         nres = tool_open({"path": mdpath})
         qres = tool_save({"session_id": nres["session_id"]})
         assert "knowledge_base" not in qres and "knowledge_base_error" not in qres, \
-            "mirrored with --kb-dir unset: {}".format(qres)
+            "mirrored with the knowledge folder unset: {}".format(qres)
         tool_close({"session_id": nres["session_id"]})
         print("[check] markdown-export / kb-mirror (open, create, save): PASS")
 
@@ -5282,22 +5328,64 @@ def run_check():
 DISABLE_KEYWORDS = frozenset(("off", "none", "no", "false", "disabled"))
 
 
+def _env(name):
+    """Read an environment variable, treating blank as unset.
+
+    A blank value is what an MCP client substitutes for a setting the user left
+    empty, and an unexpanded "${...}" placeholder is what it leaves behind when
+    the variable it refers to does not exist. Both mean "not configured", so
+    the default still applies.
+    """
+    value = (os.environ.get(name) or "").strip()
+    if not value or (value.startswith("${") and value.endswith("}")):
+        return None
+    return value
+
+
 def _is_disabled(value):
     """True if a folder setting is one of the DISABLE_KEYWORDS.
 
-    An MCP client can only pass strings, and a BLANK string is what it
-    substitutes for a setting the user left empty - which the suite treats as
-    "not configured", falling back to the default. So a keyword is needed to
-    say "definitely off": --kb-dir off (or MSWORD_KB_DIR=off) disables Markdown
-    mirroring, --templates-dir off disables the templates root.
+    A BLANK value means "not configured" (see _env), so a keyword is needed to
+    say "definitely off": MSWORD_KB_DIR=off disables Markdown mirroring,
+    MSWORD_TEMPLATES_DIR=off disables the templates root.
     """
     return bool(value) and value.strip().lower() in DISABLE_KEYWORDS
 
 
+def _folder(own_var, root_var, root_default, subfolder=None):
+    """Resolve one of this server's folders from the environment.
+
+    Precedence: this server's own override variable, then the suite-wide root
+    variable, then the root default from the CONFIG block - with this server's
+    sub-folder appended to either root.
+
+    Returns (path, user_configured). A path of None means the folder is
+    switched off (one of the DISABLE_KEYWORDS). user_configured is False only
+    when nothing was set at all, which is what decides whether a MISSING folder
+    is fatal (a typo in a path the user chose) or just a warning (a part of the
+    Eva tree this endpoint has not created yet).
+    """
+    if subfolder is None:
+        subfolder = SUBFOLDER
+    own = _env(own_var)
+    if own:
+        return (None if _is_disabled(own) else own), True
+    root = _env(root_var)
+    if root:
+        if _is_disabled(root):
+            return None, True
+        return (os.path.join(root, subfolder) if subfolder else root), True
+    return (os.path.join(root_default, subfolder) if subfolder else root_default), False
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Word (.docx) python-docx MCP stdio server. "
-                    "With no arguments it runs as an MCP server on stdin/stdout."
+        description="Word (.docx) python-docx MCP stdio server. With no "
+                    "arguments it runs as an MCP server on stdin/stdout. "
+                    "Configuration is environment variables only "
+                    "(EVA_DOCUMENTS_DIR / EVA_TEMPLATES_DIR / "
+                    "EVA_KNOWLEDGE_DIR, each with a 'word' sub-folder) - see "
+                    "the CONFIGURATION section of this file's docstring."
     )
     parser.add_argument(
         "--check", action="store_true",
@@ -5307,99 +5395,55 @@ def main():
         "--version", action="version",
         version="{0} {1}".format(SERVER_NAME, __version__)
     )
-    parser.add_argument(
-        "--author", default=os.environ.get("MSWORD_AUTHOR"), metavar="NAME",
-        help="Author name stamped on tracked changes (falls back to the "
-             "MSWORD_AUTHOR environment variable, then the "
-             "TRACKED_CHANGE_AUTHOR config value)."
-    )
-    parser.add_argument(
-        "--docs-dir", default=os.environ.get("MSWORD_DOCS_DIR"),
-        metavar="DIR",
-        help="REQUIRED path sandbox: the server refuses to open or save any "
-             "file outside this directory tree, and refuses to start without "
-             "one. Falls back to the MSWORD_DOCS_DIR environment variable, "
-             "then the DOCS_DIR config value (default: "
-             "C:\\Eva\\documents\\word). It is also where msword_create "
-             "writes NEW documents - there is no separate output folder. The "
-             "model chooses open/save paths, so an unconfined server could "
-             "read/write any .docx this account can."
-    )
-    parser.add_argument(
-        "--templates-dir", default=os.environ.get("MSWORD_TEMPLATES_DIR"),
-        metavar="DIR",
-        help="Folder of blank .docx templates. READ-ONLY: its files can be "
-             "listed, opened and passed as msword_create's 'template', but "
-             "nothing can be saved over them. Falls back to the MSWORD_TEMPLATES_DIR "
-             "environment variable, then the TEMPLATES_DIR config value "
-             "(default: C:\\Eva\\reference\\templates); pass 'off' to "
-             "run with no templates root at all."
-    )
-    parser.add_argument(
-        "--kb-dir", default=os.environ.get("MSWORD_KB_DIR"), metavar="DIR",
-        help="Every document opened, created or saved is ALSO written as a "
-             "Markdown file into this folder for a local RAG knowledge base "
-             "(falls back to the MSWORD_KB_DIR environment variable, then the "
-             "KB_DIR config value, default: C:\\Eva\\knowledge\\word); "
-             "pass 'off' to disable mirroring. Files are named "
-             "'Word - <name>.md' and overwritten each time. The folder is "
-             "created if it does not exist."
-    )
     args = parser.parse_args()
 
     global AUTHOR, DOCS_DIR, TEMPLATES_DIR, KB_DIR
-    if args.author:
-        AUTHOR = args.author
+    AUTHOR = _env("MSWORD_AUTHOR") or TRACKED_CHANGE_AUTHOR
 
-    # Each optional folder has a real default (the Eva working tree), so
-    # "leave it blank" can no longer mean "turn this off": a blank value from an
-    # MCP client means "not configured", and falls back to the default. Pass
-    # one of the DISABLE_KEYWORDS instead to switch a folder off explicitly -
-    # the only way to do it from a client that can only supply strings.
-    # explicit_folders records which paths the user actually chose, so that a
-    # typo in one still fails loudly while a default pointing at a folder this
-    # endpoint has not created yet degrades quietly.
-    explicit_folders = set()
-    for name, value in (("docs", args.docs_dir),
-                        ("templates", args.templates_dir),
-                        ("kb", args.kb_dir)):
-        if not value:
-            continue                      # unset -> keep the CONFIG default
-        chosen = None if _is_disabled(value) else value
-        explicit_folders.add(name)
-        if name == "docs":
-            DOCS_DIR = chosen
-        elif name == "templates":
-            TEMPLATES_DIR = chosen
-        else:
-            KB_DIR = chosen
+    # Every folder comes from the environment: this server's own override
+    # variable, else the suite-wide root with the "word" sub-folder appended.
+    # The second half of each pair records whether the user configured that
+    # folder at all, so a typo in a path they chose still fails loudly while a
+    # default pointing at a folder this endpoint has not created yet degrades
+    # quietly.
+    DOCS_DIR, docs_chosen = _folder(
+        "MSWORD_DOCS_DIR", "EVA_DOCUMENTS_DIR", EVA_DOCUMENTS_DIR)
+    TEMPLATES_DIR, templates_chosen = _folder(
+        "MSWORD_TEMPLATES_DIR", "EVA_TEMPLATES_DIR", EVA_TEMPLATES_DIR)
+    KB_DIR, _kb_chosen = _folder(
+        "MSWORD_KB_DIR", "EVA_KNOWLEDGE_DIR", EVA_KNOWLEDGE_DIR)
 
     if args.check:
         sys.exit(run_check())
 
     # File access is confined to DOCS_DIR, so a root is mandatory.
     if not DOCS_DIR:
-        log("FATAL: no document root configured. Pass --docs-dir, set the "
-            "MSWORD_DOCS_DIR environment variable, or set the "
-            "DOCS_DIR constant in this file. The server only opens/saves "
-            ".docx files inside that folder and will not start without one.")
+        log("FATAL: the documents folder is switched off, and this server "
+            "cannot run without one. Unset MSWORD_DOCS_DIR (or give it a real "
+            "path) so it resolves to %EVA_DOCUMENTS_DIR%\\{}.".format(SUBFOLDER))
         sys.exit(2)
     if not os.path.isdir(DOCS_DIR):
-        log("FATAL: the configured document root does not exist or is not a "
+        log("FATAL: the documents folder does not exist or is not a "
             "directory: {}".format(DOCS_DIR))
-        if "docs" not in explicit_folders:
-            log("       That is the built-in default. Create the folder, or "
-                "copy the repo's eva\\ folder to C:\\Eva to lay the whole "
-                "working tree out at once, or point --docs-dir somewhere else.")
+        if docs_chosen:
+            log("       That path came from EVA_DOCUMENTS_DIR or "
+                "MSWORD_DOCS_DIR. Create the folder, or fix the variable.")
+        else:
+            log("       That is the built-in default. Create the folder, set "
+                "EVA_DOCUMENTS_DIR to your own document root, or copy the "
+                "repo's eva\\ folder to C:\\Eva to lay out the whole tree.")
         sys.exit(2)
 
     # The templates folder is optional. A path the USER chose and got wrong
     # would silently mean "no templates", so that fails loudly; the built-in
     # default simply not existing yet does not.
     if TEMPLATES_DIR and not os.path.isdir(TEMPLATES_DIR):
-        if "templates" in explicit_folders:
-            log("FATAL: the configured templates folder does not exist or is "
-                "not a directory: {}".format(TEMPLATES_DIR))
+        if templates_chosen:
+            log("FATAL: the templates folder does not exist or is not a "
+                "directory: {}".format(TEMPLATES_DIR))
+            log("       That path came from EVA_TEMPLATES_DIR or "
+                "MSWORD_TEMPLATES_DIR. Create the folder, fix the variable, "
+                "or set MSWORD_TEMPLATES_DIR=off to run with no templates.")
             sys.exit(2)
         # Only the built-in default is missing, which just means this endpoint
         # has no templates folder yet. Carry on without one rather than
@@ -5418,8 +5462,9 @@ def main():
         if _read_only_root(real_docs) is not None:
             log("FATAL: the templates folder ({}) is the same as - or contains "
                 "- the document root ({}). Templates are read-only, so every "
-                "save would be refused. Point --templates-dir at a folder of "
-                "its own.".format(TEMPLATES_DIR, DOCS_DIR))
+                "save would be refused. Keep EVA_TEMPLATES_DIR and "
+                "EVA_DOCUMENTS_DIR pointing at separate roots."
+                .format(TEMPLATES_DIR, DOCS_DIR))
             sys.exit(2)
 
     try:

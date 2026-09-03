@@ -6,34 +6,42 @@ is Markdown or plain text, gets split into chunks, embedded and searched by
 
 | | |
 |---|---|
-| **Plugin setting** | `knowledge-base` → documents folder (`--docs-dir` / `KB_DOCS_DIR`) |
+| **Setting** | `EVA_KNOWLEDGE_DIR` — one environment variable, shared by every plugin |
 | **Default** | `C:\Eva\knowledge` |
+| **Must exist?** | **yes**, along with the sub-folder of each plugin you use |
 | **Indexed extensions** | `.md`, `.markdown`, `.txt` — recursively, all sub-folders |
 | **Skipped** | anything else, plus files and folders whose name starts with `.` |
+
+`knowledge-base` indexes this **whole root**; every other plugin writes into
+its own sub-folder of it, named after the plugin. That is the entire wiring:
+set `EVA_KNOWLEDGE_DIR` once and a page you save, an email you keep, a document
+you open and a PDF you convert all land somewhere the index reads.
 
 ## Sub-folders are provenance, not topic
 
 Each sub-folder is named after **what writes into it**, and maps to exactly one
 plugin setting:
 
-| Folder | Filled by | Setting |
-|---|---|---|
-| [`notes\`](notes) | you, by hand | — |
-| [`captures\`](captures) | `kb_capture` | `knowledge-base` → output folder |
-| [`confluence\`](confluence) | the `confluence` plugin, on the pages you ask it to save | `--kb-dir` |
-| [`email\`](email) | the `outlook` plugin, on the emails you ask it to save | `--kb-dir` |
-| [`word\`](word) | the `word` plugin, on every document opened or saved | `--kb-dir` |
-| [`pdf\`](pdf) | the `pdf-to-md` plugin, on conversion | `--output-dir` |
+| Folder | Filled by |
+|---|---|
+| [`notes\`](notes) | you, by hand |
+| [`captures\`](captures) | `kb_capture`, from the `knowledge-base` plugin |
+| [`confluence\`](confluence) | the `confluence` plugin, on the pages you ask it to save |
+| [`email\`](email) | the `outlook` plugin, on the emails you ask it to save |
+| [`word\`](word) | the `word` plugin, on every document opened or saved |
+| [`powerpoint\`](powerpoint) | the `powerpoint` plugin, on every deck opened or saved |
+| [`pdf\`](pdf) | the `pdf-to-md` plugin, on conversion |
 
 Add your own sub-folders freely — the index walks the whole tree, so nesting
 costs nothing. Keep naming them after their source.
 
 ## Two things to know
 
-**A mirror outside this folder is invisible.** If a plugin's knowledge-base
-folder points anywhere that is not inside `knowledge\`, it will mirror perfectly
-and the index will never read a line of it. Every default in this repo is set
-so that cannot happen; if you move one, move it to another folder in here.
+**A mirror outside this folder is invisible.** If a plugin's knowledge folder
+points anywhere that is not inside `knowledge\`, it will mirror perfectly and
+the index will never read a line of it. Deriving every one of them from
+`EVA_KNOWLEDGE_DIR` is what makes that impossible by default; if you override a
+single plugin's folder (`OUTLOOK_KB_DIR` and friends), keep it in here.
 
 **Captured notes sit beside real documents.** A research brief written by an
 agent is indexed with the same authority as a policy you saved from

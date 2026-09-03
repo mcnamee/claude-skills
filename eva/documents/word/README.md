@@ -4,7 +4,7 @@ The `word` plugin's sandbox — every `.docx` it may open, edit and save.
 
 | | |
 |---|---|
-| **Plugin setting** | `word` → documents folder (`--docs-dir` / `MSWORD_DOCS_DIR`) |
+| **Setting** | `EVA_DOCUMENTS_DIR` (the `word` plugin appends `\word`) |
 | **Default** | `C:\Eva\documents\word` |
 | **Access** | read **and write** — documents are edited in place here, and new documents are created here |
 | **Sub-folders** | yes, searched recursively |
@@ -22,9 +22,9 @@ so nothing has to be filed before it can be asked about and nothing has to be
 moved afterwards.
 
 Blank branded templates are the exception. They live in
-[`..\..\reference\templates`](../../reference/templates), which is read-only:
-the plugin can create *from* a template but every save into that folder is
-refused, so the blanks stay blank.
+[`..\..\reference\templates\word`](../../reference/templates/word), which is
+read-only: the plugin can create *from* a template but every save into that
+folder is refused, so the blanks stay blank.
 
 ## Arrange it however you like
 

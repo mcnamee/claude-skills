@@ -29,14 +29,19 @@ source material with something invented.
 - **One file per server.** Every server is a single `.py` — nothing to build, no
   package tree to transfer. Three of the eight are **standard library only**, and
   the standalone skills have no code at all.
-- **Install with prompts, not JSON.** `/plugin install` asks for the folders and
-  the Python interpreter instead of you hand-editing absolute paths in eight
-  places. The matching skill comes with the server.
+- **Four settings, once, for the whole suite.** `EVA_PYTHON`,
+  `EVA_DOCUMENTS_DIR`, `EVA_TEMPLATES_DIR` and `EVA_KNOWLEDGE_DIR` are the
+  configuration. Each server works in its own sub-folder of those roots, named
+  after the plugin, so there is nothing per-plugin to fill in, no folder prompts
+  at install, and no folder flags to keep in step across a `.mcp.json`, a
+  `claude mcp add` line and eight plugin dialogs. `/plugin install` asks only
+  for what is genuinely one server's own — a Confluence URL, an embeddings
+  endpoint. The matching skill comes with the server.
 - **Confined by default.** Every server that touches the filesystem is locked to
-  the folders you name, and refuses to start unconfined rather than falling back
-  to "anywhere". `word` and `powerpoint` are the only ones that can change a
-  file you already have; the rest either read, or write new Markdown into a
-  folder you nominate.
+  its sub-folders, and refuses to start unconfined rather than falling back to
+  "anywhere". `word` and `powerpoint` are the only ones that can change a file
+  you already have; the rest either read, or write new Markdown into the
+  knowledge tree.
 - **Secrets never hit the command line.** Tokens and API keys are environment
   variables only — argv is visible to other local users in process listings.
 - **They compose.** `word` and `powerpoint` mirror what they open into one
@@ -52,14 +57,14 @@ source material with something invented.
 
 | Plugin | Version | What it does | pip install |
 |---|---|---|---|
-| [**word**](plugins/word) | 6.0.0 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
-| [**powerpoint**](plugins/powerpoint) | 2.0.0 | Build `.pptx` decks that inherit your own template's layouts and theme, and audit them against the 10/20/30 rule | `python-pptx` |
-| [**excel**](plugins/excel) | 4.0.0 | Read and analyse workbooks; parses `.xlsx` directly, so Excel isn't needed | _none_ |
-| [**outlook**](plugins/outlook) | 5.0.0 | Read local Outlook mail and calendar via COM, with a content blacklist; saves an email to the knowledge base when you ask | `pywin32` |
-| [**confluence**](plugins/confluence) | 3.0.0 | Search and read Confluence pages, across one or two instances; saves a page to the knowledge base when you ask | _none_ |
-| [**jira**](plugins/jira) | 1.1.3 | Query issues, sprints and projects (Jira Data Center v2 API) | _none_ |
-| [**knowledge-base**](plugins/knowledge-base) | 3.0.0 | True RAG over your own Markdown: local ChromaDB index + your embeddings API, and capture notes back into it | `chromadb` |
-| [**pdf-to-md**](plugins/pdf-to-md) | 5.1.0 | Convert PDFs to Markdown with tables preserved | `pymupdf pymupdf4llm` |
+| [**word**](plugins/word) | 7.0.0 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
+| [**powerpoint**](plugins/powerpoint) | 3.0.0 | Build `.pptx` decks that inherit your own template's layouts and theme, and audit them against the 10/20/30 rule | `python-pptx` |
+| [**excel**](plugins/excel) | 5.0.0 | Read and analyse workbooks; parses `.xlsx` directly, so Excel isn't needed | _none_ |
+| [**outlook**](plugins/outlook) | 6.0.0 | Read local Outlook mail and calendar via COM, with a content blacklist; saves an email to the knowledge base when you ask | `pywin32` |
+| [**confluence**](plugins/confluence) | 4.0.0 | Search and read Confluence pages, across one or two instances; saves a page to the knowledge base when you ask | _none_ |
+| [**jira**](plugins/jira) | 2.0.0 | Query issues, sprints and projects (Jira Data Center v2 API) | _none_ |
+| [**knowledge-base**](plugins/knowledge-base) | 4.0.0 | True RAG over your own Markdown: local ChromaDB index + your embeddings API, and capture notes back into it | `chromadb` |
+| [**pdf-to-md**](plugins/pdf-to-md) | 6.0.0 | Convert PDFs to Markdown with tables preserved | `pymupdf pymupdf4llm` |
 
 Each plugin's README covers its settings, tools, file access and example
 prompts. Every server also carries a semantic version in `__version__`, printed
@@ -79,20 +84,20 @@ does not expand — it's `$env:VAR`.
 Copy-Item -Recurse C:\path\to\claude-skills\eva C:\Eva
 ```
 
-Every folder setting in every plugin already defaults to its place in that tree,
-so this one step means you can accept each folder prompt as it stands and the
-servers are correctly related to each other — mirrors landing inside the indexed
-corpus, one folder per file type with nothing to file first. See
-[Folder layout](#folder-layout) for what goes where, and `eva/README.md` for
-each folder's own README.
+That one step creates every folder the servers need, correctly related to each
+other — mirrors landing inside the indexed corpus, one folder per file type with
+nothing to file first. **Every folder must exist**: a plugin whose folder is
+missing either refuses to start (its documents folder) or runs with that
+feature off. See [Folder layout](#folder-layout) for what goes where, and
+`eva/README.md` for each folder's own README.
 
 The copy brings [`eva/CLAUDE.md`](eva/CLAUDE.md) with it, which is what turns
 Claude into Eva when you run Claude Code in `C:\Eva`. Open it and fill in the
 **About me** block — your name, role, who you write to, how you sign off. See
 [The assistant's instructions](#the-assistants-instructions).
 
-**2. Install the pip dependencies** into the *same* interpreter you'll point the
-plugins at:
+**2. Install the pip dependencies** into the interpreter you are going to name
+in step 3:
 
 ```powershell
 & "C:\path\to\python.exe" -m pip install python-docx pymupdf pymupdf4llm pywin32 chromadb
@@ -102,7 +107,25 @@ plugins at:
 what the plugins you want need — see the table above.) `word.py`'s docstring
 walks through sideloading the wheels.
 
-**3. Add this repo as a marketplace**, then install whichever plugins you want.
+**3. Set the four suite-wide environment variables.** This is the whole
+configuration story: every plugin reads these, and each works in its own
+sub-folder of the three roots, named after the plugin.
+
+```powershell
+[Environment]::SetEnvironmentVariable("EVA_PYTHON",        "C:\path\to\python.exe",       "User")
+[Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "C:\Eva\documents",            "User")
+[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\reference\templates",  "User")
+[Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "C:\Eva\knowledge",            "User")
+```
+
+| Variable | What it points at | Default if unset |
+|---|---|---|
+| `EVA_PYTHON` | The `python.exe` from step 2 — every server runs under it. A mismatch here is the most common cause of "dependency missing" | *(none — set it)* |
+| `EVA_DOCUMENTS_DIR` | The document library | `C:\Eva\documents` |
+| `EVA_TEMPLATES_DIR` | The template library | `C:\Eva\reference\templates` |
+| `EVA_KNOWLEDGE_DIR` | The RAG corpus — the one indexed root | `C:\Eva\knowledge` |
+
+**4. Add this repo as a marketplace**, then install whichever plugins you want.
 These are slash commands, typed inside Claude Code — not shell commands:
 
 ```
@@ -111,21 +134,17 @@ These are slash commands, typed inside Claude Code — not shell commands:
 /plugin install excel@mcnamee-claude-skills
 ```
 
-Claude Code prompts for that server's settings. Every folder prompt is
-pre-filled from step 1, so the only answer that is genuinely yours to give is
-the **Python interpreter** — the absolute path to the `python.exe` from step 2;
-a mismatch here is the most common cause of "dependency missing". The plugins
-are independent, so a machine without `pywin32` simply doesn't install
-`outlook`.
+There are **no folder prompts**: `word` asks only for an optional
+tracked-change author, `excel`, `powerpoint` and `pdf-to-md` ask for nothing at
+all, and the rest ask only for what is genuinely theirs (a Confluence or Jira
+URL, an embeddings endpoint). The plugins are independent, so a machine without
+`pywin32` simply doesn't install `outlook`.
 
-Leaving a folder prompt **blank** means "not configured", so the default
-applies. To switch an optional folder off, type `off`.
+`excel` is the simplest to start with: standard library only, no prompts.
 
-`excel` is the simplest to start with: standard library only, one prompt.
-
-**4. Set your secrets** as Windows user environment variables before starting
-Claude Code — they're read from the ambient environment, never stored in the
-plugin. Only needed for the plugins you actually install:
+**5. Set your secrets** the same way, before starting Claude Code — they're read
+from the ambient environment, never stored in the plugin. Only needed for the
+plugins you actually install:
 
 ```powershell
 setx CONFLUENCE_TOKEN "your-personal-access-token"
@@ -168,8 +187,12 @@ HTTP servers) without starting the server, and is far easier to read than an MCP
 connection failure:
 
 ```powershell
-& "C:\path\to\python.exe" C:\path\to\claude-skills\plugins\word\word.py --check
+& $env:EVA_PYTHON C:\path\to\claude-skills\plugins\word\word.py --check
 ```
+
+It prints the folders it resolved and says whether each came from your
+environment variables or the built-in default, which is usually enough to spot
+a typo without reading anything else.
 
 ### Manual install, without plugins
 
@@ -182,7 +205,7 @@ stdio JSON stream on non-ASCII content. Pass secrets with `-e` / the `env` block
 never as flags.
 
 ```powershell
-claude mcp add excel --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\claude-skills\plugins\excel\excel.py --docs-dir C:\path\to\your\workbooks
+claude mcp add excel --scope user -e PYTHONUTF8=1 -e EXCEL_DOCS_DIR=C:\path\to\your\workbooks -- $env:EVA_PYTHON C:\path\to\claude-skills\plugins\excel\excel.py
 ```
 
 (No `&` needed there — `claude` is unquoted, so PowerShell treats it as a
@@ -193,29 +216,35 @@ command already.)
 Every server follows the same pattern, so once you know one you know them all.
 The per-plugin READMEs list each server's actual settings.
 
-1. **Precedence: CLI flag > environment variable > constant in the file.**
-2. **Naming: the env var is the server's prefix + the flag name.** `--docs-dir`
-   on `excel.py` is `EXCEL_DOCS_DIR`; on `word.py` it is
-   `MSWORD_DOCS_DIR`. Prefixes: `CONFLUENCE_`, `JIRA_`, `KB_`, `EXCEL_`,
-   `OUTLOOK_`, `MSWORD_`, `PDF2MD_`. The one deliberate exception: `--insecure`
-   pairs with `<PREFIX>_VERIFY_SSL=false`.
-3. **Secrets are env-var only.** No `--token`/`--password`/`--*-api-key` flags
-   anywhere, because command-line arguments are visible to other local users.
-4. **Shared flag vocabulary:** `--docs-dir` (the one folder of documents a
-   server is confined to, which is also where it writes anything it creates),
-   `--output-dir` (generated Markdown, on the two servers whose *only* output is
-   Markdown), `--templates-dir` (blank templates to create from, read-only),
-   `--kb-dir` (Markdown mirror
-   for the RAG knowledge base), `--index-dir` (the vector store),
-   `--base-url`/`--ca-cert`/`--insecure`/`--timeout`/`--max-body` (the HTTP
-   servers), `--check`, `--version`.
-5. **Every folder setting defaults to its place in `C:\Eva`** — see
-   [Folder layout](#folder-layout). A **blank** value means "not configured",
-   so the default applies; to switch an optional folder off, pass `off`
-   (`none`, `no`, `false` and `disabled` also work). A folder you configured
-   yourself that does not exist is a fatal error, because it is almost always a
-   typo; a built-in default that does not exist yet is a warning, and the
-   feature it enables simply stays off.
+1. **Configuration is environment variables only.** No server takes a folder
+   flag, a URL flag or a tuning flag; the only command-line flags are actions —
+   `--check`, `--version`, and `knowledge-base`'s `--reindex` / `--search` /
+   `--ask` / `--debug`. One way to set a thing means two settings can never
+   disagree about it, and nothing has to be re-passed in a `.mcp.json`, a
+   `claude mcp add` line and a plugin prompt at once.
+2. **Four variables configure the whole suite:** `EVA_PYTHON`,
+   `EVA_DOCUMENTS_DIR`, `EVA_TEMPLATES_DIR`, `EVA_KNOWLEDGE_DIR`. Each server
+   works in its own **sub-folder** of those roots, named after the plugin —
+   `word` reads `documents\word`, writes `knowledge\word`, and takes its blanks
+   from `reference\templates\word`. `knowledge-base` is the one exception, and
+   necessarily so: it indexes the *whole* knowledge root.
+3. **A per-server variable overrides one folder,** for an endpoint whose layout
+   differs: `<PREFIX>_DOCS_DIR`, `<PREFIX>_TEMPLATES_DIR`, `<PREFIX>_KB_DIR`.
+   It beats the shared root. Prefixes: `CONFLUENCE_`, `JIRA_`, `KB_`, `EXCEL_`,
+   `OUTLOOK_`, `MSWORD_` (the `word` server keeps this older prefix), `PDF2MD_`,
+   `POWERPOINT_`.
+4. **Secrets are env-var only**, and always were — no flag has ever existed
+   that could put a token in a command line, where other local users can read
+   it out of a process listing.
+5. **A blank value means "not configured"**, so the shared root still applies —
+   that is what an MCP client substitutes for a prompt left empty. To switch an
+   optional folder off, set it to `off` (`none`, `no`, `false` and `disabled`
+   also work). A folder you named yourself that does not exist is a fatal
+   error, because it is almost always a typo; a built-in default that does not
+   exist yet is a warning, and the feature it enables simply stays off.
+6. **Every folder must exist.** Copying [`eva/`](eva) to `C:\Eva` creates all of
+   them; each server's `--check` reports which are missing and where the path
+   came from.
 
 ## Folder layout
 
@@ -244,23 +273,28 @@ C:\Eva\
 └─ reference\        style, not facts - deliberately NOT indexed
    ├─ exemplars\       finished documents showing what good looks like
    └─ templates\       blank branded files new documents/decks start from
+      ├─ word\           .docx blanks
+      └─ powerpoint\     .pptx / .potx deck shells
 ```
 
-| Folder | Plugin → setting |
-|---|---|
-| `knowledge\` | `knowledge-base` → `--docs-dir` |
-| `knowledge\captures\` | `knowledge-base` → `--output-dir` |
-| `knowledge\confluence\` | `confluence` → `--kb-dir` |
-| `knowledge\email\` | `outlook` → `--kb-dir` |
-| `knowledge\word\` | `word` → `--kb-dir` |
-| `knowledge\powerpoint\` | `powerpoint` → `--kb-dir` |
-| `knowledge\pdf\` | `pdf-to-md` → `--output-dir` |
-| `index\` | `knowledge-base` → `--index-dir` |
-| `documents\word\` | `word` → `--docs-dir` |
-| `documents\powerpoint\` | `powerpoint` → `--docs-dir` |
-| `documents\excel\` | `excel` → `--docs-dir` |
-| `documents\pdf\` | `pdf-to-md` → `--docs-dir` |
-| `reference\templates\` | `word` and `powerpoint` → `--templates-dir` |
+Three environment variables name the three roots; the plugin's own name is the
+sub-folder. **Every folder listed here must exist.**
+
+| Plugin | `EVA_DOCUMENTS_DIR\` | `EVA_TEMPLATES_DIR\` | `EVA_KNOWLEDGE_DIR\` |
+|---|---|---|---|
+| `word` | `word\` | `word\` | `word\` |
+| `powerpoint` | `powerpoint\` | `powerpoint\` | `powerpoint\` |
+| `excel` | `excel\` | — | — |
+| `pdf-to-md` | `pdf\` | — | `pdf\` |
+| `outlook` | — | — | `email\` |
+| `confluence` | — | — | `confluence\` |
+| `knowledge-base` | — | — | the **whole root** it indexes, plus `captures\` |
+| `jira` | — | — | — |
+
+`knowledge-base` also keeps its vector store in `C:\Eva\index`
+(`KB_INDEX_DIR`) — the one folder in the suite that is not under a shared root,
+deliberately outside the corpus so a large binary database does not sit in the
+folder you index.
 
 Three rules make it hold together, and all three are worth knowing before you
 move a folder:
@@ -270,13 +304,16 @@ move a folder:
 wrote it. There is no `input\`, no `output\`, and no `inbox\` vs `library\`
 split: each plugin can open nothing outside its single folder, so the extras
 were either unreachable or one more setting to keep in sync — and each made you
-decide where a file belonged before you could ask a question about it. Organise
-inside the folder however you like; `word` and `powerpoint` search recursively
-and a bare filename still finds the file.
+decide where a file belonged before you could ask a question about it. It is
+also what lets the plugins have no folder settings of their own: the folder name
+*is* the plugin name. Organise inside the folder however you like; `word` and
+`powerpoint` search recursively and a bare filename still finds the file.
 
 **There is one indexed root.** `knowledge\` is the only folder the RAG index
-reads, so every server that produces Markdown writes inside it. Point a mirror
-anywhere else and it fills up faithfully while `kb_ask` never sees a word of it.
+reads, so every server that produces Markdown writes inside it. Deriving all of
+them from one `EVA_KNOWLEDGE_DIR` is what makes that impossible to get wrong;
+point a single mirror anywhere else and it fills up faithfully while `kb_ask`
+never sees a word of it.
 
 **Folders are named after what wrote them, not what they are about.** Topic
 folders rot — every document belongs to three of them. Provenance maps
@@ -290,8 +327,8 @@ what belongs there.
 
 ## File access policy
 
-Every server that touches the filesystem is confined to the folder(s) named in
-its configuration, and that configuration is **required**:
+Every server that touches the filesystem is confined to its sub-folders of the
+three shared roots, and those folders are **required**:
 
 | Plugin | Local file access |
 |---|---|
@@ -394,7 +431,7 @@ than for facts, which is why it sits outside the indexed corpus:
 | Folder | Holds | Wired up by |
 |---|---|---|
 | [**`reference/exemplars`**](eva/reference/exemplars) | Finished, good documents (`.md`, `.docx`, `.pptx`, `.pdf`) that show the house style to write in | nothing — point at one in the prompt |
-| [**`reference/templates`**](eva/reference/templates) | Blank `.docx`/`.pptx` templates a new document or deck is created from | `word` and `powerpoint` → `--templates-dir` (read-only) |
+| [**`reference/templates`**](eva/reference/templates) | Blank `.docx`/`.pptx` templates a new document or deck is created from, one sub-folder per plugin (`templates\word`, `templates\powerpoint`) | `EVA_TEMPLATES_DIR` — read-only for both plugins |
 
 An exemplar is read for guidance and never becomes the output; a template *is*
 the output's first draft. Neither is indexed: add a board paper to the RAG

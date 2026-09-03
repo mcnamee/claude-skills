@@ -7,7 +7,7 @@ answer never reach the index.
 
 | | |
 |---|---|
-| **Plugin setting** | `confluence` → knowledge-base folder (`--kb-dir` / `CONFLUENCE_KB_DIR`) |
+| **Setting** | `EVA_KNOWLEDGE_DIR` (the `confluence` plugin appends `\confluence`) |
 | **Default** | `C:\Eva\knowledge\confluence` |
 | **Filenames** | `Confluence - <title>.md`, or `Confluence <server> - <title>.md` with two instances configured |
 | **Overwritten** | yes, whenever the same page is saved again — the newest save wins |

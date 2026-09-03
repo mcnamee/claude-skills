@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-knowledge-base.py (v3.0.0)
+knowledge-base.py (v4.0.0)
 ==========================
 
 A single-file MCP (Model Context Protocol) server providing true RAG
@@ -47,70 +47,95 @@ server makes no network calls other than to the two endpoints you configure.
 
 CONFIGURATION
 -------------
-CLI flags take priority over environment variables. API keys are env-var
-ONLY (command lines are visible to other local users in process listings).
+EVERY setting is an environment variable. There are no configuration flags, so
+two settings can never disagree, and an API key can never end up in a command
+line where other local users would see it in a process listing. The only flags
+are the actions: --check, --reindex (+ --force), --search, --ask, --debug,
+--version.
 
-| Env var                 | CLI flag             | Purpose                                                     |
-|-------------------------|----------------------|-------------------------------------------------------------|
-| KB_DOCS_DIR             | --docs-dir           | REQUIRED. Folder of .md/.markdown/.txt docs (recursive).    |
-|                         |                      | Default: C:\\Eva\\knowledge                                  |
-| KB_INDEX_DIR            | --index-dir          | ChromaDB folder. Default: C:\\Eva\\index                     |
-| KB_OUTPUT_DIR           | --output-dir         | Folder kb_capture writes new notes into. Default:           |
-|                         |                      | C:\\Eva\\knowledge\\captures. MUST resolve inside --docs-dir, |
-|                         |                      | or captured notes would never be indexed                    |
-| KB_COLLECTION           | --collection         | ChromaDB collection name (default: kb-rag; 3-512 chars of   |
-|                         |                      | [a-zA-Z0-9._-], starting/ending alphanumeric)               |
-| KB_EMBED_URL            | --embed-url          | REQUIRED. Full URL of the embeddings endpoint               |
-| KB_EMBED_MODEL          | --embed-model        | Model name sent in the request (omit if endpoint has one)   |
-| KB_EMBED_API_KEY        | (env only)           | API key for the embeddings endpoint                         |
-| KB_EMBED_AUTH_HEADER    | --embed-auth-header  | Header the key is sent in. Default Authorization (Bearer);  |
-|                         |                      | any other name (e.g. api-key for Azure) sends the raw key   |
-| KB_EMBED_STYLE          | --embed-style        | Request format: openai (default), ollama, kserve-jina       |
-|                         |                      | (KServe V2 inference protocol), or raw-json (plain          |
-|                         |                      | {"<key>": [texts]} body, for KServe CUSTOM predictors)      |
-| KB_EMBED_TENSOR_NAME    | --embed-tensor-name  | kserve-jina only: name of the input tensor (default: text)  |
-| KB_EMBED_JSON_KEY       | --embed-json-key     | raw-json only: key the texts are sent under (default: texts)|
-| KB_EMBED_TEMPLATE       | --embed-template     | FULL request-body control: a JSON document with "__TEXTS__" |
-|                         |                      | where the array of texts goes; "__COUNT__" becomes the      |
-|                         |                      | number of texts in the batch (for tensor "shape" fields)    |
-|                         |                      | and "__MODEL__" the --embed-model name. When set it         |
-|                         |                      | OVERRIDES --embed-style's request shape. E.g.               |
-|                         |                      | {"inputs": {"texts": "__TEXTS__"}} for a FastAPI wrapper    |
-|                         |                      | that nests the pipeline arguments under an "inputs" field   |
-| KB_EMBED_RESPONSE_PATH  | --embed-response-path| Dotted path to the vectors in the response when the         |
-|                         |                      | automatic detection can't find them, e.g.                   |
-|                         |                      | "outputs.embeddings" or "result.0.vectors". Applies to      |
-|                         |                      | every style; list indexes are numeric path parts            |
-| KB_DEBUG=1              | --debug              | Log every request/response body (truncated) to stderr -     |
-|                         |                      | shows the exact JSON sent, for matching an unknown endpoint |
-| KB_EMBED_BATCH          | --embed-batch        | Texts per embeddings request (default 16; ollama is 1-by-1) |
-| KB_EMBED_QUERY_PREFIX   | --embed-query-prefix | Prefix for query embeds (e5-style models: "query: ")        |
-| KB_EMBED_DOC_PREFIX     | --embed-doc-prefix   | Prefix for document embeds ("passage: ")                    |
-| KB_EMBED_EXTRA_HEADERS  | (env only)           | JSON object of extra HTTP headers for the embed endpoint    |
-| KB_CHAT_URL             | --chat-url           | OPTIONAL. Chat-completions endpoint for the generate step   |
-| KB_CHAT_MODEL           | --chat-model         | Model name for generation                                   |
-| KB_CHAT_API_KEY         | (env only)           | API key for the chat endpoint (falls back to embed key)     |
-| KB_CHAT_AUTH_HEADER     | --chat-auth-header   | As per KB_EMBED_AUTH_HEADER                                 |
-| KB_CHAT_MAX_TOKENS      | --chat-max-tokens    | max_tokens for generation (default 1024, 0 = omit field)    |
-| KB_CHAT_EXTRA_HEADERS   | (env only)           | JSON object of extra HTTP headers for the chat endpoint     |
-| KB_CA_CERT              | --ca-cert            | PEM CA bundle for an internal CA                            |
-| KB_CLIENT_CERT          | --client-cert        | PEM client certificate, for gateways that require mutual    |
-|                         |                      | TLS (mTLS). Presented to BOTH endpoints                     |
-| KB_CLIENT_KEY           | --client-key         | PEM private key for the client certificate (omit if the     |
-|                         |                      | --client-cert file contains both cert and key)              |
-| KB_CLIENT_KEY_PASSWORD  | (env only)           | Passphrase, if the client private key is encrypted          |
-| KB_VERIFY_SSL=false     | --insecure           | Disable TLS certificate verification                        |
-| KB_TIMEOUT              | --timeout            | HTTP timeout seconds (default 120)                          |
-| KB_CHUNK_CHARS          | --chunk-chars        | Soft max characters per chunk (default 1500)                |
-| KB_CHUNK_OVERLAP        | --chunk-overlap      | Overlap characters between adjacent chunks (default 200)    |
-| KB_TOP_K                | --top-k              | Default number of chunks retrieved (default 5)              |
+Two variables are shared with every other plugin in this suite, set once for
+your Windows account:
+
+| Env var           | Purpose                                                  |
+|-------------------|----------------------------------------------------------|
+| EVA_PYTHON        | Full path to the python.exe the MCP client launches, e.g. |
+|                   | C:\\Python311\\python.exe (read by the plugin manifest,     |
+|                   | not by this file)                                        |
+| EVA_KNOWLEDGE_DIR | The RAG corpus root, default C:\\Eva\\knowledge. THIS      |
+|                   | FOLDER MUST EXIST. Unlike the other plugins, this server  |
+|                   | indexes the WHOLE root rather than one sub-folder - every |
+|                   | .md/.markdown/.txt file under it, recursively, including  |
+|                   | the sub-folders the word, powerpoint, outlook, confluence |
+|                   | and pdf-to-md plugins mirror into. kb_capture writes its  |
+|                   | notes into the "captures" sub-folder of it, which must    |
+|                   | also exist (it is created on demand)                      |
+
+The rest are this server's own. API keys are, as ever, environment-only.
+
+| Env var                 | Purpose                                                     |
+|-------------------------|-------------------------------------------------------------|
+| KB_DOCS_DIR             | Override the indexed corpus with a full path of its own,     |
+|                         | instead of EVA_KNOWLEDGE_DIR                                 |
+| KB_INDEX_DIR            | ChromaDB folder. Default: C:\\Eva\\index - deliberately       |
+|                         | OUTSIDE the corpus, so a large binary database does not sit  |
+|                         | inside the folder you index, zip and copy                    |
+| KB_OUTPUT_DIR           | Override the folder kb_capture writes new notes into,        |
+|                         | instead of the "captures" sub-folder of the corpus. MUST     |
+|                         | resolve inside the corpus, or captured notes would never be  |
+|                         | indexed                                                      |
+| KB_COLLECTION           | ChromaDB collection name (default: kb-rag; 3-512 chars of   |
+|                         | [a-zA-Z0-9._-], starting/ending alphanumeric)               |
+| KB_EMBED_URL            | REQUIRED. Full URL of the embeddings endpoint               |
+| KB_EMBED_MODEL          | Model name sent in the request (omit if endpoint has one)   |
+| KB_EMBED_API_KEY        | API key for the embeddings endpoint                         |
+| KB_EMBED_AUTH_HEADER    | Header the key is sent in. Default Authorization (Bearer);  |
+|                         | any other name (e.g. api-key for Azure) sends the raw key   |
+| KB_EMBED_STYLE          | Request format: openai (default), ollama, kserve-jina       |
+|                         | (KServe V2 inference protocol), or raw-json (plain          |
+|                         | {"<key>": [texts]} body, for KServe CUSTOM predictors)      |
+| KB_EMBED_TENSOR_NAME    | kserve-jina only: name of the input tensor (default: text)  |
+| KB_EMBED_JSON_KEY       | raw-json only: key the texts are sent under (default: texts)|
+| KB_EMBED_TEMPLATE       | FULL request-body control: a JSON document with "__TEXTS__" |
+|                         | where the array of texts goes; "__COUNT__" becomes the      |
+|                         | number of texts in the batch (for tensor "shape" fields)    |
+|                         | and "__MODEL__" the KB_EMBED_MODEL name. When set it        |
+|                         | OVERRIDES KB_EMBED_STYLE's request shape. E.g.              |
+|                         | {"inputs": {"texts": "__TEXTS__"}} for a FastAPI wrapper    |
+|                         | that nests the pipeline arguments under an "inputs" field   |
+| KB_EMBED_RESPONSE_PATH  | Dotted path to the vectors in the response when the         |
+|                         | automatic detection can't find them, e.g.                   |
+|                         | "outputs.embeddings" or "result.0.vectors". Applies to      |
+|                         | every style; list indexes are numeric path parts            |
+| KB_DEBUG=1              | Log every request/response body (truncated) to stderr -     |
+|                         | shows the exact JSON sent, for matching an unknown endpoint |
+| KB_EMBED_BATCH          | Texts per embeddings request (default 16; ollama is 1-by-1) |
+| KB_EMBED_QUERY_PREFIX   | Prefix for query embeds (e5-style models: "query: ")        |
+| KB_EMBED_DOC_PREFIX     | Prefix for document embeds ("passage: ")                    |
+| KB_EMBED_EXTRA_HEADERS  | JSON object of extra HTTP headers for the embed endpoint    |
+| KB_CHAT_URL             | OPTIONAL. Chat-completions endpoint for the generate step   |
+| KB_CHAT_MODEL           | Model name for generation                                   |
+| KB_CHAT_API_KEY         | API key for the chat endpoint (falls back to embed key)     |
+| KB_CHAT_AUTH_HEADER     | As per KB_EMBED_AUTH_HEADER                                 |
+| KB_CHAT_MAX_TOKENS      | max_tokens for generation (default 1024, 0 = omit field)    |
+| KB_CHAT_EXTRA_HEADERS   | JSON object of extra HTTP headers for the chat endpoint     |
+| KB_CA_CERT              | PEM CA bundle for an internal CA                            |
+| KB_CLIENT_CERT          | PEM client certificate, for gateways that require mutual    |
+|                         | TLS (mTLS). Presented to BOTH endpoints                     |
+| KB_CLIENT_KEY           | PEM private key for the client certificate (omit if the     |
+|                         | KB_CLIENT_CERT file contains both cert and key)             |
+| KB_CLIENT_KEY_PASSWORD  | Passphrase, if the client private key is encrypted          |
+| KB_VERIFY_SSL=false     | Disable TLS certificate verification                        |
+| KB_TIMEOUT              | HTTP timeout seconds (default 120)                          |
+| KB_CHUNK_CHARS          | Soft max characters per chunk (default 1500)                |
+| KB_CHUNK_OVERLAP        | Overlap characters between adjacent chunks (default 200)    |
+| KB_TOP_K                | Default number of chunks retrieved (default 5)              |
 
 Endpoint formats ("where you have unknowns"):
-  --embed-style openai      : POST {"input": [texts], "model": m}
+  KB_EMBED_STYLE=openai     : POST {"input": [texts], "model": m}
                               reads response["data"][i]["embedding"]
-  --embed-style ollama      : POST {"model": m, "prompt": text} (one per request)
+  KB_EMBED_STYLE=ollama     : POST {"model": m, "prompt": text} (one per request)
                               reads response["embedding"]
-  --embed-style kserve-jina : KServe V2 Open Inference Protocol, as used by a
+  KB_EMBED_STYLE=kserve-jina: KServe V2 Open Inference Protocol, as used by a
                               Jina embeddings model served on KServe. POSTs
                                 {"inputs": [{"name": <tensor>, "shape": [N],
                                  "datatype": "BYTES", "data": [texts]}]}
@@ -119,31 +144,31 @@ Endpoint formats ("where you have unknowns"):
                               "shape" [N, dim] (nested data also accepted).
                               The model name is part of the URL, e.g.
                               https://host/v2/models/jina-embeddings/infer
-                              so --embed-model is not sent. If your
+                              so KB_EMBED_MODEL is not sent. If your
                               deployment names its input tensor differently,
-                              set --embed-tensor-name (default: text).
+                              set KB_EMBED_TENSOR_NAME (default: text).
                               KServe V1 ({"instances": [...]} ->
                               {"predictions": [...]}) is also parsed.
-  --embed-style raw-json    : plain JSON body {"texts": [texts]} (key set by
-                              --embed-json-key, plus "model" if --embed-model
-                              is given). For KServe CUSTOM predictors and
+  KB_EMBED_STYLE=raw-json   : plain JSON body {"texts": [texts]} (key set by
+                              KB_EMBED_JSON_KEY, plus "model" if
+                              KB_EMBED_MODEL is given). For KServe CUSTOM predictors and
                               other bespoke wrappers that unpack the raw
                               request body into their pipeline's arguments -
                               the symptom that calls for this style is a
                               server error like "pipeline() missing 1
                               required positional argument: 'texts'" that
-                              does NOT change when --embed-tensor-name does
+                              does NOT change when KB_EMBED_TENSOR_NAME does
                               (the wrapper reads body keys, not tensors).
                               The response is parsed with the same tolerant
                               reader as every other style (OpenAI "data",
                               "embedding"/"embeddings", KServe "outputs"/
                               "predictions").
-  --embed-template          : when none of the styles matches your endpoint,
+  KB_EMBED_TEMPLATE         : when none of the styles matches your endpoint,
                               take full control of the request body. The
                               value is the COMPLETE JSON body to send, with
                               the JSON string "__TEXTS__" marking where the
                               array of texts goes ("__MODEL__" likewise for
-                              --embed-model). Batching still applies. E.g. a
+                              KB_EMBED_MODEL). Batching still applies. E.g. a
                               FastAPI custom predictor that validates
                               {"inputs": {"texts": [...]}} (the symptom is an
                               HTTP 422 with loc [body, inputs]) is:
@@ -159,8 +184,8 @@ Endpoint formats ("where you have unknowns"):
   so most bespoke internal endpoints work with style=openai unchanged. If
   the vectors sit somewhere the auto-detection can't see (e.g. under
   {"outputs": {"embeddings": ...}}), point at them with
-  --embed-response-path outputs.embeddings (numeric parts index lists).
-  Set KB_DEBUG=1 / --debug to log every request and response body
+  KB_EMBED_RESPONSE_PATH=outputs.embeddings (numeric parts index lists).
+  Set KB_DEBUG=1 to log every request and response body
   (truncated) to stderr - run --check with it to see exactly what is sent,
   and compare with what your endpoint's team expects.
   Generation POSTs OpenAI chat-completions JSON and falls back to Ollama
@@ -174,23 +199,35 @@ This server ships as the "knowledge-base" Claude Code plugin (its manifest is
     /plugin marketplace add C:\\path\\to\\claude-skills
     /plugin install knowledge-base@mcnamee-claude-skills
 
-Claude Code prompts for the documents folder, the embeddings URL, the model
-name and the Python interpreter. KB_EMBED_API_KEY is NOT stored in the plugin
-- set it as a Windows user environment variable before starting Claude Code,
-and the plugin picks it up from there. Every other setting below is available
-as its KB_* environment variable. See README.md next to this file for the full
-settings reference.
+Claude Code prompts for the embeddings URL and the model name; the interpreter
+and the corpus folder come from EVA_PYTHON and EVA_KNOWLEDGE_DIR.
+KB_EMBED_API_KEY is NOT stored in the plugin - set it as a Windows user
+environment variable before starting Claude Code, and the plugin picks it up
+from there:
+
+    setx EVA_PYTHON        "C:\\Python311\\python.exe"
+    setx EVA_KNOWLEDGE_DIR "C:\\Eva\\knowledge"
+    setx KB_EMBED_API_KEY  "..."
+
+Every other setting is available as its KB_* environment variable. See
+README.md next to this file for the full settings reference.
 
 FIRST RUN / TESTING (PowerShell, before wiring into the MCP client)
 ---------------------------------------------------------------
-    $env:KB_EMBED_API_KEY = "..."       (this session only; setx makes it permanent)
-    python knowledge-base.py --docs-dir C:\\kb --embed-url https://... --check
+Set the configuration in the environment once, then use the action flags:
+
+    $env:EVA_KNOWLEDGE_DIR = "C:\\Eva\\knowledge"
+    $env:KB_EMBED_URL      = "https://..."
+    $env:KB_EMBED_API_KEY  = "..."      (this session only; setx makes it permanent)
+
+    python knowledge-base.py --check
         -> validates config, calls the embeddings endpoint once, reports index status
-    python knowledge-base.py --docs-dir C:\\kb --embed-url https://... --reindex
+    python knowledge-base.py --reindex
         -> builds/updates the vector index (add --force to rebuild from scratch)
-    python knowledge-base.py --docs-dir C:\\kb --embed-url https://... --search "trip extension"
+    python knowledge-base.py --search "trip extension"
         -> test retrieval from the command line
-    python knowledge-base.py --docs-dir C:\\kb --embed-url https://... --chat-url https://... --ask "Can I extend my trip?"
+    $env:KB_CHAT_URL = "https://..."
+    python knowledge-base.py --ask "Can I extend my trip?"
         -> test full RAG (retrieve + generate) from the command line
 
 TOOLS EXPOSED
@@ -209,13 +246,13 @@ NOTES
 - ALL diagnostic output goes to stderr; stdout carries only JSON-RPC.
 - Set PYTHONUTF8=1 in the launching environment so non-ASCII content does not
   crash on the default Windows cp1252 codec.
-- File access is confined to --docs-dir (paths are resolved, symlinks
+- File access is confined to the corpus folder (paths are resolved, symlinks
   included, before the containment check). The index folder and dot-folders
   are never indexed. The only network calls are to the endpoints you set.
 - Existing documents are never modified or deleted. The ONLY file the server
   writes outside its vector index is a new note created by kb_capture, and
   the caller supplies a TITLE, never a path: the filename is derived from it
-  and the result is checked to be inside --output-dir before anything is
+  and the result is checked to be inside the captures folder before anything is
   written. Captured notes are the agent's own output, so they are stamped as
   such in their header - treat them as prior working notes when they come
   back from a search, not as an authoritative source.
@@ -225,8 +262,8 @@ NOTES
   --reindex --force once to rebuild the index.
 - Mutual TLS: a gateway error like CERTIFICATE_NOT_PROVIDED (or a TLS
   handshake failure / connection reset during --check) means the gateway
-  requires a CLIENT certificate. Configure --client-cert/--client-key;
-  --insecure cannot fix this, because it only disables YOUR verification of
+  requires a CLIENT certificate. Set KB_CLIENT_CERT / KB_CLIENT_KEY;
+  KB_VERIFY_SSL=false cannot fix this, because it only disables YOUR verification of
   the server - it does not change the certificate you present to it. The
   client certificate/key is loaded once at startup, so a bad path or wrong
   passphrase fails immediately with a clear message.
@@ -234,7 +271,7 @@ NOTES
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "3.0.0"
+__version__ = "4.0.0"
 
 import os
 import re
@@ -268,34 +305,57 @@ def log(message):
 
 
 # ---------------------------------------------------------------------------
-# Configuration (populated in main(); flags take priority over env vars)
+# Configuration (populated in main() entirely from environment variables)
 # ---------------------------------------------------------------------------
 
 DOC_EXTENSIONS = {".md", ".markdown", ".txt"}
 
 # ---------------------------------------------------------------------------
-# CONFIG: folder defaults. A CLI flag beats the environment variable, which
-# beats the constant here (the suite-wide convention). All three point at the
-# Eva working tree - copy the repo's eva\ folder to C:\Eva and they exist,
-# correctly related to each other. See eva\README.md.
+# CONFIG: folders come from the environment; these are the fallbacks.
 # ---------------------------------------------------------------------------
+# Four environment variables configure the whole plugin suite. Every other
+# plugin works in its own sub-folder of a root; this server is the one that
+# indexes the WHOLE knowledge root, and writes its captures into the
+# "captures" sub-folder of it:
+#
+#   EVA_KNOWLEDGE_DIR   -> the indexed corpus, and
+#                          %EVA_KNOWLEDGE_DIR%\captures for kb_capture
+#
+# The roots below are the fallback when a variable is not set, and match the
+# Eva working tree - copy the repo's eva\ folder to C:\Eva and they exist,
+# correctly related to each other. See eva\README.md. There are NO
+# configuration command-line flags: everything is an environment variable, so
+# two settings can never disagree about a path. KB_DOCS_DIR, KB_INDEX_DIR and
+# KB_OUTPUT_DIR each override ONE folder with a full path of its own.
+# ---------------------------------------------------------------------------
+SUBFOLDER = "captures"                   # where kb_capture writes, in the root
+EVA_KNOWLEDGE_DIR = r"C:\Eva\knowledge"  # fallback for the suite-wide root
 
 # REQUIRED. The indexed corpus: every .md/.markdown/.txt file under here is
 # chunked, embedded and searchable. Dot-folders and dot-files are skipped, and
 # non-text files are ignored, so the mirrors the other servers write into
-# sub-folders of this one are picked up automatically.
+# sub-folders of this one are picked up automatically. Resolved from the
+# environment in main(); the literal here is what a stock C:\Eva install
+# resolves to.
 DOCS_DIR = r"C:\Eva\knowledge"
 
 # The ChromaDB vector store. Deliberately OUTSIDE DOCS_DIR so a
 # multi-hundred-megabyte binary database does not sit inside the corpus you
-# want to be able to zip, copy or grep. Set to None to fall back to a hidden
-# .kb-rag-index folder inside DOCS_DIR (the pre-3.0.0 behaviour).
+# want to be able to zip, copy or grep. Set KB_INDEX_DIR to one of the
+# DISABLE_KEYWORDS to fall back to a hidden .kb-rag-index folder inside
+# DOCS_DIR instead.
 INDEX_DIR = r"C:\Eva\index"
 
-# Where kb_capture writes new notes. MUST resolve inside DOCS_DIR - a capture
-# folder outside the corpus would be written to and never indexed - and must
-# not be a dot-folder. Set to None to fall back to <DOCS_DIR>/captures.
+# Where kb_capture writes new notes: the "captures" sub-folder of the corpus.
+# It MUST resolve inside DOCS_DIR - a capture folder outside the corpus would
+# be written to and never indexed - and must not be a dot-folder.
 OUTPUT_DIR = r"C:\Eva\knowledge\captures"
+
+# Values that mean "explicitly turned off" for a folder setting. A BLANK value
+# is what an MCP client substitutes for a setting the user left empty, so it
+# means "not configured" and falls back to the default; a keyword is needed to
+# say "definitely off".
+DISABLE_KEYWORDS = frozenset(("off", "none", "no", "false", "disabled"))
 
 # Hard cap on how much retrieved context is stuffed into a generation prompt.
 MAX_CONTEXT_CHARS = 16000
@@ -549,8 +609,8 @@ def _mtls_hint(error):
     if ("CERTIFICATE_REQUIRED" in text or "certificate required" in text.lower()
             or "CERTIFICATE_NOT_PROVIDED" in text or "handshake failure" in text.lower()):
         return (" This looks like the endpoint requires a CLIENT certificate "
-                "(mutual TLS): configure --client-cert / --client-key. "
-                "--insecure cannot fix this - it only disables verification "
+                "(mutual TLS): set KB_CLIENT_CERT / KB_CLIENT_KEY. "
+                "KB_VERIFY_SSL=false cannot fix this - it only disables verification "
                 "of the server, not the certificate you present.")
     return ""
 
@@ -733,8 +793,8 @@ def _parse_embedding_response(data, expected):
             or any(not isinstance(v, list) or not v for v in vectors)):
         raise RagError(
             "Unexpected embeddings response shape (expected {0} vector(s)){1}. "
-            "Check --embed-style / the endpoint URL, or point at the vectors "
-            "with --embed-response-path; run --check with --debug to see the "
+            "Check KB_EMBED_STYLE / the endpoint URL, or point at the vectors "
+            "with KB_EMBED_RESPONSE_PATH; run --check with --debug to see the "
             "raw response. Response keys: {2}".format(
                 expected,
                 " at response path '{0}'".format(CFG.embed_response_path)
@@ -1731,9 +1791,73 @@ def run_query(mode, text):
     return 0
 
 
+def env_str(name, default=""):
+    """
+    Read an environment variable, treating blank as unset.
+
+    A blank value is what an MCP client substitutes for a setting the user left
+    empty, and an unexpanded "${...}" placeholder is what it leaves behind when
+    the variable it refers to does not exist. Both mean "not configured", so
+    `default` applies.
+    """
+    val = (os.environ.get(name) or "").strip()
+    if not val or (val.startswith("${") and val.endswith("}")):
+        return default
+    return val
+
+
+def env_int(name, default):
+    """Integer env var, falling back to the default if unset or not a number."""
+    val = env_str(name)
+    if not val:
+        return default
+    try:
+        return int(val)
+    except ValueError:
+        log("WARNING: {0} is not a whole number ({1!r}); using {2}.".format(
+            name, val, default))
+        return default
+
+
+def env_flag(name, default=False):
+    """Boolean env var; blank or unset keeps the default."""
+    val = env_str(name)
+    if not val:
+        return default
+    return val.lower() in {"1", "true", "yes", "on"}
+
+
 def env_flag_false(name):
     """True if env var `name` is an explicit 'off' value (false/0/no)."""
-    return os.environ.get(name, "").strip().lower() in {"false", "0", "no"}
+    return env_str(name).lower() in {"false", "0", "no"}
+
+
+def resolve_folders():
+    """
+    The three folders this server uses, from the environment.
+
+    The corpus is EVA_KNOWLEDGE_DIR itself (this server indexes the whole RAG
+    root, not one sub-folder of it), captures go in its "captures" sub-folder,
+    and the vector store sits outside the corpus in KB_INDEX_DIR. Each can be
+    overridden individually with a full path of its own: KB_DOCS_DIR,
+    KB_OUTPUT_DIR, KB_INDEX_DIR.
+
+    Returns (docs_dir, index_dir, output_dir, docs_chosen) - docs_chosen is
+    False only when nothing was set at all, which decides how a missing corpus
+    folder is reported.
+    """
+    root = env_str("EVA_KNOWLEDGE_DIR")
+    docs_chosen = bool(root)
+    docs = env_str("KB_DOCS_DIR") or root or EVA_KNOWLEDGE_DIR
+    if env_str("KB_DOCS_DIR"):
+        docs_chosen = True
+
+    index = env_str("KB_INDEX_DIR", INDEX_DIR)
+    if index.lower() in DISABLE_KEYWORDS:
+        index = ""              # -> <docs>/.kb-rag-index, resolved by main()
+
+    output = env_str("KB_OUTPUT_DIR") or os.path.join(docs, SUBFOLDER)
+    return docs, index, output, docs_chosen
 
 
 def parse_extra_headers(env_name):
@@ -1756,107 +1880,13 @@ def main():
             "Single-file MCP server providing RAG (index / retrieve / generate) over "
             "a folder of local markdown documents, using a ChromaDB vector index and "
             "your own embeddings (and optionally chat) API endpoints. With no mode "
-            "flag it runs as an stdio MCP server. See the docstring for full "
-            "configuration; API keys are env-var only (KB_EMBED_API_KEY, "
-            "KB_CHAT_API_KEY)."
+            "flag it runs as an stdio MCP server. CONFIGURATION IS ENVIRONMENT "
+            "VARIABLES ONLY - EVA_KNOWLEDGE_DIR for the corpus, KB_EMBED_URL for the "
+            "endpoint, KB_EMBED_API_KEY for the key, and the other KB_* variables "
+            "for the rest; see the CONFIGURATION section of this file's docstring. "
+            "The flags below are actions, not settings."
         )
     )
-    env = os.environ.get
-    # "or CONSTANT" rather than a two-argument env() lookup: an MCP client
-    # substitutes a BLANK string for a setting the user left empty, and blank
-    # must mean "not configured" so the default below still applies.
-    parser.add_argument("--docs-dir", default=env("KB_DOCS_DIR") or DOCS_DIR,
-                        help="Folder of markdown documents (env: KB_DOCS_DIR; "
-                             "default: C:\\Eva\\knowledge). Required.")
-    parser.add_argument("--index-dir", default=env("KB_INDEX_DIR") or INDEX_DIR,
-                        help="ChromaDB folder (env: KB_INDEX_DIR; default: "
-                             "C:\\Eva\\index, or <docs-dir>/.kb-rag-index "
-                             "if that is cleared).")
-    parser.add_argument("--output-dir", default=env("KB_OUTPUT_DIR") or OUTPUT_DIR,
-                        help="Folder kb_capture writes new notes into (env: KB_OUTPUT_DIR; "
-                             "default: C:\\Eva\\knowledge\\captures, or "
-                             "<docs-dir>/captures if that is cleared). Must be "
-                             "inside --docs-dir, otherwise captured notes would "
-                             "never be indexed.")
-    parser.add_argument("--collection", default=env("KB_COLLECTION", "kb-rag"),
-                        help="ChromaDB collection name (env: KB_COLLECTION; default: kb-rag).")
-    parser.add_argument("--embed-url", default=env("KB_EMBED_URL"),
-                        help="Embeddings endpoint URL (env: KB_EMBED_URL). Required.")
-    parser.add_argument("--embed-model", default=env("KB_EMBED_MODEL", ""),
-                        help="Embedding model name sent in requests (env: KB_EMBED_MODEL).")
-    parser.add_argument("--embed-auth-header", default=env("KB_EMBED_AUTH_HEADER", "Authorization"),
-                        help="Header for the embed API key; 'Authorization' sends 'Bearer <key>', "
-                             "anything else (e.g. 'api-key') sends the raw key (env: KB_EMBED_AUTH_HEADER).")
-    parser.add_argument("--embed-style", choices=["openai", "ollama", "kserve-jina", "raw-json"],
-                        default=env("KB_EMBED_STYLE", "openai"),
-                        help="Embeddings request format (env: KB_EMBED_STYLE; default: openai). "
-                             "kserve-jina speaks the KServe V2 Open Inference Protocol "
-                             "(input tensors), e.g. a Jina embeddings model on KServe; "
-                             "the model name is part of the --embed-url path. raw-json "
-                             "POSTs a plain {\"<key>\": [texts]} body for KServe CUSTOM "
-                             "predictors that unpack the request dict into their "
-                             "pipeline's arguments.")
-    parser.add_argument("--embed-tensor-name", default=env("KB_EMBED_TENSOR_NAME", "text"),
-                        help="kserve-jina style only: name of the input tensor the texts are "
-                             "sent as (env: KB_EMBED_TENSOR_NAME; default: text).")
-    parser.add_argument("--embed-json-key", default=env("KB_EMBED_JSON_KEY", "texts"),
-                        help="raw-json style only: the JSON key the batch of texts is sent "
-                             "under (env: KB_EMBED_JSON_KEY; default: texts).")
-    parser.add_argument("--embed-template", default=env("KB_EMBED_TEMPLATE", ""),
-                        help="Full request-body control: the complete JSON body to POST, "
-                             "with the string \"__TEXTS__\" where the array of texts goes "
-                             "(\"__COUNT__\" becomes the number of texts, for tensor "
-                             "shape fields; \"__MODEL__\" the model name). Overrides "
-                             "--embed-style's request shape; batching still applies. "
-                             "Example: {\"inputs\": {\"texts\": \"__TEXTS__\"}} "
-                             "(env: KB_EMBED_TEMPLATE).")
-    parser.add_argument("--embed-response-path", default=env("KB_EMBED_RESPONSE_PATH", ""),
-                        help="Dotted path to the vectors in the embeddings response when "
-                             "auto-detection can't find them, e.g. 'outputs.embeddings' or "
-                             "'result.0.vectors'; numeric parts index lists "
-                             "(env: KB_EMBED_RESPONSE_PATH).")
-    parser.add_argument("--debug", action="store_true",
-                        default=os.environ.get("KB_DEBUG", "").strip().lower() in {"1", "true", "yes"},
-                        help="Log every request and response body (truncated) to stderr, to "
-                             "see exactly what is sent to an unknown endpoint (env: KB_DEBUG=1).")
-    parser.add_argument("--embed-batch", type=int, default=int(env("KB_EMBED_BATCH", "16")),
-                        help="Texts per embeddings request, openai style (env: KB_EMBED_BATCH; default: 16).")
-    parser.add_argument("--embed-query-prefix", default=env("KB_EMBED_QUERY_PREFIX", ""),
-                        help="Prefix prepended to query text before embedding, for models "
-                             "that require it, e.g. 'query: ' (env: KB_EMBED_QUERY_PREFIX).")
-    parser.add_argument("--embed-doc-prefix", default=env("KB_EMBED_DOC_PREFIX", ""),
-                        help="Prefix prepended to document chunks before embedding, "
-                             "e.g. 'passage: ' (env: KB_EMBED_DOC_PREFIX).")
-    parser.add_argument("--chat-url", default=env("KB_CHAT_URL", ""),
-                        help="Optional chat-completions endpoint for the generate step "
-                             "(env: KB_CHAT_URL). Unset: kb_ask returns context for the agent.")
-    parser.add_argument("--chat-model", default=env("KB_CHAT_MODEL", ""),
-                        help="Generation model name (env: KB_CHAT_MODEL).")
-    parser.add_argument("--chat-auth-header", default=env("KB_CHAT_AUTH_HEADER", "Authorization"),
-                        help="Header for the chat API key, as per --embed-auth-header "
-                             "(env: KB_CHAT_AUTH_HEADER).")
-    parser.add_argument("--chat-max-tokens", type=int, default=int(env("KB_CHAT_MAX_TOKENS", "1024")),
-                        help="max_tokens for generation; 0 omits the field (env: KB_CHAT_MAX_TOKENS; default: 1024).")
-    parser.add_argument("--ca-cert", default=env("KB_CA_CERT", ""),
-                        help="Path to a PEM CA bundle for an internal CA (env: KB_CA_CERT).")
-    parser.add_argument("--client-cert", default=env("KB_CLIENT_CERT", ""),
-                        help="Path to a PEM client certificate, for gateways requiring "
-                             "mutual TLS (env: KB_CLIENT_CERT). Presented to both endpoints.")
-    parser.add_argument("--client-key", default=env("KB_CLIENT_KEY", ""),
-                        help="Path to the PEM private key for --client-cert; omit if the "
-                             "cert file contains both (env: KB_CLIENT_KEY). An encrypted "
-                             "key's passphrase goes in KB_CLIENT_KEY_PASSWORD (env only).")
-    parser.add_argument("--insecure", action="store_true",
-                        default=env_flag_false("KB_VERIFY_SSL"),
-                        help="Disable TLS certificate verification (env: KB_VERIFY_SSL=false).")
-    parser.add_argument("--timeout", type=int, default=int(env("KB_TIMEOUT", "120")),
-                        help="HTTP timeout in seconds (env: KB_TIMEOUT; default: 120).")
-    parser.add_argument("--chunk-chars", type=int, default=int(env("KB_CHUNK_CHARS", "1500")),
-                        help="Soft max characters per chunk (env: KB_CHUNK_CHARS; default: 1500).")
-    parser.add_argument("--chunk-overlap", type=int, default=int(env("KB_CHUNK_OVERLAP", "200")),
-                        help="Overlap characters between adjacent chunks (env: KB_CHUNK_OVERLAP; default: 200).")
-    parser.add_argument("--top-k", type=int, default=int(env("KB_TOP_K", "5")),
-                        help="Default number of chunks retrieved (env: KB_TOP_K; default: 5).")
     parser.add_argument("--check", action="store_true",
                         help="Validate config, test the endpoint(s), report index status, then exit.")
     parser.add_argument("--reindex", action="store_true",
@@ -1867,107 +1897,147 @@ def main():
                         help="Test retrieval from the CLI: print the top chunks for QUERY, then exit.")
     parser.add_argument("--ask", metavar="QUESTION",
                         help="Test full RAG from the CLI: retrieve + generate for QUESTION, then exit.")
+    parser.add_argument("--debug", action="store_true",
+                        default=env_flag("KB_DEBUG"),
+                        help="Log every request and response body (truncated) to stderr, to "
+                             "see exactly what is sent to an unknown endpoint (env: KB_DEBUG=1).")
     parser.add_argument("--version", action="version",
                         version="knowledge-base {0}".format(SERVER_INFO["version"]))
     args = parser.parse_args()
 
-    if not args.docs_dir:
-        log("FATAL: no knowledge-base folder set. Pass --docs-dir or set KB_DOCS_DIR.")
-        sys.exit(2)
-    if not os.path.isdir(args.docs_dir):
-        log("FATAL: knowledge-base folder does not exist or is not a directory: {0}".format(args.docs_dir))
-        if args.docs_dir == DOCS_DIR:
-            log("       That is the built-in default. Copy the repo's eva\\ "
-                "folder to C:\\Eva to lay out the whole working tree, or "
-                "point --docs-dir at your own knowledge-base folder.")
-        sys.exit(2)
-    if not args.embed_url:
-        log("FATAL: no embeddings endpoint set. Pass --embed-url or set KB_EMBED_URL.")
-        sys.exit(2)
-    if not re.match(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{1,510}[a-zA-Z0-9]$", args.collection):
-        log("FATAL: --collection must be 3-512 characters of [a-zA-Z0-9._-], "
-            "starting and ending alphanumeric: {0}".format(args.collection))
-        sys.exit(2)
-    if args.chunk_overlap >= args.chunk_chars:
-        log("FATAL: --chunk-overlap must be smaller than --chunk-chars.")
-        sys.exit(2)
-    if args.ca_cert and not os.path.isfile(args.ca_cert):
-        log("FATAL: --ca-cert file not found: {0}".format(args.ca_cert))
-        sys.exit(2)
-    if args.client_key and not args.client_cert:
-        log("FATAL: --client-key was given without --client-cert.")
-        sys.exit(2)
-    if args.client_cert and not os.path.isfile(args.client_cert):
-        log("FATAL: --client-cert file not found: {0}".format(args.client_cert))
-        sys.exit(2)
-    if args.client_key and not os.path.isfile(args.client_key):
-        log("FATAL: --client-key file not found: {0}".format(args.client_key))
+    # Every setting comes from the environment (see the docstring's
+    # CONFIGURATION table). Folders resolve from the suite-wide
+    # EVA_KNOWLEDGE_DIR unless a KB_*_DIR override names one outright.
+    docs_dir, index_dir, output_dir, docs_chosen = resolve_folders()
+    collection = env_str("KB_COLLECTION", "kb-rag")
+    embed_url = env_str("KB_EMBED_URL")
+    embed_model = env_str("KB_EMBED_MODEL")
+    embed_auth_header = env_str("KB_EMBED_AUTH_HEADER", "Authorization")
+    embed_style = env_str("KB_EMBED_STYLE", "openai")
+    embed_tensor_name = env_str("KB_EMBED_TENSOR_NAME", "text")
+    embed_json_key = env_str("KB_EMBED_JSON_KEY", "texts")
+    embed_template = env_str("KB_EMBED_TEMPLATE")
+    embed_response_path = env_str("KB_EMBED_RESPONSE_PATH")
+    embed_batch = env_int("KB_EMBED_BATCH", 16)
+    embed_query_prefix = env_str("KB_EMBED_QUERY_PREFIX")
+    embed_doc_prefix = env_str("KB_EMBED_DOC_PREFIX")
+    chat_url = env_str("KB_CHAT_URL")
+    chat_model = env_str("KB_CHAT_MODEL")
+    chat_auth_header = env_str("KB_CHAT_AUTH_HEADER", "Authorization")
+    chat_max_tokens = env_int("KB_CHAT_MAX_TOKENS", 1024)
+    ca_cert = env_str("KB_CA_CERT")
+    client_cert = env_str("KB_CLIENT_CERT")
+    client_key = env_str("KB_CLIENT_KEY")
+    insecure = env_flag_false("KB_VERIFY_SSL")
+    timeout = env_int("KB_TIMEOUT", 120)
+    chunk_chars = env_int("KB_CHUNK_CHARS", 1500)
+    chunk_overlap = env_int("KB_CHUNK_OVERLAP", 200)
+    top_k = env_int("KB_TOP_K", 5)
+
+    if embed_style not in ("openai", "ollama", "kserve-jina", "raw-json"):
+        log("FATAL: KB_EMBED_STYLE must be one of openai, ollama, "
+            "kserve-jina, raw-json (got {0!r}).".format(embed_style))
         sys.exit(2)
 
-    CFG.docs_dir = os.path.realpath(args.docs_dir)
+    if not os.path.isdir(docs_dir):
+        log("FATAL: the knowledge-base folder does not exist or is not a "
+            "directory: {0}".format(docs_dir))
+        if docs_chosen:
+            log("       That path came from EVA_KNOWLEDGE_DIR or KB_DOCS_DIR. "
+                "Create the folder, or fix the variable.")
+        else:
+            log("       That is the built-in default. Create the folder, set "
+                "EVA_KNOWLEDGE_DIR to your own knowledge root, or copy the "
+                "repo's eva\\ folder to C:\\Eva to lay out the whole tree.")
+        sys.exit(2)
+    if not embed_url:
+        log("FATAL: no embeddings endpoint set. Set KB_EMBED_URL.")
+        sys.exit(2)
+    if not re.match(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{1,510}[a-zA-Z0-9]$", collection):
+        log("FATAL: KB_COLLECTION must be 3-512 characters of [a-zA-Z0-9._-], "
+            "starting and ending alphanumeric: {0}".format(collection))
+        sys.exit(2)
+    if chunk_overlap >= chunk_chars:
+        log("FATAL: KB_CHUNK_OVERLAP must be smaller than KB_CHUNK_CHARS.")
+        sys.exit(2)
+    if ca_cert and not os.path.isfile(ca_cert):
+        log("FATAL: KB_CA_CERT file not found: {0}".format(ca_cert))
+        sys.exit(2)
+    if client_key and not client_cert:
+        log("FATAL: KB_CLIENT_KEY was set without KB_CLIENT_CERT.")
+        sys.exit(2)
+    if client_cert and not os.path.isfile(client_cert):
+        log("FATAL: KB_CLIENT_CERT file not found: {0}".format(client_cert))
+        sys.exit(2)
+    if client_key and not os.path.isfile(client_key):
+        log("FATAL: KB_CLIENT_KEY file not found: {0}".format(client_key))
+        sys.exit(2)
+
+    CFG.docs_dir = os.path.realpath(docs_dir)
     CFG.index_dir = os.path.realpath(
-        args.index_dir or os.path.join(CFG.docs_dir, ".kb-rag-index"))
-    CFG.output_dir = os.path.realpath(
-        args.output_dir or os.path.join(CFG.docs_dir, "captures"))
+        index_dir or os.path.join(CFG.docs_dir, ".kb-rag-index"))
+    CFG.output_dir = os.path.realpath(output_dir)
     # Captures have to live inside the documents folder or scan_documents()
     # would never see them, so a note would be written and never indexed.
     # Refuse at startup rather than at the first kb_capture call.
     if not is_within(CFG.output_dir, CFG.docs_dir):
-        log("FATAL: --output-dir must be inside --docs-dir, otherwise captured "
-            "notes would never be indexed.\n  --output-dir: {0}\n  --docs-dir  : "
-            "{1}".format(CFG.output_dir, CFG.docs_dir))
+        log("FATAL: the captures folder must be inside the knowledge-base "
+            "folder, otherwise captured notes would never be indexed.\\n"
+            "  captures (KB_OUTPUT_DIR)         : {0}\\n"
+            "  corpus   (EVA_KNOWLEDGE_DIR)     : {1}".format(
+                CFG.output_dir, CFG.docs_dir))
         sys.exit(2)
     if CFG.output_dir == CFG.index_dir or is_within(CFG.output_dir, CFG.index_dir):
-        log("FATAL: --output-dir must not be inside the vector index folder "
-            "({0}), which is pruned from indexing.".format(CFG.index_dir))
+        log("FATAL: the captures folder must not be inside the vector index "
+            "folder ({0}), which is pruned from indexing.".format(CFG.index_dir))
         sys.exit(2)
     if any(part.startswith(".") for part in
            os.path.relpath(CFG.output_dir, CFG.docs_dir).split(os.sep)
            if part not in (".", "")):
-        log("FATAL: --output-dir must not be a dot-folder ({0}) - dot-folders "
-            "are pruned from indexing, so captures would never be "
+        log("FATAL: the captures folder must not be a dot-folder ({0}) - "
+            "dot-folders are pruned from indexing, so captures would never be "
             "searchable.".format(CFG.output_dir))
         sys.exit(2)
-    CFG.collection = args.collection
-    CFG.embed_url = args.embed_url
-    CFG.embed_model = args.embed_model
+    CFG.collection = collection
+    CFG.embed_url = embed_url
+    CFG.embed_model = embed_model
     CFG.embed_key = os.environ.get("KB_EMBED_API_KEY", "")
-    CFG.embed_auth_header = args.embed_auth_header
-    CFG.embed_style = args.embed_style
-    CFG.embed_tensor_name = args.embed_tensor_name
-    CFG.embed_json_key = args.embed_json_key
-    if args.embed_template:
+    CFG.embed_auth_header = embed_auth_header
+    CFG.embed_style = embed_style
+    CFG.embed_tensor_name = embed_tensor_name
+    CFG.embed_json_key = embed_json_key
+    if embed_template:
         try:
-            CFG.embed_template = json.loads(args.embed_template)
+            CFG.embed_template = json.loads(embed_template)
         except ValueError as exc:
-            log("FATAL: --embed-template is not valid JSON ({0}): {1}".format(
-                exc, args.embed_template))
+            log("FATAL: KB_EMBED_TEMPLATE is not valid JSON ({0}): {1}".format(
+                exc, embed_template))
             sys.exit(2)
         if count_template_placeholders(CFG.embed_template) == 0:
-            log("FATAL: --embed-template must contain the JSON string \"{0}\" "
+            log("FATAL: KB_EMBED_TEMPLATE must contain the JSON string \"{0}\" "
                 "where the array of texts goes.".format(TEMPLATE_TEXTS))
             sys.exit(2)
-    CFG.embed_response_path = args.embed_response_path
+    CFG.embed_response_path = embed_response_path
     CFG.debug = args.debug
-    CFG.embed_batch = max(1, args.embed_batch)
-    CFG.embed_query_prefix = args.embed_query_prefix
-    CFG.embed_doc_prefix = args.embed_doc_prefix
+    CFG.embed_batch = max(1, embed_batch)
+    CFG.embed_query_prefix = embed_query_prefix
+    CFG.embed_doc_prefix = embed_doc_prefix
     CFG.embed_extra_headers = parse_extra_headers("KB_EMBED_EXTRA_HEADERS")
-    CFG.chat_url = args.chat_url
-    CFG.chat_model = args.chat_model
+    CFG.chat_url = chat_url
+    CFG.chat_model = chat_model
     CFG.chat_key = os.environ.get("KB_CHAT_API_KEY", "") or CFG.embed_key
-    CFG.chat_auth_header = args.chat_auth_header
-    CFG.chat_max_tokens = args.chat_max_tokens
+    CFG.chat_auth_header = chat_auth_header
+    CFG.chat_max_tokens = chat_max_tokens
     CFG.chat_extra_headers = parse_extra_headers("KB_CHAT_EXTRA_HEADERS")
-    CFG.ca_cert = args.ca_cert
-    CFG.client_cert = args.client_cert
-    CFG.client_key = args.client_key
+    CFG.ca_cert = ca_cert
+    CFG.client_cert = client_cert
+    CFG.client_key = client_key
     CFG.client_key_password = os.environ.get("KB_CLIENT_KEY_PASSWORD", "")
-    CFG.verify_ssl = not args.insecure
-    CFG.timeout = max(1, args.timeout)
-    CFG.chunk_chars = max(200, args.chunk_chars)
-    CFG.chunk_overlap = max(0, args.chunk_overlap)
-    CFG.top_k = max(1, min(20, args.top_k))
+    CFG.verify_ssl = not insecure
+    CFG.timeout = max(1, timeout)
+    CFG.chunk_chars = max(200, chunk_chars)
+    CFG.chunk_overlap = max(0, chunk_overlap)
+    CFG.top_k = max(1, min(20, top_k))
 
     if not CFG.verify_ssl:
         log("WARNING: TLS certificate verification is DISABLED.")

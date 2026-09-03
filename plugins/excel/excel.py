@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r"""
-excel.py (v4.0.0) -- Read-only Excel (.xlsx) MCP server.
+excel.py (v5.0.0) -- Read-only Excel (.xlsx) MCP server.
 
 PURPOSE
     A single-file, standard-library-only MCP (Model Context Protocol) stdio
@@ -46,16 +46,18 @@ REQUIREMENTS
     * Python 3.8+ (standard library only). No pip install required.
 
 CONFIGURATION
-    The workbook folder is REQUIRED, and DEFAULTS to C:\Eva\documents\excel -
-    the Excel folder of the Eva working tree (copy the repo's eva\ folder to
-    C:\Eva and it exists). Override it with --docs-dir or the EXCEL_DOCS_DIR
-    environment variable, or by editing DOCS_DIR in the CONFIG block directly
-    below the imports. The server refuses to start without a folder and only
-    ever reads files inside it (symlinks that resolve outside the folder are
-    excluded). Other settings can also be overridden per-run via command-line
-    flags (see --help).
-    Precedence (suite-wide convention): CLI flag > environment variable >
-    constant in this file.
+    The workbook folder is REQUIRED. It is the "excel" sub-folder of
+    %EVA_DOCUMENTS_DIR%, the suite-wide document root shared by every plugin in
+    this repo, so C:\Eva\documents\excel on a stock install (copy the repo's
+    eva\ folder to C:\Eva and it exists). THE FOLDER MUST EXIST: the server
+    refuses to start otherwise, and only ever reads files inside it (symlinks
+    that resolve outside the folder are excluded). Set EXCEL_DOCS_DIR to
+    override just this server with a full path of its own. There are no folder
+    command-line flags: configuration is environment variables only, so two
+    settings can never disagree about a path. The only flags are --check,
+    --list and --version. The size caps below the imports are constants.
+    Precedence: EXCEL_DOCS_DIR > EVA_DOCUMENTS_DIR + "excel" > the
+    EVA_DOCUMENTS_DIR constant + "excel".
 
     NOTE: only the TOP LEVEL of the workbook folder is listed - sub-folders are
     not searched (word.py does search recursively; this server does not). Keep
@@ -86,6 +88,35 @@ STANDALONE TESTING (before wiring the server in)
     4) Call a tool by hand (adjust the workbook/sheet names):
          {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"excel_list_sheets","arguments":{"workbook":"budget"}}}
 
+CONFIGURATION  (environment variables, no folder flags)
+    The whole plugin suite is configured by four environment variables, set
+    once for your Windows account. This server uses two of them:
+
+      EVA_PYTHON          full path to the python.exe the MCP client launches,
+                          e.g. C:\Python311\python.exe (read by the plugin
+                          manifest, not by this file)
+      EVA_DOCUMENTS_DIR   root of the document library (default C:\Eva\documents)
+
+    This server works in the "excel" sub-folder of the document root, and THAT
+    FOLDER MUST EXIST:
+
+      %EVA_DOCUMENTS_DIR%\excel   REQUIRED. The .xlsx/.xlsm workbooks this
+                                  server may read - top level only. The server
+                                  refuses to start if it is missing.
+
+    To set them permanently for your account (PowerShell, one-off):
+
+      [Environment]::SetEnvironmentVariable("EVA_PYTHON", "C:\Python311\python.exe", "User")
+      [Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "C:\Eva\documents", "User")
+
+    Copy the repo's eva\ folder to C:\Eva and the folder exists - see
+    eva\README.md.
+
+    EXCEL_DOCS_DIR overrides the workbook folder with a full path of its own,
+    for an endpoint whose layout differs. There are NO folder command-line
+    flags: configuration is environment variables only, so two settings can
+    never disagree about a path.
+
 INSTALLING INTO CLAUDE CODE
     This server ships as the "excel" Claude Code plugin (its manifest is
     .claude-plugin/plugin.json next to this file), so the normal install is:
@@ -93,13 +124,13 @@ INSTALLING INTO CLAUDE CODE
       /plugin marketplace add C:\path\to\claude-skills
       /plugin install excel@mcnamee-claude-skills
 
-    Claude Code then prompts for the workbook folder and the Python
-    interpreter - use the SAME interpreter you tested with above. PYTHONUTF8=1
-    is set for you by the manifest, so Windows cp1252 cannot corrupt output.
+    It prompts for nothing: the interpreter and the workbook folder come from
+    the environment variables above. PYTHONUTF8=1 is set for you by the
+    manifest, so Windows cp1252 cannot corrupt output.
 
-    To register the server by hand instead:
+    To register the server by hand instead (PowerShell):
 
-      claude mcp add excel --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\excel.py --docs-dir C:\path\to\your\workbooks
+      claude mcp add excel --scope user -e PYTHONUTF8=1 -- $env:EVA_PYTHON C:\path\to\excel.py
 
     See README.md next to this file for the full settings reference.
 
@@ -111,7 +142,7 @@ PROTOCOL NOTE
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "4.0.0"
+__version__ = "5.0.0"
 
 import sys
 import os
@@ -124,17 +155,31 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 
 # ===========================================================================
-# CONFIG  -- edit these values, or override with command-line flags.
+# CONFIG  -- folders come from the environment; these are the fallbacks.
 # ===========================================================================
+# Four environment variables configure the whole plugin suite. Set them once
+# for your Windows account and every plugin picks them up; each server works in
+# its OWN sub-folder of each root, named after the plugin. This server uses one
+# root, and its sub-folder is "excel":
+#
+#   EVA_DOCUMENTS_DIR   -> %EVA_DOCUMENTS_DIR%\excel   workbooks, read-only
+#
+# EVA_DOCUMENTS_DIR below is the fallback when the variable is not set, and
+# matches the Eva working tree: copy the repo's eva\ folder to C:\Eva and the
+# folder exists. There are NO folder command-line flags - configuration is
+# environment variables only, so two settings can never disagree about a path.
+# To point the workbook folder somewhere else on an endpoint whose layout
+# differs, set EXCEL_DOCS_DIR to a full path; it beats the suite-wide root.
+SUBFOLDER = "excel"                # this server's sub-folder in each root
+EVA_DOCUMENTS_DIR = r"C:\Eva\documents"
 
-# REQUIRED: folder containing the .xlsx workbooks the model is allowed to
-# read. The server only ever reads files inside this folder (symlinks that
-# resolve outside it are excluded) and REFUSES TO START without one. Set it
-# here, or at launch with --docs-dir or the EXCEL_DOCS_DIR environment
-# variable (which take priority over this constant).
-# Default: the Eva working tree's workbook folder. NOTE this server lists only
-# the TOP LEVEL of the folder (unlike word.py, which searches recursively), so
-# workbooks must sit directly in it - see eva\documents\excel\README.md.
+# REQUIRED: folder containing the .xlsx workbooks the model is allowed to read,
+# resolved from the environment in main(); the literal here is what a stock
+# C:\Eva install resolves to. The server only ever reads files inside this
+# folder (symlinks that resolve outside it are excluded) and REFUSES TO START
+# if it is missing. NOTE this server lists only the TOP LEVEL of the folder
+# (unlike word.py, which searches recursively), so workbooks must sit directly
+# in it - see eva\documents\excel\README.md.
 DOCS_DIR = r"C:\Eva\documents\excel"
 
 # File extensions treated as readable workbooks (lower-case, incl. dot).
@@ -616,9 +661,8 @@ def list_workbook_files(folder):
     """
     if not folder:
         raise WorkbookError(
-            "No workbook folder configured. Pass --docs-dir, set the "
-            "EXCEL_DOCS_DIR environment variable, or set "
-            "DOCS_DIR in this file."
+            "No workbook folder configured. Set EVA_DOCUMENTS_DIR (the "
+            "server reads its 'excel' sub-folder) or EXCEL_DOCS_DIR."
         )
     if not os.path.isdir(folder):
         raise WorkbookError("Workbook folder does not exist: %s" % folder)
@@ -1283,15 +1327,45 @@ def serve(folder):
 # CLI
 # ===========================================================================
 
+def env(name):
+    """Read an environment variable, treating blank as unset.
+
+    A blank value is what an MCP client substitutes for a setting the user left
+    empty, and an unexpanded "${...}" placeholder is what it leaves behind when
+    the variable it refers to does not exist. Both mean "not configured", so
+    the default still applies.
+    """
+    value = (os.environ.get(name) or "").strip()
+    if not value or (value.startswith("${") and value.endswith("}")):
+        return None
+    return value
+
+
+def resolve_docs_dir():
+    """The workbook folder, from the environment.
+
+    Precedence: EXCEL_DOCS_DIR (a full path of its own), then
+    EVA_DOCUMENTS_DIR with this server's "excel" sub-folder appended, then the
+    same sub-folder of the EVA_DOCUMENTS_DIR default in the CONFIG block.
+    Returns (path, user_configured) - user_configured is False only when
+    nothing was set at all, which decides how a missing folder is reported.
+    """
+    own = env("EXCEL_DOCS_DIR")
+    if own:
+        return own, True
+    root = env("EVA_DOCUMENTS_DIR")
+    if root:
+        return os.path.join(root, SUBFOLDER), True
+    return os.path.join(EVA_DOCUMENTS_DIR, SUBFOLDER), False
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="Read-only Excel (.xlsx) MCP server.")
-    parser.add_argument("--docs-dir",
-                        default=os.environ.get("EXCEL_DOCS_DIR") or DOCS_DIR,
-                        help="Folder containing .xlsx/.xlsm workbooks. Falls "
-                             "back to the EXCEL_DOCS_DIR environment "
-                             "variable, then the CONFIG block default "
-                             "(C:\\Eva\\documents\\excel).")
+        description="Read-only Excel (.xlsx) MCP server. Configuration is "
+                    "environment variables only: EVA_DOCUMENTS_DIR (this "
+                    "server reads its 'excel' sub-folder), or EXCEL_DOCS_DIR "
+                    "to override that one folder. See the CONFIGURATION "
+                    "section of this file's docstring.")
     parser.add_argument("--check", action="store_true",
                         help="Print environment/config diagnostics and exit.")
     parser.add_argument("--list", action="store_true",
@@ -1300,15 +1374,20 @@ def main(argv=None):
                         version="{0} {1}".format(SERVER_NAME, __version__))
     args = parser.parse_args(argv)
 
-    folder = args.docs_dir
+    global DOCS_DIR
+    DOCS_DIR, folder_chosen = resolve_docs_dir()
+    folder = DOCS_DIR
 
     if args.check:
         print("excel_mcp environment check")
         print("  python executable : %s" % sys.executable)
         print("  python version    : %s" % sys.version.split()[0])
-        print("  workbook folder   : %s" % (folder or "(NOT SET - required)"))
-        print("  folder exists     : %s" % (bool(folder) and os.path.isdir(folder)))
-        if folder and os.path.isdir(folder):
+        print("  workbook folder   : %s" % folder)
+        print("  came from         : %s"
+              % ("EXCEL_DOCS_DIR / EVA_DOCUMENTS_DIR" if folder_chosen
+                 else "built-in default (no EVA_DOCUMENTS_DIR set)"))
+        print("  folder exists     : %s" % os.path.isdir(folder))
+        if os.path.isdir(folder):
             try:
                 files = list_workbook_files(folder)
                 print("  workbooks found   : %d" % len(files))
@@ -1322,14 +1401,16 @@ def main(argv=None):
 
     # The workbook folder is REQUIRED: the server only reads inside it and
     # must not start unconfined.
-    if not folder:
-        log("FATAL: no workbook folder configured. Pass --docs-dir, set the "
-            "EXCEL_DOCS_DIR environment variable, or set "
-            "DOCS_DIR in this file.")
-        return 2
     if not os.path.isdir(folder):
-        log("FATAL: the configured workbook folder does not exist or is not "
-            "a directory: %s" % folder)
+        log("FATAL: the workbook folder does not exist or is not a "
+            "directory: %s" % folder)
+        if folder_chosen:
+            log("       That path came from EVA_DOCUMENTS_DIR or "
+                "EXCEL_DOCS_DIR. Create the folder, or fix the variable.")
+        else:
+            log("       That is the built-in default. Create the folder, set "
+                "EVA_DOCUMENTS_DIR to your own document root, or copy the "
+                "repo's eva\\ folder to C:\\Eva to lay out the whole tree.")
         return 2
 
     if args.list:

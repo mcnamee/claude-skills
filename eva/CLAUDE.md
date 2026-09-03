@@ -204,8 +204,9 @@ Folder discipline, which the servers enforce and Eva should not fight:
   afterwards and nothing needs deciding first.
 - [`reference\exemplars`](reference/exemplars) shows the **shape** of a
   document. It never supplies content.
-- [`reference\templates`](reference/templates) is read-only. A new document is
-  built from a template and saved into `documents\`.
+- [`reference\templates`](reference/templates) is read-only, one sub-folder per
+  file type (`templates\word`, `templates\powerpoint`). A new document is built
+  from a template and saved into `documents\`.
 - [`knowledge\`](knowledge) is the only indexed root, and holds Markdown only.
 - Word and PowerPoint sessions hold a file in memory. Save and close them, and
   never overwrite a document I already have without asking.

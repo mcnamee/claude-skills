@@ -4,34 +4,48 @@
     "the folder you open Claude Code in, delete the servers you do not use, and",
     "replace every C:\\path\\to\\... with a real absolute path.",
     "",
-    "  - Every folder below is part of the Eva working tree. Copy the repo's",
-    "    'eva' folder to C:\\Eva first and they all exist, correctly related to",
-    "    each other; see eva\\README.md. These are also the built-in defaults,",
-    "    so you can delete any folder argument you have not changed.",
-    "  - The folder that matters most: C:\\Eva\\knowledge is the knowledge-base",
-    "    server's --docs-dir, and every OTHER server's Markdown output goes to a",
-    "    sub-folder of it. Point a --kb-dir somewhere outside that folder and it",
-    "    will fill up faithfully while the RAG index never reads a line of it.",
-    "  - 'command' must be the SAME python.exe you installed the pip",
-    "    dependencies into (see the README's 'Install everything at once').",
+    "  - CONFIGURATION IS ENVIRONMENT VARIABLES ONLY. No server takes a folder",
+    "    flag any more, and this file passes none. Set these FOUR variables once",
+    "    for your Windows account and every server below is configured:",
+    "",
+    "      setx EVA_PYTHON        \"C:\\Python311\\python.exe\"",
+    "      setx EVA_DOCUMENTS_DIR \"C:\\Eva\\documents\"",
+    "      setx EVA_TEMPLATES_DIR \"C:\\Eva\\reference\\templates\"",
+    "      setx EVA_KNOWLEDGE_DIR \"C:\\Eva\\knowledge\"",
+    "",
+    "    ('setx' does not affect processes that are already running - quit and",
+    "    reopen your editor afterwards.)",
+    "  - Each server works in its OWN sub-folder of those roots, named after the",
+    "    plugin: word -> documents\\word, templates\\word, knowledge\\word;",
+    "    powerpoint -> ...\\powerpoint; excel -> documents\\excel; pdf-to-md ->",
+    "    documents\\pdf + knowledge\\pdf; outlook -> knowledge\\email;",
+    "    confluence -> knowledge\\confluence. EVERY ONE OF THOSE FOLDERS MUST",
+    "    EXIST. Copy the repo's 'eva' folder to C:\\Eva and they all do; see",
+    "    eva\\README.md.",
+    "  - knowledge-base is the exception, and necessarily so: it indexes the",
+    "    WHOLE C:\\Eva\\knowledge root, which is why every other server writes",
+    "    into a sub-folder of it. Its vector store sits outside the corpus, in",
+    "    KB_INDEX_DIR (default C:\\Eva\\index).",
+    "  - 'command' is ${EVA_PYTHON}, so every server runs under the SAME",
+    "    interpreter you installed the pip dependencies into. If you would",
+    "    rather hard-code it here, replace it with the full path to python.exe.",
     "  - Backslashes are DOUBLED because this is JSON.",
     "  - PYTHONUTF8=1 stops Windows' legacy codepage corrupting the stdio",
     "    JSON-RPC stream on non-ASCII content. Keep it.",
     "  - Secrets go in 'env', never in 'args': command lines are visible to",
-    "    other local users in process listings.",
-    "  - Pass 'off' to an optional folder to switch that feature off, e.g.",
-    "    '--kb-dir', 'off' on outlook to keep no local copy of any email.",
-    "  - 'word' and 'powerpoint' share ONE templates folder,",
-    "    C:\\Eva\\reference\\templates. Each reads only the file types it",
-    "    understands (.docx / .pptx), so one folder serves both.",
+    "    other local users in process listings. Better still, set them as user",
+    "    environment variables (setx) and leave them out of this file.",
+    "  - To override ONE folder on an endpoint whose layout differs, set that",
+    "    server's own variable - MSWORD_KB_DIR, OUTLOOK_KB_DIR, EXCEL_DOCS_DIR",
+    "    and so on. An optional one also takes 'off' to switch the feature off",
+    "    entirely, e.g. OUTLOOK_KB_DIR=off to keep no local copy of any email.",
     "  - 'confluence' is shown with TWO instances. One is enough: delete the",
     "    CONFLUENCE_NAME* and *_2 settings and it behaves as it always has.",
     "    Keep them and a prompt can say '...on Blue' to reach the second",
     "    instance; anything that does not name a server uses the first. Each",
     "    instance needs its own token.",
     "  - Run each server's --check before wiring it in, e.g.",
-    "      & \"C:\\path\\to\\python.exe\" C:\\path\\to\\claude-skills\\plugins\\word\\word.py --check",
-    "      (PowerShell: the leading & is required when the path is quoted)",
+    "      & $env:EVA_PYTHON C:\\path\\to\\claude-skills\\plugins\\word\\word.py --check",
     "",
     "The recommended install is the Claude Code plugin route instead - see the",
     "root README.md. This file is the manual, project-scoped alternative.",
@@ -39,92 +53,66 @@
   ],
   "mcpServers": {
     "word": {
-      "command": "C:\\path\\to\\python.exe",
-      "args": [
-        "C:\\path\\to\\claude-skills\\plugins\\word\\word.py",
-        "--author", "Matt",
-        "--docs-dir", "C:\\Eva\\documents\\word",
-        "--templates-dir", "C:\\Eva\\reference\\templates",
-        "--kb-dir", "C:\\Eva\\knowledge\\word"
-      ],
-      "env": { "PYTHONUTF8": "1" }
+      "command": "${EVA_PYTHON}",
+      "args": ["C:\\path\\to\\claude-skills\\plugins\\word\\word.py"],
+      "env": { "PYTHONUTF8": "1", "MSWORD_AUTHOR": "Matt" }
     },
     "powerpoint": {
-      "command": "C:\\path\\to\\python.exe",
-      "args": [
-        "C:\\path\\to\\claude-skills\\plugins\\powerpoint\\powerpoint.py",
-        "--docs-dir", "C:\\Eva\\documents\\powerpoint",
-        "--templates-dir", "C:\\Eva\\reference\\templates",
-        "--kb-dir", "C:\\Eva\\knowledge\\powerpoint"
-      ],
+      "command": "${EVA_PYTHON}",
+      "args": ["C:\\path\\to\\claude-skills\\plugins\\powerpoint\\powerpoint.py"],
       "env": { "PYTHONUTF8": "1" }
     },
     "excel": {
-      "command": "C:\\path\\to\\python.exe",
-      "args": [
-        "C:\\path\\to\\claude-skills\\plugins\\excel\\excel.py",
-        "--docs-dir", "C:\\Eva\\documents\\excel"
-      ],
+      "command": "${EVA_PYTHON}",
+      "args": ["C:\\path\\to\\claude-skills\\plugins\\excel\\excel.py"],
       "env": { "PYTHONUTF8": "1" }
     },
     "outlook": {
-      "command": "C:\\path\\to\\python.exe",
-      "args": [
-        "C:\\path\\to\\claude-skills\\plugins\\outlook\\outlook.py",
-        "--search-folders", "Inbox,Sent Items,Archive",
-        "--kb-dir", "C:\\Eva\\knowledge\\email"
-      ],
-      "env": { "PYTHONUTF8": "1" }
+      "command": "${EVA_PYTHON}",
+      "args": ["C:\\path\\to\\claude-skills\\plugins\\outlook\\outlook.py"],
+      "env": {
+        "PYTHONUTF8": "1",
+        "OUTLOOK_SEARCH_FOLDERS": "Inbox,Sent Items,Archive"
+      }
     },
     "confluence": {
-      "command": "C:\\path\\to\\python.exe",
-      "args": [
-        "C:\\path\\to\\claude-skills\\plugins\\confluence\\confluence.py",
-        "--max-body", "20000",
-        "--kb-dir", "C:\\Eva\\knowledge\\confluence"
-      ],
+      "command": "${EVA_PYTHON}",
+      "args": ["C:\\path\\to\\claude-skills\\plugins\\confluence\\confluence.py"],
       "env": {
+        "PYTHONUTF8": "1",
+        "CONFLUENCE_MAX_BODY": "20000",
         "CONFLUENCE_NAME": "Green",
         "CONFLUENCE_BASE_URL": "https://green.confluence.internal.example.com",
         "CONFLUENCE_TOKEN": "token-for-the-first-server",
         "CONFLUENCE_NAME_2": "Blue",
         "CONFLUENCE_BASE_URL_2": "https://blue.confluence.internal.example.com",
-        "CONFLUENCE_TOKEN_2": "token-for-the-second-server",
-        "PYTHONUTF8": "1"
+        "CONFLUENCE_TOKEN_2": "token-for-the-second-server"
       }
     },
     "jira": {
-      "command": "C:\\path\\to\\python.exe",
+      "command": "${EVA_PYTHON}",
       "args": ["C:\\path\\to\\claude-skills\\plugins\\jira\\jira.py"],
       "env": {
+        "PYTHONUTF8": "1",
         "JIRA_BASE_URL": "https://jira.internal.example.com",
         "JIRA_TOKEN": "your-personal-access-token",
-        "JIRA_PROJECTS": "ABC,DEF",
-        "PYTHONUTF8": "1"
+        "JIRA_PROJECTS": "ABC,DEF"
       }
     },
     "knowledge-base": {
-      "command": "C:\\path\\to\\python.exe",
-      "args": [
-        "C:\\path\\to\\claude-skills\\plugins\\knowledge-base\\knowledge-base.py",
-        "--docs-dir", "C:\\Eva\\knowledge",
-        "--index-dir", "C:\\Eva\\index",
-        "--output-dir", "C:\\Eva\\knowledge\\captures",
-        "--embed-url", "https://ai-gateway.internal.example.com/v1/embeddings",
-        "--embed-model", "text-embedding-3-small"
-      ],
+      "command": "${EVA_PYTHON}",
+      "args": ["C:\\path\\to\\claude-skills\\plugins\\knowledge-base\\knowledge-base.py"],
       "env": {
-        "KB_EMBED_API_KEY": "your-api-key",
-        "PYTHONUTF8": "1"
+        "PYTHONUTF8": "1",
+        "KB_INDEX_DIR": "C:\\Eva\\index",
+        "KB_EMBED_URL": "https://ai-gateway.internal.example.com/v1/embeddings",
+        "KB_EMBED_MODEL": "text-embedding-3-small",
+        "KB_EMBED_API_KEY": "your-api-key"
       }
     },
     "pdf2md": {
-      "command": "C:\\path\\to\\python.exe",
-      "args": [
-        "C:\\path\\to\\claude-skills\\plugins\\pdf-to-md\\pdf-to-md.py",
-        "--docs-dir", "C:\\Eva\\documents\\pdf",
-        "--output-dir", "C:\\Eva\\knowledge\\pdf"
-      ],
+      "command": "${EVA_PYTHON}",
+      "args": ["C:\\path\\to\\claude-skills\\plugins\\pdf-to-md\\pdf-to-md.py"],
       "env": { "PYTHONUTF8": "1" }
     }
   }

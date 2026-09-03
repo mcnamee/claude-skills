@@ -7,7 +7,7 @@ it **saves** one.
 
 | | |
 |---|---|
-| **Plugin setting** | `powerpoint` → knowledge-base folder (`--kb-dir` / `POWERPOINT_KB_DIR`) |
+| **Setting** | `EVA_KNOWLEDGE_DIR` (the `powerpoint` plugin appends `\powerpoint`) |
 | **Default** | `C:\Eva\knowledge\powerpoint` |
 | **Filenames** | `PowerPoint - <name>.md` |
 | **Overwritten** | yes, on every open or save |

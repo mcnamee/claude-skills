@@ -1,7 +1,7 @@
 {
   "name": "powerpoint",
   "displayName": "PowerPoint (.pptx)",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "Build PowerPoint decks that inherit your own template's styling, and audit them against Guy Kawasaki's 10/20/30 rule.",
   "author": {
     "name": "mcnamee"
@@ -15,44 +15,15 @@
     "slides",
     "kawasaki"
   ],
-  "userConfig": {
-    "docs_dir": {
-      "type": "directory",
-      "title": "Presentations folder",
-      "description": "The single folder of .pptx files the server may open and save, searched recursively. NEW decks are created here too - there is no separate output folder. REQUIRED: the server refuses to start without it. Defaults to the PowerPoint folder of the Eva working tree; copy the repo's eva\\ folder to C:\\Eva and it exists.",
-      "default": "C:\\Eva\\documents\\powerpoint"
-    },
-    "templates_dir": {
-      "type": "directory",
-      "title": "Templates folder",
-      "description": "Folder of blank .pptx/.potx templates new decks are created from - the same folder the word plugin uses, since each server reads only the file types it understands. Read-only: templates can be opened and used as a starting point, never saved over. Enter 'off' to run with no templates.",
-      "default": "C:\\Eva\\reference\\templates"
-    },
-    "kb_dir": {
-      "type": "directory",
-      "title": "Knowledge-base folder",
-      "description": "Every deck opened, created or saved is also mirrored to Markdown here (slides and speaker notes), which is what makes it searchable by the knowledge-base plugin. Keep it inside that plugin's documents folder (C:\\Eva\\knowledge) or the mirrors are never indexed. Enter 'off' to disable mirroring.",
-      "default": "C:\\Eva\\knowledge\\powerpoint"
-    },
-    "python": {
-      "type": "string",
-      "title": "Python interpreter",
-      "description": "Absolute path to the python.exe that has this server's pip dependencies installed (e.g. C:\\Python311\\python.exe). Use plain 'python' only if the right interpreter is first on PATH - a mismatch here is the most common cause of 'dependency missing' errors.",
-      "required": true
-    }
-  },
   "mcpServers": {
     "powerpoint": {
       "type": "stdio",
-      "command": "${user_config.python}",
+      "command": "${EVA_PYTHON}",
       "args": [
         "${CLAUDE_PLUGIN_ROOT}/powerpoint.py"
       ],
       "env": {
-        "PYTHONUTF8": "1",
-        "POWERPOINT_DOCS_DIR": "${user_config.docs_dir}",
-        "POWERPOINT_TEMPLATES_DIR": "${user_config.templates_dir}",
-        "POWERPOINT_KB_DIR": "${user_config.kb_dir}"
+        "PYTHONUTF8": "1"
       }
     }
   }

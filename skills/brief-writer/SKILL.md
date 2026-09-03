@@ -107,7 +107,7 @@ Reading one, by format:
 | Format | Read with |
 |---|---|
 | `.md`, `.txt` | `Read` - no conversion, and the structure is visible at a glance |
-| `.pdf` | `Read`, which handles PDFs directly. Failing that, the `pdf-to-md` server, if the folder sits inside its `--docs-dir` |
+| `.pdf` | `Read`, which handles PDFs directly. Failing that, the `pdf-to-md` server, if the folder sits inside its PDF folder |
 | `.docx` | the `word` server: `msword_open`, then `msword_get_content` with `mode: "structured"` for the heading hierarchy |
 
 Both of those servers are confined to their configured folders, so a `.docx` or

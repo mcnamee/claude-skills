@@ -6,7 +6,7 @@ different jobs:
 | Folder | Holds | Used for |
 |---|---|---|
 | [`exemplars\`](exemplars) | Finished, *good* documents — `.md`, `.docx`, `.pptx`, `.pdf` | Showing Claude **what good looks like** — tone, structure, level of detail — before it writes something of the same kind |
-| [`templates\`](templates) | Blank/skeleton `.docx` and `.pptx` | The **starting file** a new document is built from — letterhead, styles, headers/footers, boilerplate |
+| [`templates\`](templates) | Blank/skeleton `.docx` and `.pptx`, one sub-folder per plugin | The **starting file** a new document is built from — letterhead, styles, headers/footers, boilerplate |
 
 The distinction matters: an exemplar is *read* for guidance and never becomes the
 output; a template *is* the output's first draft. A finished board paper belongs
@@ -30,12 +30,18 @@ here. Same document, two jobs, no confusion about which is being cited.
 
 ## Wiring it up
 
-Only `templates\` needs configuring, because a server has to open those files:
-the `word` plugin's templates folder (`--templates-dir` /
-`MSWORD_TEMPLATES_DIR`) defaults to `C:\Eva\reference\templates`, and treats it
-as a **read-only** third root — templates can be listed, opened and used as the
-base for a new document, but every save into the folder is refused. Full setup in
-[`templates/README.md`](templates/README.md).
+Only `templates\` needs configuring, because a server has to open those files.
+One environment variable covers it for the whole suite:
+
+```powershell
+[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\reference\templates", "User")
+```
+
+Each plugin then reads its **own sub-folder** of that root - `templates\word`
+for `word`, `templates\powerpoint` for `powerpoint` - and treats it as a
+**read-only** extra root: templates can be listed, opened and used as the base
+for a new document, but every save into the folder is refused. Both sub-folders
+must exist. Full setup in [`templates/README.md`](templates/README.md).
 
 `exemplars\` needs no configuration: the files are read by whatever tool suits
 the format — `.md` directly, `.docx` via the `word` plugin, `.pdf` via
