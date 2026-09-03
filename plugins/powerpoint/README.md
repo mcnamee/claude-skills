@@ -6,7 +6,7 @@ rule**.
 
 | | |
 |---|---|
-| **Server** | `powerpoint.py` v3.0.0 |
+| **Server** | `powerpoint.py` v4.0.0 |
 | **pip install** | `python-pptx` (pulls in `lxml`, `Pillow`, `XlsxWriter`, `typing_extensions`) |
 | **Platform** | any (PowerPoint itself is not required) |
 | **Writes to disk** | yes — confined to its configured folders |
@@ -33,13 +33,13 @@ there are no folder prompts at install time and no folder command-line flags.
 |---|---|---|
 | `EVA_PYTHON` | The `python.exe` every server runs under - the same one you installed the pip dependencies into | *(none - you must set it)* |
 | `EVA_DOCUMENTS_DIR` | Root of the document library | `C:\Eva\documents` |
-| `EVA_TEMPLATES_DIR` | Root of the template library | `C:\Eva\reference\templates` |
+| `EVA_TEMPLATES_DIR` | Root of the template library | `C:\Eva\templates` |
 | `EVA_KNOWLEDGE_DIR` | Root of the RAG corpus - the one folder the index reads | `C:\Eva\knowledge` |
 
 ```powershell
 [Environment]::SetEnvironmentVariable("EVA_PYTHON",        "C:\Python311\python.exe",     "User")
 [Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "C:\Eva\documents",             "User")
-[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\reference\templates",   "User")
+[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\templates",   "User")
 [Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "C:\Eva\knowledge",             "User")
 ```
 
@@ -66,8 +66,8 @@ they all do.
 > **`word` and `powerpoint` no longer share one templates folder.** Each reads
 > its own sub-folder of `EVA_TEMPLATES_DIR`, so a template listing only ever
 > shows files the asking plugin can actually open. If you are upgrading, move
-> your `.pptx`/`.potx` files from `reference\templates\` down into
-> `reference\templates\powerpoint\`.
+> your `.pptx`/`.potx` files into `C:\Eva\templates\powerpoint\` - see
+> [`eva/README.md`](../../eva/README.md) for the full migration.
 
 ### Overriding one folder, and this server's own settings
 
@@ -301,8 +301,7 @@ obvious.
 ## Making a template this server can use
 
 Put your branded deck in `%EVA_TEMPLATES_DIR%\powerpoint` (see
-[`eva/reference/templates/powerpoint`](../../eva/reference/templates/powerpoint))
-and:
+[`eva/templates/powerpoint`](../../eva/templates/powerpoint)) and:
 
 - **Define the layouts you want used**, and name them clearly. Role detection
   reads the placeholders, so a `Chapter Opener` with a title and one body

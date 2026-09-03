@@ -14,13 +14,13 @@ Copy-Item -Recurse C:\path\to\claude-skills\eva C:\Eva
 
 [Environment]::SetEnvironmentVariable("EVA_PYTHON",        "C:\Python311\python.exe",        "User")
 [Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "C:\Eva\documents",               "User")
-[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\reference\templates",     "User")
+[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\templates",             "User")
 [Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "C:\Eva\knowledge",               "User")
 ```
 
 Those four are the *whole* configuration story for folders. Each plugin appends
 its own name as a sub-folder - `word` reads `documents\word`, writes
-`knowledge\word` and takes its blanks from `reference\templates\word` - so no
+`knowledge\word` and takes its blanks from `templates\word` - so no
 plugin has a folder setting of its own to keep in sync, and there are no folder
 command-line flags at all.
 
@@ -33,7 +33,7 @@ The tree is organised by **what writes to a folder**, not by topic:
 | [`knowledge\`](knowledge) | The RAG corpus — Markdown only | every server that mirrors what it opens or saves what you ask it to keep, plus `kb_capture` |
 | [`index\`](index) | The ChromaDB vector store | `knowledge-base`, from `knowledge\` |
 | [`documents\`](documents) | The binary library — `.docx`, `.pptx`, `.xlsx`, `.pdf` | you **and** the assistant |
-| [`reference\`](reference) | Templates and exemplars — style, not facts | you |
+| [`templates\`](templates) | Blank branded files a new document is created from — style, not facts | you |
 
 ```
 C:\Eva\
@@ -52,11 +52,9 @@ C:\Eva\
 │  ├─ powerpoint\      .pptx  (searched recursively)
 │  ├─ excel\           .xlsx  (top level only — see its README)
 │  └─ pdf\             .pdf   source PDFs
-└─ reference\
-   ├─ exemplars\       finished documents showing what good looks like
-   └─ templates\       blank branded files new documents start from
-      ├─ word\           .docx blanks
-      └─ powerpoint\     .pptx / .potx deck shells
+└─ templates\        blank branded files new documents start from
+   ├─ word\             .docx templates        (read-only)
+   └─ powerpoint\       .pptx / .potx templates (read-only)
 ```
 
 ## The assistant's instructions
@@ -87,15 +85,15 @@ per-plugin to configure and nothing that can drift out of step.
 |---|---|---|
 | `EVA_PYTHON` | the `python.exe` every server runs under | *(no default - set it)* |
 | `EVA_DOCUMENTS_DIR` | `documents\` | `C:\Eva\documents` |
-| `EVA_TEMPLATES_DIR` | `reference\templates\` | `C:\Eva\reference\templates` |
+| `EVA_TEMPLATES_DIR` | `templates\` | `C:\Eva\templates` |
 | `EVA_KNOWLEDGE_DIR` | `knowledge\` | `C:\Eva\knowledge` |
 
 Where each plugin lands, and **which folders must exist**:
 
 | Plugin | Documents | Templates | Knowledge |
 |---|---|---|---|
-| `word` | `documents\word\` | `reference\templates\word\` | `knowledge\word\` |
-| `powerpoint` | `documents\powerpoint\` | `reference\templates\powerpoint\` | `knowledge\powerpoint\` |
+| `word` | `documents\word\` | `templates\word\` | `knowledge\word\` |
+| `powerpoint` | `documents\powerpoint\` | `templates\powerpoint\` | `knowledge\powerpoint\` |
 | `excel` | `documents\excel\` | — | — |
 | `pdf-to-md` | `documents\pdf\` | — | `knowledge\pdf\` |
 | `outlook` | — | — | `knowledge\email\` |
@@ -107,8 +105,6 @@ Where each plugin lands, and **which folders must exist**:
 so: it indexes the entire `knowledge\` root, which is exactly the point of
 every other plugin writing into a sub-folder of it. Its vector store lives
 outside the corpus in `index\` (`KB_INDEX_DIR`, default `C:\Eva\index`).
-`reference\exemplars\` needs no setting - those files are read as ordinary
-documents.
 
 ### Overriding one folder
 
@@ -150,6 +146,51 @@ deciding which. Provenance is unambiguous, maps one-to-one onto a setting, and
 retrieval is semantic anyway — folder names do not affect what comes back. It
 also makes cleanup surgical: delete `knowledge\confluence\` and save the pages
 again after a space is restructured, with nothing you wrote yourself at risk.
+
+## Where exemplars live
+
+There used to be a `reference\` zone here holding both templates and
+**exemplars** — finished, good documents read for guidance so Claude can write
+something in the same shape. Templates stayed (as [`templates\`](templates));
+exemplars moved out of the tree entirely, into the `exemplars\` folder of the
+skill that reads them:
+
+| Skill | Exemplars folder |
+|---|---|
+| [`/exemplar-writer`](../skills/exemplar-writer) | `%USERPROFILE%\.claude\skills\exemplar-writer\exemplars\` |
+| [`/brief-writer`](../skills/brief-writer) | `%USERPROFILE%\.claude\skills\brief-writer\exemplars\` |
+| [`/email-writer`](../skills/email-writer) | `%USERPROFILE%\.claude\skills\email-writer\exemplars\` |
+
+The point is that they travel with the skill: fill the folder on a machine that
+has your documents, copy the skill folder to the endpoint, and it arrives
+already knowing what your writing looks like. A folder in this tree would have
+needed a separate copy and a path in every prompt.
+
+Exemplars were never indexed and still are not, for the same reason: add a board
+paper to the RAG corpus and its phrasing comes back with the same authority as a
+policy. If you want a document to be both a reference *and* a model to write
+like, put its content in `knowledge\notes\` and keep the formatted copy with
+the skill.
+
+**Upgrading an existing `C:\Eva`?** Move the templates out of the old
+`reference\` zone into one folder per plugin, hand the exemplars to the skills
+that now read them, and set the four environment variables:
+
+```powershell
+New-Item -ItemType Directory -Force C:\Eva\templates\word, C:\Eva\templates\powerpoint
+Move-Item C:\Eva\reference\templates\*.docx        C:\Eva\templates\word
+Move-Item C:\Eva\reference\templates\*.pptx,*.potx C:\Eva\templates\powerpoint
+Copy-Item C:\Eva\reference\exemplars\* "$env:USERPROFILE\.claude\skills\exemplar-writer\exemplars"
+Remove-Item -Recurse C:\Eva\reference
+
+[Environment]::SetEnvironmentVariable("EVA_PYTHON",        "C:\Python311\python.exe", "User")
+[Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "C:\Eva\documents",         "User")
+[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\templates",         "User")
+[Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "C:\Eva\knowledge",         "User")
+```
+
+Then reconfigure the plugins once (`/plugin` → each one) to drop the folder
+answers they no longer ask for.
 
 ## Moving it somewhere else
 

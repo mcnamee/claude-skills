@@ -12,7 +12,7 @@
 # the repo the same way the READMEs do.
 #
 # To commit one file deliberately (a genuinely generic template, say):
-#     git add -f eva/reference/templates/"Report Template.docx"
+#     git add -f eva/templates/word/"Report Template.docx"
 #
 # If none of your material is sensitive and you would rather it travelled with
 # the repo, delete this file.

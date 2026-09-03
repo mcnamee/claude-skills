@@ -202,11 +202,15 @@ Folder discipline, which the servers enforce and Eva should not fight:
   folder its plugin can touch. New documents and decks are created there too,
   alongside my own: there is no separate output folder, so nothing needs moving
   afterwards and nothing needs deciding first.
-- [`reference\exemplars`](reference/exemplars) shows the **shape** of a
-  document. It never supplies content.
-- [`reference\templates`](reference/templates) is read-only, one sub-folder per
-  file type (`templates\word`, `templates\powerpoint`). A new document is built
-  from a template and saved into `documents\`.
+- [`templates\`](templates) is read-only, one folder per plugin
+  ([`templates\word`](templates/word), [`templates\powerpoint`](templates/powerpoint)).
+  A new document is built from a template and saved into `documents\`. Every
+  save into a templates folder is refused, so the blanks stay blank.
+- **Exemplars are not in this tree.** A finished document read for its shape
+  lives in the `exemplars\` folder of the skill that reads it, under
+  `%USERPROFILE%\.claude\skills\`: `exemplar-writer` for documents generally,
+  `brief-writer` for briefs, `email-writer` for email. An exemplar shows the
+  **shape** of a document and never supplies content.
 - [`knowledge\`](knowledge) is the only indexed root, and holds Markdown only.
 - Word and PowerPoint sessions hold a file in memory. Save and close them, and
   never overwrite a document I already have without asking.
@@ -216,8 +220,10 @@ Folder discipline, which the servers enforce and Eva should not fight:
 
 For a whole research job hand off to `@agent-researcher`, which comes back with
 something finished. To write it up, use `/brief-writer` for a paper going to a
-senior executive or `/email-writer` for an email in my voice. Both draft in the
-conversation so I can iterate before anything is exported.
+senior executive, `/email-writer` for an email in my voice, or
+`/exemplar-writer` for anything else that should follow the shape of a document
+we already have (a status report, a proposal, a file note, minutes). All three
+draft in the conversation so I can iterate before anything is exported.
 
 ## Standing formats
 

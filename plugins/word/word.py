@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r"""
-word.py (v7.0.0) - A single-file MCP (Model Context Protocol) stdio server
+word.py (v8.0.0) - A single-file MCP (Model Context Protocol) stdio server
 that gives an AI agent read/search/edit/generate access to Word .docx files.
 
 It follows a simple open -> edit -> save workflow (msword_open ... msword_save),
@@ -21,7 +21,7 @@ WHAT IT CAN DO
       boilerplate are inherited and the template file is left untouched.
     - Keep those blank templates in a folder of their own - the "word"
       sub-folder of the suite's template root, by default
-      C:\Eva\reference\templates\word. It is a READ-ONLY second root:
+      C:\Eva\templates\word. It is a READ-ONLY second root:
       its .docx files can be listed, opened and used as the base for
       msword_create, but every attempt to SAVE over one is refused, so a
       template cannot be turned into someone's half-finished report.
@@ -187,7 +187,7 @@ WHAT IT CANNOT DO
         EVA_PYTHON          full path to the python.exe that has the
                             dependencies installed, e.g. C:\Python311\python.exe
         EVA_DOCUMENTS_DIR   root of the document library (C:\Eva\documents)
-        EVA_TEMPLATES_DIR   root of the template library (C:\Eva\reference\templates)
+        EVA_TEMPLATES_DIR   root of the template library (C:\Eva\templates)
         EVA_KNOWLEDGE_DIR   root of the RAG corpus       (C:\Eva\knowledge)
 
     This server works in the "word" sub-folder of each root. ALL THREE FOLDERS
@@ -209,7 +209,7 @@ WHAT IT CANNOT DO
 
         [Environment]::SetEnvironmentVariable("EVA_PYTHON", "C:\Python311\python.exe", "User")
         [Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "C:\Eva\documents", "User")
-        [Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\reference\templates", "User")
+        [Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\templates", "User")
         [Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "C:\Eva\knowledge", "User")
 
     Copy the repo's eva\ folder to C:\Eva and every folder above exists,
@@ -270,7 +270,7 @@ failed transfer" rule):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "7.0.0"
+__version__ = "8.0.0"
 
 # =============================================================================
 # CONFIGURATION  (all user-editable settings live here, nothing scattered below)
@@ -304,7 +304,7 @@ PROTOCOL_VERSION_FALLBACK = "2024-11-05"  # used if the client sends none
 # -----------------------------------------------------------------------------
 SUBFOLDER = "word"                 # this server's sub-folder in each root
 EVA_DOCUMENTS_DIR = r"C:\Eva\documents"
-EVA_TEMPLATES_DIR = r"C:\Eva\reference\templates"
+EVA_TEMPLATES_DIR = r"C:\Eva\templates"
 EVA_KNOWLEDGE_DIR = r"C:\Eva\knowledge"
 
 # Resolved from the environment in main(); the literals here are what a stock
@@ -327,7 +327,8 @@ EVA_KNOWLEDGE_DIR = r"C:\Eva\knowledge"
 DOCS_DIR = r"C:\Eva\documents\word"
 
 # TEMPLATES_DIR holds blank .docx TEMPLATES (letterhead, report layout,
-# contract boilerplate ...). It is a READ-ONLY second root:
+# contract boilerplate ...) - the eva\templates\word folder that ships with
+# this repo is exactly this. It is a READ-ONLY second root:
 #   - its .docx files can be listed (msword_list_documents), opened
 #     (msword_open) and used as the base for a new document
 #     (msword_create template="..."), exactly like the document root;
@@ -335,8 +336,10 @@ DOCS_DIR = r"C:\Eva\documents\word"
 #     be overwritten with a filled-in copy of itself. New documents always go
 #     to DOCS_DIR.
 # Keeping templates out of DOCS_DIR is the point: the folder stays a clean set
-# of blanks that the model can start from but can never edit in place.
-TEMPLATES_DIR = r"C:\Eva\reference\templates\word"
+# of blanks that the model can start from but can never edit in place. The
+# server also refuses to start if this folder IS - or contains - DOCS_DIR,
+# because that arrangement would refuse every save.
+TEMPLATES_DIR = r"C:\Eva\templates\word"
 
 # KB_DIR is the knowledge-base (RAG) folder: EVERY document opened, created or
 # saved is ALSO written out as a Markdown file into it, the same way

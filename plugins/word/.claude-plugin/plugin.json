@@ -1,7 +1,7 @@
 {
   "name": "word",
   "displayName": "Word (.docx)",
-  "version": "7.0.0",
+  "version": "8.0.0",
   "description": "Read, edit and create Word .docx files - including Word tracked changes, native styles and filling out templates.",
   "author": {
     "name": "mcnamee"

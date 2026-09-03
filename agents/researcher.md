@@ -232,5 +232,6 @@ Two things worth knowing:
 **Do not write the document.** This brief is research, and the shape of what
 gets written from it depends on its audience and format. Offer the right skill
 for that — `/brief-writer` for a paper going to a senior executive,
-`/email-writer` for a note in the user's own voice. This output is built to be
+`/email-writer` for a note in the user's own voice, `/exemplar-writer` for a
+report or paper shaped like one they already have. This output is built to be
 their input.

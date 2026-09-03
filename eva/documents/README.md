@@ -22,7 +22,7 @@ Each of these **must exist** for its plugin to start (`word`, `powerpoint` and
 Each of these folders is a **sandbox**: the plugin resolves every path against
 it (symlinks included) and refuses anything that lands outside. `word` can
 therefore open and save inside `documents\word\` and read
-`..\reference\templates\word\`, and nowhere else on the machine.
+[`..\templates\word`](../templates/word), and nowhere else on the machine.
 
 ## One folder, not three
 

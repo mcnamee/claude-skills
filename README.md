@@ -13,9 +13,8 @@ Three things, all for Claude Code, all working **entirely offline**:
 
 Plus **[`eva/`](eva)** — the working folder they all read, write and index,
 carried here as a scaffold you copy to `C:\Eva`. It holds the knowledge base,
-the document library, and the reference material: **exemplars**
-(finished documents showing what good looks like) and **templates** (the blank
-`.docx`/`.pptx` new documents are built from). It also carries
+the document library, and the **templates** — the blank `.docx`/`.pptx` files
+new documents and decks are built from. It also carries
 [`eva/CLAUDE.md`](eva/CLAUDE.md), the standing instructions that make the
 assistant **Eva** — an executive virtual assistant who writes in Australian
 English, without em dashes or the other AI tells, and never fills a gap in the
@@ -57,8 +56,8 @@ source material with something invented.
 
 | Plugin | Version | What it does | pip install |
 |---|---|---|---|
-| [**word**](plugins/word) | 7.0.0 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
-| [**powerpoint**](plugins/powerpoint) | 3.0.0 | Build `.pptx` decks that inherit your own template's layouts and theme, and audit them against the 10/20/30 rule | `python-pptx` |
+| [**word**](plugins/word) | 8.0.0 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
+| [**powerpoint**](plugins/powerpoint) | 4.0.0 | Build `.pptx` decks that inherit your own template's layouts and theme, and audit them against the 10/20/30 rule | `python-pptx` |
 | [**excel**](plugins/excel) | 5.0.0 | Read and analyse workbooks; parses `.xlsx` directly, so Excel isn't needed | _none_ |
 | [**outlook**](plugins/outlook) | 6.0.0 | Read local Outlook mail and calendar via COM, with a content blacklist; saves an email to the knowledge base when you ask | `pywin32` |
 | [**confluence**](plugins/confluence) | 4.0.0 | Search and read Confluence pages, across one or two instances; saves a page to the knowledge base when you ask | _none_ |
@@ -114,7 +113,7 @@ sub-folder of the three roots, named after the plugin.
 ```powershell
 [Environment]::SetEnvironmentVariable("EVA_PYTHON",        "C:\path\to\python.exe",       "User")
 [Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "C:\Eva\documents",            "User")
-[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\reference\templates",  "User")
+[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\templates",  "User")
 [Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "C:\Eva\knowledge",            "User")
 ```
 
@@ -122,7 +121,7 @@ sub-folder of the three roots, named after the plugin.
 |---|---|---|
 | `EVA_PYTHON` | The `python.exe` from step 2 — every server runs under it. A mismatch here is the most common cause of "dependency missing" | *(none — set it)* |
 | `EVA_DOCUMENTS_DIR` | The document library | `C:\Eva\documents` |
-| `EVA_TEMPLATES_DIR` | The template library | `C:\Eva\reference\templates` |
+| `EVA_TEMPLATES_DIR` | The template library | `C:\Eva\templates` |
 | `EVA_KNOWLEDGE_DIR` | The RAG corpus — the one indexed root | `C:\Eva\knowledge` |
 
 **4. Add this repo as a marketplace**, then install whichever plugins you want.
@@ -226,7 +225,7 @@ The per-plugin READMEs list each server's actual settings.
    `EVA_DOCUMENTS_DIR`, `EVA_TEMPLATES_DIR`, `EVA_KNOWLEDGE_DIR`. Each server
    works in its own **sub-folder** of those roots, named after the plugin —
    `word` reads `documents\word`, writes `knowledge\word`, and takes its blanks
-   from `reference\templates\word`. `knowledge-base` is the one exception, and
+   from `templates\word`. `knowledge-base` is the one exception, and
    necessarily so: it indexes the *whole* knowledge root.
 3. **A per-server variable overrides one folder,** for an endpoint whose layout
    differs: `<PREFIX>_DOCS_DIR`, `<PREFIX>_TEMPLATES_DIR`, `<PREFIX>_KB_DIR`.
@@ -270,11 +269,9 @@ C:\Eva\
 │  ├─ powerpoint\      .pptx (searched recursively)
 │  ├─ excel\           .xlsx (top level only - excel does not recurse)
 │  └─ pdf\             source PDFs
-└─ reference\        style, not facts - deliberately NOT indexed
-   ├─ exemplars\       finished documents showing what good looks like
-   └─ templates\       blank branded files new documents/decks start from
-      ├─ word\           .docx blanks
-      └─ powerpoint\     .pptx / .potx deck shells
+└─ templates\        blank branded files new documents/decks start from
+   ├─ word\             .docx templates         (read-only)
+   └─ powerpoint\       .pptx / .potx templates (read-only)
 ```
 
 Three environment variables name the three roots; the plugin's own name is the
@@ -368,6 +365,7 @@ plugin. Install one by copying its folder:
 |---|---|---|
 | [**brief-writer**](skills/brief-writer) | `/brief-writer` | Drafts a decision or noting brief for a senior executive, following the structure of an exemplar in its own `exemplars/` folder, and finishing with `/polish` |
 | [**email-writer**](skills/email-writer) | `/email-writer` | Drafts an email in your voice, classifying what the email is for and matching that intent to your own sent mail in its `exemplars/` folder, then running `/unslop` |
+| [**exemplar-writer**](skills/exemplar-writer) | `/exemplar-writer` | Writes a document in the shape of one you already have — pulls the structure, section order, proportions and register out of an exemplar, then writes your material to that shape |
 | [**polish**](skills/polish) | `/polish` | Rewrites a draft into Australian Public Service style — the Australian Government Style Manual — asking who the reader is and what the medium is, then picking the register from them |
 | [**unslop**](skills/unslop) | `/unslop` | Strips AI-slop markers from writing — padding, tell-tale vocabulary, stock LLM sentence shapes — leaving meaning and voice intact |
 
@@ -382,12 +380,13 @@ Or copy it into `.claude\skills\` inside a project to scope it there. Run
 [`skills/README.md`](skills/README.md) for the details and for how to add
 another.
 
-The two writers stack on the other two: `brief-writer` finishes through
-`/polish`, `email-writer` through `/unslop`, so install the pair each one needs.
-Both keep their own `exemplars/` folder inside the skill — your approved briefs,
-your sent mail — which is what makes the copy to an endpoint carry the house
-structure and your voice with it. Nothing in those folders is committed except
-their README.
+The three writers stack on the other two: `brief-writer` finishes through
+`/polish`, `email-writer` and `exemplar-writer` through `/unslop`, so install
+the pair each one needs.
+All three keep their own `exemplars/` folder inside the skill — your approved
+briefs, your sent mail, your finished reports — which is what makes the copy to
+an endpoint carry the house structure and your voice with it. Nothing in those
+folders is committed except their README.
 
 Note the difference in what they give Claude: a **plugin** adds *tools*, a
 **skill** adds *instructions*. A server's skill describes how to use it — it
@@ -418,32 +417,51 @@ Copy-Item -Force .\agents\researcher.md $dest
 Or into `.claude\agents\` inside a project to scope it there. It is written for
 this suite rather than as a generic agent and assumes it is installed, searching
 `knowledge-base` and `confluence` on every question. What it produces is
-research, not a document: hand the brief to [`/brief-writer`](skills/brief-writer)
-or [`/email-writer`](skills/email-writer) to write up, which keeps you in the
+research, not a document: hand the brief to [`/brief-writer`](skills/brief-writer),
+[`/email-writer`](skills/email-writer) or
+[`/exemplar-writer`](skills/exemplar-writer) to write up, which keeps you in the
 conversation while the wording is settled. See
 [`agents/README.md`](agents/README.md) for the details.
 
-## Reference material
+## Templates and exemplars
 
-[`eva/reference/`](eva/reference) holds what Claude *reads* for style rather
-than for facts, which is why it sits outside the indexed corpus:
+Two kinds of "here is what good looks like", kept in two different places
+because they get used differently. A **template** *is* the output's first draft;
+an **exemplar** is read for guidance and never becomes the output.
+
+**Templates** live in the Eva tree at [`eva/templates/`](eva/templates), one
+folder per plugin:
 
 | Folder | Holds | Wired up by |
 |---|---|---|
-| [**`reference/exemplars`**](eva/reference/exemplars) | Finished, good documents (`.md`, `.docx`, `.pptx`, `.pdf`) that show the house style to write in | nothing — point at one in the prompt |
-| [**`reference/templates`**](eva/reference/templates) | Blank `.docx`/`.pptx` templates a new document or deck is created from, one sub-folder per plugin (`templates\word`, `templates\powerpoint`) | `EVA_TEMPLATES_DIR` — read-only for both plugins |
+| [**`templates/word`**](eva/templates/word) | Blank `.docx` templates — letterhead, report layout, contract boilerplate | `EVA_TEMPLATES_DIR` + `\word` — read-only |
+| [**`templates/powerpoint`**](eva/templates/powerpoint) | Blank `.pptx`/`.potx` deck shells — masters, layouts, theme | `EVA_TEMPLATES_DIR` + `\powerpoint` — read-only |
 
-An exemplar is read for guidance and never becomes the output; a template *is*
-the output's first draft. Neither is indexed: add a board paper to the RAG
-corpus and its phrasing comes back with the same authority as a policy. Each
-folder's README covers naming, conventions and how to ask. Document files there
-are **not committed** — see [`eva/.gitignore`](eva/.gitignore).
+Each is a **read-only** second root for its plugin: files can be listed, opened
+and used as the base for something new, but every save into the folder is
+refused, so the blanks stay blank. Anything created lands in the matching
+`documents\` folder instead.
 
-Point at one in the prompt and Claude follows its shape, so the index table in
-that folder's README is what lets it pick the right file without opening every
-one. The [`brief-writer`](skills/brief-writer) and
-[`email-writer`](skills/email-writer) skills keep their own exemplars folder
-instead, inside the skill, so it travels with the folder copy to an endpoint.
+**Exemplars** live inside the skill that reads them, in its own `exemplars/`
+folder, so they travel with the folder copy to an endpoint rather than needing a
+separate copy and a path in every prompt:
+
+| Skill | Its exemplars are |
+|---|---|
+| [`/exemplar-writer`](skills/exemplar-writer) | Any document that should follow the shape of one you already have — a report, proposal, file note, minutes |
+| [`/brief-writer`](skills/brief-writer) | Briefs, matched by kind (decision, noting, ministerial) |
+| [`/email-writer`](skills/email-writer) | Your own sent mail, matched by intent |
+
+Name a file in the prompt and it beats the folder — including a document sitting
+in `documents\word`, which is the way to use a `.docx` exemplar that a skill
+folder cannot reach.
+
+Neither kind is indexed, deliberately. Add a board paper to the RAG corpus and
+its phrasing comes back with the same authority as a policy: `kb_ask` starts
+citing house style as fact, and a two-year-old example as current practice.
+Nothing in either place is **committed** to this repo, since in real use these
+are your own documents — see [`eva/.gitignore`](eva/.gitignore) and each skill's
+`exemplars/.gitignore`.
 
 ## The assistant's instructions
 

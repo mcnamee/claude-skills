@@ -30,7 +30,9 @@ already in, an agent goes away and does the work in its own.
 
 `researcher` produces the material; writing it up is a skill's job, not an
 agent's. Hand its brief to [`/brief-writer`](../skills/brief-writer) for a paper
-going to an executive, or [`/email-writer`](../skills/email-writer) for a note
+going to an executive, [`/exemplar-writer`](../skills/exemplar-writer) for a
+report or paper shaped like one you already have, or
+[`/email-writer`](../skills/email-writer) for a note
 in your own voice. Both keep you in the conversation to iterate, which is where
 writing actually gets done.
 
@@ -121,10 +123,11 @@ cites. Without that rule a guess captured in March becomes a citation in June.
 
 The brief is research, not a document. What it becomes depends on the audience:
 [`/brief-writer`](../skills/brief-writer) for a paper going to an executive,
-[`/email-writer`](../skills/email-writer) for a note in your own voice. Both are
-skills rather than agents on purpose — a draft you iterate on in the
-conversation, and each has its own exemplars folder for the shape and the voice
-to follow.
+[`/email-writer`](../skills/email-writer) for a note in your own voice, or
+[`/exemplar-writer`](../skills/exemplar-writer) for anything else that should
+follow the shape of a document you already have. All three are skills rather
+than agents on purpose — a draft you iterate on in the conversation, and each
+has its own exemplars folder for the shape and the voice to follow.
 
 ## Adding an agent
 

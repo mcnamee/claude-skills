@@ -104,7 +104,7 @@ held stable, and only the changed text goes back through `/polish`.
 
 Ask, once you're happy with it, and the finished Markdown goes to the
 [`/word:word`](../../plugins/word) skill, which builds the `.docx` with native
-Word styles or from a blank in `C:\Eva\reference\templates`. Writing and
+Word styles or from a blank in `C:\Eva\templates\word`. Writing and
 formatting stay two jobs on purpose: a wording change shouldn't mean rebuilding
 the document.
 

@@ -22,9 +22,9 @@ so nothing has to be filed before it can be asked about and nothing has to be
 moved afterwards.
 
 Blank branded templates are the exception. They live in
-[`..\..\reference\templates\word`](../../reference/templates/word), which is
-read-only: the plugin can create *from* a template but every save into that
-folder is refused, so the blanks stay blank.
+[`..\..\templates\word`](../../templates/word), which is read-only: the plugin
+can create *from* a template but every save into that folder is refused, so the
+blanks stay blank.
 
 ## Arrange it however you like
 
