@@ -7,7 +7,7 @@ reaches the index.
 
 | | |
 |---|---|
-| **Plugin setting** | `outlook` → knowledge-base folder (`--kb-dir` / `OUTLOOK_KB_DIR`) |
+| **Setting** | `EVA_KNOWLEDGE_DIR` (the `outlook` plugin appends `\email`) |
 | **Default** | `C:\Eva\knowledge\email` |
 | **Filenames** | `Email - <date> - <subject> (<id>).md` |
 | **Overwritten** | yes, whenever the same message is saved again |

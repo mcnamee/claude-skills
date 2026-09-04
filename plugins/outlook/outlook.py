@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-outlook.py (v5.0.0)
+outlook.py (v6.0.0)
 ======================
 
 A single-file MCP (Model Context Protocol) server giving an LLM read-only
@@ -54,15 +54,15 @@ Saving on request rather than on read is what keeps a mailbox from becoming
 the knowledge base: every message opened while answering a question used to be
 embedded and quotable in later answers, whether it deserved to be or not.
 
-The folder DEFAULTS to C:\Eva\knowledge\email, the email folder of the Eva
-working tree, which sits inside the knowledge-base plugin's documents folder so
-saved mail is actually indexed. Override it with --kb-dir or OUTLOOK_KB_DIR,
-or edit the KB_DIR config constant.
+The folder is the "email" sub-folder of the suite-wide RAG root
+(%EVA_KNOWLEDGE_DIR%\email, C:\Eva\knowledge\email on a stock install), which
+sits inside the knowledge-base plugin's corpus so saved mail is actually
+indexed. Point OUTLOOK_KB_DIR at a full path of its own to override just this
+server.
 
-To make saving impossible, set KB_DIR = None in the config block below (or pass
---kb-dir off): a save_to_kb request is then refused and the server touches no
-disk at all. To go the other way and save EVERY email read - how this server
-behaved before v5.0.0 - set OUTLOOK_KB_AUTOSAVE=true or pass --kb-autosave.
+To make saving impossible, set OUTLOOK_KB_DIR=off: a save_to_kb request is then
+refused and the server touches no disk at all. To go the other way and save
+EVERY email read, set OUTLOOK_KB_AUTOSAVE=true.
 Worth a deliberate decision either way: saving turns correspondence into plain
 text files that are then embedded and quotable in answers. See
 eva\knowledge\email\README.md.
@@ -84,10 +84,10 @@ just below this docstring. Edit them there; nothing else needs changing.
                      outlook_list_folders and skipped by outlook_search_recent
                      (results are labelled with their folder path, so a marked
                      folder name must never appear in output).
-   - FAIL CLOSED (optional): set REQUIRE_BLACKLIST = True below, pass
-                     --require-blacklist, or set OUTLOOK_REQUIRE_BLACKLIST=1 to
-                     make the server refuse to start if the blacklist is empty,
-                     so a missing terms file cannot silently disable filtering.
+   - FAIL CLOSED (optional): set REQUIRE_BLACKLIST = True below, or set
+                     OUTLOOK_REQUIRE_BLACKLIST=1, to make the server refuse to
+                     start if the blacklist is empty, so a missing terms file
+                     cannot silently disable filtering.
    - The matched term is NEVER shown to the AI (that would leak the marking); it
      is logged to STDERR only, for local audit.
    - FAIL-SAFE: if an item's subject or body cannot be read (so it cannot be
@@ -118,7 +118,8 @@ just below this docstring. Edit them there; nothing else needs changing.
    each result is labelled with its store/folder so you can see the source.
    This is only the DEFAULT set, resolved in this order (later wins):
      (a) SEARCH_ALL_FOLDERS here in the file;
-     (b) the --search-folders launch flag (comma-separated names), if given;
+     (b) the OUTLOOK_SEARCH_FOLDERS environment variable (comma-separated
+         names), if set;
      (c) a per-call "folders" argument to outlook_search_recent.
    Use (b) to configure the default from the MCP client config without editing
    this file.
@@ -126,9 +127,9 @@ just below this docstring. Edit them there; nothing else needs changing.
 EXTERNAL BLACKLIST FILE (optional)
 ----------------------------------
 Instead of (or in addition to) editing BLACKLIST_TERMS, supply extra terms in a
-file via --blacklist-file (or the OUTLOOK_BLACKLIST_FILE environment variable).
-One term per line; '#' starts a comment. File terms are ADDED to the built-in
-list (they never reduce it). Example file contents:
+file named by the OUTLOOK_BLACKLIST_FILE environment variable. One term per
+line; '#' starts a comment. File terms are ADDED to the built-in list (they
+never reduce it). Example file contents:
 
     # outlook-blacklist.txt  - classification terms to withhold from the AI
     PROTECTED
@@ -136,6 +137,50 @@ list (they never reduce it). Example file contents:
     TOP SECRET
     CABINET
     CABINET-IN-CONFIDENCE
+
+CONFIGURATION  (environment variables, no folder flags)
+-------------------------------------------------------
+The whole plugin suite is configured by four environment variables, set once
+for your Windows account. This server uses two of them:
+
+    EVA_PYTHON          full path to the python.exe that has pywin32
+                        installed, e.g. C:\\Python311\\python.exe (read by the
+                        plugin manifest, not by this file)
+    EVA_KNOWLEDGE_DIR   root of the RAG corpus (default C:\\Eva\\knowledge)
+
+This server works in the "email" sub-folder of the knowledge root, and THAT
+FOLDER MUST EXIST:
+
+    %EVA_KNOWLEDGE_DIR%\\email   Where an email is saved as Markdown when you
+                                ask for it to be kept, for the knowledge-base
+                                plugin to index. Reading an email does NOT save
+                                it, and a blacklisted message is never written.
+
+To set them permanently for your account (PowerShell, one-off):
+
+    [Environment]::SetEnvironmentVariable("EVA_PYTHON", "C:\\Python311\\python.exe", "User")
+    [Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "C:\\Eva\\knowledge", "User")
+
+Copy the repo's eva\\ folder to C:\\Eva and the folder exists - see
+eva\\README.md.
+
+Server-specific settings, all optional and all environment variables:
+
+    OUTLOOK_KB_DIR              override the save folder with a full path of
+                                its own, or "off" to forbid saving entirely,
+                                after which this server writes no local file
+                                at all.
+    OUTLOOK_KB_AUTOSAVE=true    save EVERY email read, without being asked
+                                (off by default - see KB_AUTOSAVE below).
+    OUTLOOK_SEARCH_FOLDERS      comma-separated folder names for
+                                outlook_search_recent, e.g.
+                                "Inbox,Sent Items,Archive".
+    OUTLOOK_BLACKLIST_FILE      path to a file of extra blacklist terms.
+    OUTLOOK_REQUIRE_BLACKLIST=1 refuse to start with an empty blacklist.
+
+There are NO configuration command-line flags: everything above is an
+environment variable, so two settings can never disagree. The only flags this
+server takes are --check and --version.
 
 INSTALLING INTO CLAUDE CODE
 ---------------------------
@@ -145,20 +190,20 @@ This server ships as the "outlook" Claude Code plugin (its manifest is
     /plugin marketplace add C:\\path\\to\\claude-skills
     /plugin install outlook@mcnamee-claude-skills
 
-Claude Code prompts for the optional knowledge-base folder, search folders and
-blacklist file, plus the Python interpreter (the one with pywin32 installed).
-PYTHONUTF8=1 is set for you by the manifest.
+Claude Code prompts only for the optional search folders and blacklist file;
+the interpreter and the knowledge folder come from the environment variables
+above. PYTHONUTF8=1 is set for you by the manifest.
 
-To register the server by hand instead:
+To register the server by hand instead (PowerShell):
 
-    claude mcp add outlook --scope user -e PYTHONUTF8=1 -- C:\\path\\to\\python.exe C:\\path\\to\\outlook.py --search-folders "Inbox,Sent Items,Archive" --kb-dir C:\\Eva\\knowledge\\email
+    claude mcp add outlook --scope user -e PYTHONUTF8=1 -- $env:EVA_PYTHON C:\\path\\to\\outlook.py
 
 See README.md next to this file for the full settings reference.
 
 USAGE / TESTING
 ---------------
 - As an MCP server (normal mode): launched by the MCP client. Run with no
-  arguments (optionally --blacklist-file).
+  arguments; every setting comes from the environment.
 - Connectivity check (run manually on the endpoint before wiring it in):
 
       python outlook.py --check
@@ -176,7 +221,7 @@ IMPORTANT (stdio-on-Windows pitfalls)
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "5.0.0"
+__version__ = "6.0.0"
 
 import os
 import re
@@ -200,12 +245,11 @@ BLACKLIST_TERMS = [
 # --- 2. How blacklist terms are matched: "word" (default) or "substring".
 BLACKLIST_MATCH_MODE = "word"
 
-# --- 2b. Fail closed if the blacklist ends up empty. When True (or when the
-#         --require-blacklist flag / OUTLOOK_REQUIRE_BLACKLIST=1 env var is
-#         set), the server REFUSES TO START unless at least one blacklist term
-#         is active. Turn this on when the compliance filter is mandatory in
-#         your environment, so a missing/empty terms file cannot silently
-#         disable filtering.
+# --- 2b. Fail closed if the blacklist ends up empty. When True (or when
+#         OUTLOOK_REQUIRE_BLACKLIST=1 is set), the server REFUSES TO START
+#         unless at least one blacklist term is active. Turn this on when the
+#         compliance filter is mandatory in your environment, so a
+#         missing/empty terms file cannot silently disable filtering.
 REQUIRE_BLACKLIST = False
 
 # --- 3. Tunable caps.
@@ -229,31 +273,31 @@ SEARCH_ALL_FOLDERS = ["Inbox", "Sent Items", "Archive"]
 #        message is saved again. Blocked (blacklisted) messages are NEVER
 #        written - a save only runs once a message has cleared the content
 #        filter.
-#        Set it here, or at launch with --kb-dir / the OUTLOOK_KB_DIR
-#        environment variable (which take priority over this constant).
-#        Default: the email folder of the Eva knowledge base. It MUST stay
-#        inside the knowledge-base plugin's documents folder (C:\Eva\knowledge)
-#        or the saved mail would never be indexed.
-#        Set to None to forbid saving entirely - the server then keeps no
-#        local files at all and a save_to_kb request is refused.
+#        RESOLVED FROM THE ENVIRONMENT in main(): the "email" sub-folder of
+#        %EVA_KNOWLEDGE_DIR% (the suite-wide RAG root), or OUTLOOK_KB_DIR for
+#        a full path of its own. The literal here is what a stock C:\Eva
+#        install resolves to; it MUST stay inside the knowledge-base plugin's
+#        corpus (C:\Eva\knowledge) or the saved mail would never be indexed.
+#        Set OUTLOOK_KB_DIR=off to forbid saving entirely - the server then
+#        keeps no local files at all and a save_to_kb request is refused.
+SUBFOLDER = "email"                      # this server's knowledge sub-folder
+EVA_KNOWLEDGE_DIR = r"C:\Eva\knowledge"  # fallback for the suite-wide root
 KB_DIR = r"C:\Eva\knowledge\email"
 
 # --- 6. KB_AUTOSAVE. Whether reading an email saves it WITHOUT being asked.
 #        False means a message is saved only when the call passes
 #        save_to_kb=true, which is the point: mail skimmed to answer a question
 #        is not a filing decision, and a knowledge base full of correspondence
-#        nobody chose returns irrelevant answers later. Set to True here, or at
-#        launch with --kb-autosave / OUTLOOK_KB_AUTOSAVE=true, to save every
-#        email read (how this server behaved before v5.0.0).
+#        nobody chose returns irrelevant answers later. Set to True here, or
+#        set OUTLOOK_KB_AUTOSAVE=true, to save every email read.
 KB_AUTOSAVE = False
 
 # --- 7. DISABLE_KEYWORDS. Values that mean "explicitly turned off" for a
 #        folder setting. An MCP client can only pass strings, and a BLANK
 #        string is what it substitutes for a setting the user left empty -
-#        which means "not configured", falling back to the constant above. So
-#        a keyword is needed to say "definitely off": --kb-dir off (or
-#        OUTLOOK_KB_DIR=off) forbids saving, after which this server keeps
-#        no local files at all.
+#        which means "not configured", falling back to the suite-wide root. So
+#        a keyword is needed to say "definitely off": OUTLOOK_KB_DIR=off
+#        forbids saving, after which this server keeps no local files at all.
 DISABLE_KEYWORDS = frozenset(("off", "none", "no", "false", "disabled"))
 
 # ============================================================================
@@ -276,19 +320,47 @@ def log(message):
     print(message, file=sys.stderr, flush=True)
 
 
-def env_flag(name, default):
+def env(name):
     """
-    Read a boolean environment variable, falling back to `default`.
+    Read an environment variable, treating blank as unset.
 
     A BLANK value means "not configured" - that is what an MCP client
     substitutes for a setting the user left empty - as does an unexpanded
     "${...}" placeholder, which is what a client leaves behind when the
-    variable it refers to does not exist. Either one keeps the default.
+    variable it refers to does not exist. Either one returns None so the
+    caller's default applies.
     """
     raw = (os.environ.get(name) or "").strip()
     if not raw or (raw.startswith("${") and raw.endswith("}")):
+        return None
+    return raw
+
+
+def env_flag(name, default):
+    """Read a boolean environment variable, falling back to `default`."""
+    raw = env(name)
+    if raw is None:
         return default
     return raw.lower() in ("1", "true", "yes", "on")
+
+
+def resolve_kb_dir():
+    """
+    The knowledge-base folder, from the environment.
+
+    Precedence: OUTLOOK_KB_DIR (a full path of its own, or one of the
+    DISABLE_KEYWORDS to forbid saving), then EVA_KNOWLEDGE_DIR with this
+    server's "email" sub-folder appended, then that same sub-folder of the
+    EVA_KNOWLEDGE_DIR fallback in the config block. Returns None when saving
+    is switched off.
+    """
+    own = env("OUTLOOK_KB_DIR")
+    if own:
+        return None if own.lower() in DISABLE_KEYWORDS else own
+    root = env("EVA_KNOWLEDGE_DIR")
+    if root:
+        return None if root.lower() in DISABLE_KEYWORDS else os.path.join(root, SUBFOLDER)
+    return os.path.join(EVA_KNOWLEDGE_DIR, SUBFOLDER)
 
 
 # --version must work even when pywin32 is not installed (or off Windows),
@@ -330,7 +402,7 @@ PROP_TRANSPORT_HEADERS = "http://schemas.microsoft.com/mapi/proptag/0x007D001F"
 _BLACKLIST_RE = None
 
 # Effective default folder set for outlook_search_recent. Initialised from
-# SEARCH_ALL_FOLDERS; may be replaced at launch via --search-folders. A per-call
+# SEARCH_ALL_FOLDERS; may be replaced by OUTLOOK_SEARCH_FOLDERS. A per-call
 # "folders" argument still overrides this.
 _SEARCH_FOLDERS = list(SEARCH_ALL_FOLDERS)
 
@@ -924,8 +996,8 @@ def tool_get_email(args):
         if save_to_kb:
             result_text += (
                 "\n\n[NOT saved: knowledge-base saving is switched off on this "
-                "server. Set OUTLOOK_KB_DIR (or --kb-dir) to a folder inside "
-                "the knowledge base to enable it.]"
+                "server. Unset OUTLOOK_KB_DIR (or point it at a folder "
+                "inside the knowledge base) to enable it.]"
             )
     elif wanted:
         try:
@@ -1675,15 +1747,17 @@ def run_check():
 
 
 def main():
-    # Declared up front: the --kb-autosave default reads KB_AUTOSAVE below, and
-    # Python forbids a global declaration after the name has been used.
     global KB_DIR, KB_AUTOSAVE
 
     parser = argparse.ArgumentParser(
         description=(
             "Read-only MCP server exposing local Outlook mail and calendar via COM, "
             "with a content blacklist that withholds classified/marked items. With "
-            "no check flag it runs as an stdio MCP server."
+            "no check flag it runs as an stdio MCP server. Configuration is "
+            "environment variables only: EVA_KNOWLEDGE_DIR (this server saves "
+            "into its 'email' sub-folder), OUTLOOK_SEARCH_FOLDERS, "
+            "OUTLOOK_BLACKLIST_FILE - see the CONFIGURATION section of this "
+            "file's docstring."
         )
     )
     parser.add_argument(
@@ -1692,74 +1766,29 @@ def main():
         help="Connect to Outlook, print diagnostics + blacklist status to stderr, then exit.",
     )
     parser.add_argument(
-        "--blacklist-file",
-        default=os.environ.get("OUTLOOK_BLACKLIST_FILE"),
-        help="Path to a file of EXTRA blacklist terms (one per line; '#' for comments). "
-             "Terms are added to the built-in list. Falls back to the "
-             "OUTLOOK_BLACKLIST_FILE environment variable.",
-    )
-    parser.add_argument(
-        "--search-folders",
-        default=os.environ.get("OUTLOOK_SEARCH_FOLDERS"),
-        help="Comma-separated folder NAMES used as the DEFAULT set for "
-             "outlook_search_recent, overriding SEARCH_ALL_FOLDERS. Example: "
-             "\"Inbox,Sent Items,Archive\". A per-call 'folders' argument still wins. "
-             "Falls back to the OUTLOOK_SEARCH_FOLDERS environment variable.",
-    )
-    parser.add_argument(
-        "--require-blacklist",
-        action="store_true",
-        default=(os.environ.get("OUTLOOK_REQUIRE_BLACKLIST", "").strip().lower()
-                 in ("1", "true", "yes", "on")),
-        help="Fail closed: refuse to start unless the content blacklist has at "
-             "least one active term (also via OUTLOOK_REQUIRE_BLACKLIST=1 or the "
-             "REQUIRE_BLACKLIST config constant). Use when the compliance filter "
-             "is mandatory, so a missing terms file cannot silently disable it.",
-    )
-    parser.add_argument(
-        "--kb-dir",
-        default=os.environ.get("OUTLOOK_KB_DIR"),
-        help="Folder outlook_get_email saves a message into as Markdown for a "
-             "local RAG knowledge base WHEN the call asks for it, i.e. "
-             "save_to_kb=true. Files are named "
-             "'Email - <date> - <subject> (<id>).md' and overwritten if the "
-             "same message is saved again. Blocked (blacklisted) messages are "
-             "never written. Falls back to the OUTLOOK_KB_DIR environment "
-             "variable, then the KB_DIR config constant (default: "
-             "C:\\Eva\\knowledge\\email). Pass 'off' to forbid saving, after "
-             "which the server writes no local file at all.",
-    )
-    parser.add_argument(
-        "--kb-autosave",
-        action="store_true",
-        default=env_flag("OUTLOOK_KB_AUTOSAVE", KB_AUTOSAVE),
-        help="Save EVERY email read with outlook_get_email, without being asked "
-             "(env OUTLOOK_KB_AUTOSAVE=true). Off by default: mail is saved only "
-             "when the call passes save_to_kb=true, so a message skimmed while "
-             "answering a question does not land in the knowledge base. Turn "
-             "this on to restore the pre-5.0.0 behaviour.",
-    )
-    parser.add_argument(
         "--version",
         action="version",
         version="outlook-mcp {0}".format(SERVER_INFO["version"]),
     )
     args = parser.parse_args()
 
+    blacklist_file = env("OUTLOOK_BLACKLIST_FILE")
+    search_folders = env("OUTLOOK_SEARCH_FOLDERS")
+    require_blacklist = env_flag("OUTLOOK_REQUIRE_BLACKLIST", False)
+
     # Markdown knowledge-base saving. Resolve the folder now and make sure it is
     # usable so a misconfiguration is caught at startup, not on the first email
     # a user asks to keep.
-    KB_AUTOSAVE = args.kb_autosave
-    if args.kb_dir:
-        # A DISABLE_KEYWORDS value forbids saving; a blank value means
-        # "not configured" and leaves the KB_DIR default in place.
-        KB_DIR = (None if args.kb_dir.strip().lower() in DISABLE_KEYWORDS
-                  else args.kb_dir)
+    KB_AUTOSAVE = env_flag("OUTLOOK_KB_AUTOSAVE", KB_AUTOSAVE)
+    KB_DIR = resolve_kb_dir()
     if KB_DIR:
         try:
             os.makedirs(KB_DIR, exist_ok=True)
         except OSError as exc:
-            log("FATAL: could not create/use --kb-dir {0}: {1}".format(KB_DIR, exc))
+            log("FATAL: could not create/use the knowledge-base folder {0}: {1}"
+                .format(KB_DIR, exc))
+            log("       It resolves from EVA_KNOWLEDGE_DIR (sub-folder '{0}') "
+                "or OUTLOOK_KB_DIR.".format(SUBFOLDER))
             sys.exit(2)
         if KB_AUTOSAVE:
             log("Knowledge-base AUTOSAVE is on: every email read is saved -> {0}"
@@ -1768,43 +1797,44 @@ def main():
             log("Knowledge-base saving on request only (save_to_kb=true) -> {0}"
                 .format(KB_DIR))
     else:
-        log("Knowledge-base saving disabled (--kb-dir off); no email is written "
-            "to disk")
+        log("Knowledge-base saving disabled (OUTLOOK_KB_DIR=off); no email is "
+            "written to disk")
         if KB_AUTOSAVE:
-            log("WARNING: --kb-autosave has no effect while the knowledge-base "
-                "folder is off. Set --kb-dir / OUTLOOK_KB_DIR to a folder to "
-                "enable saving.")
+            log("WARNING: OUTLOOK_KB_AUTOSAVE has no effect while the "
+                "knowledge-base folder is off. Unset OUTLOOK_KB_DIR (or give "
+                "it a real path) to enable saving.")
 
     # Load any external blacklist terms and compile the filter BEFORE serving.
     extra_terms = []
-    if args.blacklist_file:
-        if not os.path.isfile(args.blacklist_file):
-            log("FATAL: --blacklist-file not found: {0}".format(args.blacklist_file))
+    if blacklist_file:
+        if not os.path.isfile(blacklist_file):
+            log("FATAL: OUTLOOK_BLACKLIST_FILE not found: {0}".format(blacklist_file))
             sys.exit(2)
         try:
-            extra_terms = load_blacklist_file(args.blacklist_file)
+            extra_terms = load_blacklist_file(blacklist_file)
         except Exception as exc:
-            log("FATAL: could not read --blacklist-file: {0}".format(exc))
+            log("FATAL: could not read OUTLOOK_BLACKLIST_FILE: {0}".format(exc))
             sys.exit(2)
     build_blacklist(extra_terms)
 
     # Fail closed when the blacklist is mandatory but empty.
-    if (args.require_blacklist or REQUIRE_BLACKLIST) and _BLACKLIST_RE is None:
-        log("FATAL: --require-blacklist is set but the content blacklist is "
-            "EMPTY. Add terms to BLACKLIST_TERMS or supply --blacklist-file "
-            "(or OUTLOOK_BLACKLIST_FILE). Refusing to start without the "
-            "compliance filter.")
+    if (require_blacklist or REQUIRE_BLACKLIST) and _BLACKLIST_RE is None:
+        log("FATAL: OUTLOOK_REQUIRE_BLACKLIST is set but the content blacklist "
+            "is EMPTY. Add terms to BLACKLIST_TERMS or point "
+            "OUTLOOK_BLACKLIST_FILE at a terms file. Refusing to start without "
+            "the compliance filter.")
         sys.exit(2)
 
-    # Optional launch-time override of the default outlook_search_recent folders.
-    if args.search_folders:
+    # Optional override of the default outlook_search_recent folders.
+    if search_folders:
         global _SEARCH_FOLDERS
-        names = [name.strip() for name in args.search_folders.split(",") if name.strip()]
+        names = [name.strip() for name in search_folders.split(",") if name.strip()]
         if names:
             _SEARCH_FOLDERS = names
             log("Default outlook_search_recent folders set to: {0}".format(names))
         else:
-            log("WARNING: --search-folders was empty; keeping default {0}.".format(_SEARCH_FOLDERS))
+            log("WARNING: OUTLOOK_SEARCH_FOLDERS was empty; keeping default {0}."
+                .format(_SEARCH_FOLDERS))
 
     if args.check:
         sys.exit(run_check())

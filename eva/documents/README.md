@@ -5,12 +5,19 @@ One folder per file type, and each is the **only** folder its plugin touches:
 what you put there and what Eva writes live side by side. The text extracted for
 searching goes to [`..\knowledge`](../knowledge).
 
-| Folder | Plugin | Setting | Sub-folders? |
-|---|---|---|---|
-| [`word\`](word) | `word` | `--docs-dir` / `MSWORD_DOCS_DIR` | yes — searched recursively |
-| [`powerpoint\`](powerpoint) | `powerpoint` | `--docs-dir` / `POWERPOINT_DOCS_DIR` | yes — searched recursively |
-| [`excel\`](excel) | `excel` | `--docs-dir` / `EXCEL_DOCS_DIR` | **no** — top level only |
-| [`pdf\`](pdf) | `pdf-to-md` | `--docs-dir` / `PDF2MD_DOCS_DIR` | only with the recursive option |
+One environment variable, `EVA_DOCUMENTS_DIR`, points at this folder; each
+plugin appends its own name, so there is no per-plugin folder setting.
+
+| Folder | Plugin | Sub-folders? |
+|---|---|---|
+| [`word\`](word) | `word` | yes — searched recursively |
+| [`powerpoint\`](powerpoint) | `powerpoint` | yes — searched recursively |
+| [`excel\`](excel) | `excel` | **no** — top level only |
+| [`pdf\`](pdf) | `pdf-to-md` | only with `PDF2MD_RECURSIVE=1` |
+
+Each of these **must exist** for its plugin to start (`word`, `powerpoint` and
+`excel` refuse to run without their folder; `pdf-to-md` reports it on
+`--check`).
 
 Each of these folders is a **sandbox**: the plugin resolves every path against
 it (symlinks included) and refuses anything that lands outside. `word` can
@@ -20,7 +27,7 @@ therefore open and save inside `documents\word\` and read
 ## One folder, not three
 
 There is no `input\`, no `output\` and no `inbox\` vs `library\` split. Each
-plugin takes exactly **one** folder and can open nothing outside it, so every
+plugin works in exactly **one** folder and can open nothing outside it, so every
 extra folder was either unreachable or another setting to keep in sync — and it
 made you decide where a file belonged before you could ask a question about it.
 

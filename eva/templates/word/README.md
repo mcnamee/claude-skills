@@ -7,7 +7,7 @@ document lands in [`..\..\documents\word`](../../documents/word).
 
 | | |
 |---|---|
-| **Plugin setting** | `word` → templates folder (`--templates-dir` / `MSWORD_TEMPLATES_DIR`) |
+| **Setting** | `EVA_TEMPLATES_DIR` (the `word` plugin appends `\word`) |
 | **Default** | `C:\Eva\templates\word` |
 | **Formats** | `.docx` (not `.dotx` — see below) |
 | **Access** | read **only** — every save into this folder is refused |

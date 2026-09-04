@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-confluence.py (v3.0.0) - A single-file MCP (Model Context Protocol) server
+confluence.py (v4.0.0) - A single-file MCP (Model Context Protocol) server
 for querying ONE OR TWO Confluence Data Center instances (tested against the
 9.x v1 REST API) using only the Python 3 standard library.
 
@@ -45,63 +45,68 @@ the knowledge base to pages you asked to keep, instead of every page skimmed
 while answering a question - a search that turns up someone's meeting notes
 should not put them in the index.
 
-Set CONFLUENCE_KB_AUTOSAVE=true (or pass --kb-autosave) to go back to saving
-every page that is read, which is how versions before 3.0.0 behaved.
+Set CONFLUENCE_KB_AUTOSAVE=true to go back to saving every page that is
+read, which is how versions before 3.0.0 behaved.
 
 CONFIGURATION
 -------------
-Read from environment variables (the natural fit for an MCP client's `env`
-block); non-secret settings can be overridden by command-line arguments.
-Precedence is CLI flag > environment variable > default.
+EVERY setting is an environment variable - the natural fit for an MCP client's
+`env` block, and the reason there are no configuration flags: two settings can
+then never disagree. The only command-line flags are --check and --version.
 
-CREDENTIALS ARE ENV-VAR ONLY - there are no --token/--user/--password flags,
-because command-line arguments are visible to other local users in process
-listings.
+Two variables are shared with every other plugin in this suite, set once for
+your Windows account:
+
+  EVA_PYTHON            full path to the python.exe the MCP client launches,
+                        e.g. C:\Python311\python.exe (read by the plugin
+                        manifest, not by this file)
+  EVA_KNOWLEDGE_DIR     root of the RAG corpus (default C:\Eva\knowledge).
+                        This server saves into its own "confluence"
+                        sub-folder, and THAT FOLDER MUST EXIST:
+                        %EVA_KNOWLEDGE_DIR%\confluence
+
+The rest are this server's own. CREDENTIALS ARE ENV-VAR ONLY - there is no
+flag that could put a token in a command line, where other local users can
+read it out of a process listing.
 
   First server (required):
   CONFLUENCE_NAME       friendly name used to select it in a prompt
-                        (--name, default "Primary")
+                        (default "Primary")
   CONFLUENCE_BASE_URL   e.g. https://confluence.internal.example.com
-                        (--base-url; include any context path, no trailing slash)
+                        (include any context path, no trailing slash)
   CONFLUENCE_TOKEN      Personal Access Token (preferred; sent as Bearer)
   CONFLUENCE_USER       username   } basic-auth fallback if no token is given
   CONFLUENCE_PASSWORD   password   }
-  CONFLUENCE_VERIFY_SSL "false" to disable TLS verification (--insecure;
-                        default: verify)
-  CONFLUENCE_CA_CERT    path to a PEM CA bundle for an internal CA (--ca-cert)
+  CONFLUENCE_VERIFY_SSL "false" to disable TLS verification (default: verify)
+  CONFLUENCE_CA_CERT    path to a PEM CA bundle for an internal CA
 
   Second server (optional - set CONFLUENCE_BASE_URL_2 to enable it):
-  CONFLUENCE_NAME_2       friendly name (--name-2, default "Secondary")
-  CONFLUENCE_BASE_URL_2   base URL of the second instance (--base-url-2)
+  CONFLUENCE_NAME_2       friendly name (default "Secondary")
+  CONFLUENCE_BASE_URL_2   base URL of the second instance
   CONFLUENCE_TOKEN_2      its own Personal Access Token
   CONFLUENCE_USER_2       username   } basic-auth fallback for the second server
   CONFLUENCE_PASSWORD_2   password   }
-  CONFLUENCE_VERIFY_SSL_2 TLS verification for the second server (--insecure-2);
-                          falls back to the first server's setting
-  CONFLUENCE_CA_CERT_2    CA bundle for the second server (--ca-cert-2);
-                          falls back to CONFLUENCE_CA_CERT
+  CONFLUENCE_VERIFY_SSL_2 TLS verification for the second server; falls back to
+                          the first server's setting
+  CONFLUENCE_CA_CERT_2    CA bundle for the second server; falls back to
+                          CONFLUENCE_CA_CERT
 
   Shared by both servers:
-  CONFLUENCE_TIMEOUT    request timeout in seconds (--timeout, default: 30)
-  CONFLUENCE_MAX_BODY   truncate page bodies to N chars (--max-body,
-                        0 = unlimited, default 0). This limit applies only to
-                        the text returned to the model; files saved to
-                        CONFLUENCE_KB_DIR are never truncated.
-  CONFLUENCE_KB_DIR     where a page is saved as Markdown when a tool call
-                        asks for it (save_to_kb=true), for feeding a local RAG
-                        knowledge base (--kb-dir). Files are overwritten if
-                        they already exist. DEFAULTS to
-                        C:\Eva\knowledge\confluence - the Confluence folder of
-                        the Eva working tree, which sits inside the
-                        knowledge-base plugin's documents folder so saved
-                        pages are actually indexed. Pass 'off' to forbid
-                        saving entirely, after which the server writes no
-                        local file at all and a save_to_kb request is refused.
+  CONFLUENCE_TIMEOUT    request timeout in seconds (default: 30)
+  CONFLUENCE_MAX_BODY   truncate page bodies to N chars (0 = unlimited,
+                        default 0). This limit applies only to the text
+                        returned to the model; saved files are never
+                        truncated.
+  CONFLUENCE_KB_DIR     override the save folder with a full path of its own,
+                        instead of the "confluence" sub-folder of
+                        EVA_KNOWLEDGE_DIR. Keep it inside the knowledge-base
+                        plugin's corpus or saved pages are never indexed. Set
+                        it to "off" to forbid saving entirely, after which the
+                        server writes no local file at all and a save_to_kb
+                        request is refused.
   CONFLUENCE_KB_AUTOSAVE
                         "true" to save EVERY page that is read, without being
-                        asked (--kb-autosave; default false, the pre-3.0.0
-                        behaviour). Needs CONFLUENCE_KB_DIR to be set, which
-                        it is by default.
+                        asked (default false).
 
 The second server is all-or-nothing: if CONFLUENCE_BASE_URL_2 is set without
 credentials, the server refuses to start rather than quietly answering "Blue"
@@ -115,11 +120,13 @@ This server ships as the "confluence" Claude Code plugin (its manifest is
     /plugin marketplace add C:\path\to\claude-skills
     /plugin install confluence@mcnamee-claude-skills
 
-Claude Code prompts for each server's name and base URL, the optional
-knowledge-base folder and the Python interpreter. Tokens are NOT stored in the
-plugin - set them as Windows user environment variables before starting Claude
-Code, and the plugin picks them up from there:
+Claude Code prompts for each server's name and base URL; the interpreter and
+the knowledge folder come from the shared variables above. Tokens are NOT
+stored in the plugin - set them as Windows user environment variables before
+starting Claude Code, and the plugin picks them up from there:
 
+    setx EVA_PYTHON         "C:\Python311\python.exe"
+    setx EVA_KNOWLEDGE_DIR  "C:\Eva\knowledge"
     setx CONFLUENCE_TOKEN   "token-for-the-first-server"
     setx CONFLUENCE_TOKEN_2 "token-for-the-second-server"
 
@@ -140,18 +147,20 @@ the fastest way to prove a two-server setup before wiring it in:
     & "C:\path\to\python.exe" confluence.py --check
 
 A quick two-server smoke test from PowerShell, without touching the plugin
-config (note the tokens go in the environment, never in the arguments):
+config (every setting, tokens included, goes in the environment):
 
-    $env:CONFLUENCE_TOKEN   = "green-token"
-    $env:CONFLUENCE_TOKEN_2 = "blue-token"
-    & "C:\path\to\python.exe" confluence.py `
-        --name Green --base-url https://green.confluence.example.com `
-        --name-2 Blue --base-url-2 https://blue.confluence.example.com --check
+    $env:CONFLUENCE_NAME       = "Green"
+    $env:CONFLUENCE_BASE_URL   = "https://green.confluence.example.com"
+    $env:CONFLUENCE_TOKEN      = "green-token"
+    $env:CONFLUENCE_NAME_2     = "Blue"
+    $env:CONFLUENCE_BASE_URL_2 = "https://blue.confluence.example.com"
+    $env:CONFLUENCE_TOKEN_2    = "blue-token"
+    & "C:\path\to\python.exe" confluence.py --check
 """
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "3.0.0"
+__version__ = "4.0.0"
 
 import argparse
 import base64
@@ -170,28 +179,30 @@ SERVER_NAME = "confluence-mcp"
 SERVER_VERSION = __version__
 
 # Folder a page is saved into as Markdown, for a local RAG index, WHEN a tool
-# call asks for it (save_to_kb=true). Set it here, or at launch with --kb-dir /
-# the CONFLUENCE_KB_DIR environment variable (which take priority over this
-# constant).
-# Default: the confluence\ sub-folder of the Eva knowledge base. It MUST stay
-# inside the knowledge-base plugin's documents folder (C:\Eva\knowledge) or the
-# saved pages would never be indexed. The folder is created on demand.
-# Set to None here (or pass --kb-dir off) to forbid saving altogether, after
-# which this server touches no local file at all.
+# call asks for it (save_to_kb=true).
+# RESOLVED FROM THE ENVIRONMENT in main(): the "confluence" sub-folder of
+# %EVA_KNOWLEDGE_DIR% (the suite-wide RAG root), or CONFLUENCE_KB_DIR for a
+# full path of its own. The literal here is what a stock C:\Eva install
+# resolves to; it MUST stay inside the knowledge-base plugin's corpus
+# (C:\Eva\knowledge) or the saved pages would never be indexed. The folder is
+# created on demand.
+# Set CONFLUENCE_KB_DIR=off to forbid saving altogether, after which this
+# server touches no local file at all.
+SUBFOLDER = "confluence"                 # this server's knowledge sub-folder
+EVA_KNOWLEDGE_DIR = r"C:\Eva\knowledge"  # fallback for the suite-wide root
 KB_DIR = r"C:\Eva\knowledge\confluence"
 
 # Whether reading a page saves it WITHOUT being asked. False means a page is
 # saved only when the caller passes save_to_kb=true, which is the point: a
 # search that turns up an unrelated page should not add it to the knowledge
-# base just because it was read while answering. Set to True here, or at launch
-# with --kb-autosave / CONFLUENCE_KB_AUTOSAVE=true, to save every page read
-# (how this server behaved before v3.0.0).
+# base just because it was read while answering. Set to True here, or set
+# CONFLUENCE_KB_AUTOSAVE=true, to save every page read.
 KB_AUTOSAVE = False
 
 # Folder-setting values that mean "explicitly turned off". An MCP client can
 # only pass strings, and a BLANK string is what it substitutes for a setting the
-# user left empty - which means "not configured", falling back to the default
-# above. So a keyword is needed to say "definitely off".
+# user left empty - which means "not configured", falling back to the
+# suite-wide root. So a keyword is needed to say "definitely off".
 DISABLE_KEYWORDS = frozenset(("off", "none", "no", "false", "disabled"))
 # Friendly names used when the user does not supply one. They only ever show up
 # in output (or in a tool's 'server' enum) when a second server is configured.
@@ -729,8 +740,8 @@ class ConfluenceClient:
             if save_to_kb:
                 rendered += (
                     "\n\n[NOT saved: knowledge-base saving is switched off for "
-                    "this server. Set CONFLUENCE_KB_DIR (or --kb-dir) to a "
-                    "folder inside the knowledge base to enable it.]"
+                    "this server. Unset CONFLUENCE_KB_DIR (or point it at "
+                    "a folder inside the knowledge base) to enable it.]"
                 )
         elif wanted:
             try:
@@ -1401,88 +1412,40 @@ def env_int(name, default):
         return default
 
 
-def clean(value):
-    """Strip a CLI/env string value, mapping blank (and None) to None."""
-    if value is None:
-        return None
-    value = str(value).strip()
-    return value or None
+def resolve_kb_dir():
+    """
+    The knowledge-base folder, from the environment.
+
+    Precedence: CONFLUENCE_KB_DIR (a full path of its own, or one of the
+    DISABLE_KEYWORDS to forbid saving), then EVA_KNOWLEDGE_DIR with this
+    server's "confluence" sub-folder appended, then that same sub-folder of the
+    EVA_KNOWLEDGE_DIR fallback in the config block. Returns None when saving is
+    switched off.
+    """
+    own = env_str("CONFLUENCE_KB_DIR")
+    if own:
+        return None if own.lower() in DISABLE_KEYWORDS else own
+    root = env_str("EVA_KNOWLEDGE_DIR")
+    if root:
+        return None if root.lower() in DISABLE_KEYWORDS else os.path.join(root, SUBFOLDER)
+    return os.path.join(EVA_KNOWLEDGE_DIR, SUBFOLDER)
 
 
 def build_arg_parser():
+    """
+    The command line carries no configuration - every setting is an
+    environment variable (see the CONFIGURATION section of the docstring), so
+    two settings can never disagree and no token can end up in a process
+    listing. Only --check and --version are flags.
+    """
     p = argparse.ArgumentParser(
-        description="MCP server for querying Confluence Data Center (stdio transport).",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description="MCP server for querying Confluence Data Center (stdio "
+                    "transport). Configured entirely by environment variables: "
+                    "CONFLUENCE_BASE_URL, CONFLUENCE_TOKEN, and "
+                    "EVA_KNOWLEDGE_DIR (this server saves into its "
+                    "'confluence' sub-folder). See the CONFIGURATION section "
+                    "of this file's docstring.",
     )
-    # --- first server (the default one) ---------------------------------
-    p.add_argument("--name", default=env_str("CONFLUENCE_NAME"),
-                   help="Friendly name for the first Confluence server, used to "
-                        "pick it in a prompt (env CONFLUENCE_NAME, default "
-                        "'{}'). Only shown when a second server is "
-                        "configured.".format(DEFAULT_NAME_1))
-    p.add_argument("--base-url", default=env_str("CONFLUENCE_BASE_URL"),
-                   help="Confluence base URL incl. any context path, no trailing slash "
-                        "(env CONFLUENCE_BASE_URL).")
-    # SECURITY: credentials are deliberately env-var ONLY (CONFLUENCE_TOKEN, or
-    # CONFLUENCE_USER + CONFLUENCE_PASSWORD; add the _2 suffix for the second
-    # server). Command-line arguments are visible to other local users in
-    # process listings, so no --token/--user/--password flags are offered.
-    p.add_argument("--ca-cert", default=env_str("CONFLUENCE_CA_CERT"),
-                   help="Path to a PEM CA bundle for an internal CA "
-                        "(env CONFLUENCE_CA_CERT).")
-    p.add_argument("--insecure", action="store_true",
-                   default=not env_bool("CONFLUENCE_VERIFY_SSL", True),
-                   help="Disable TLS certificate verification "
-                        "(env CONFLUENCE_VERIFY_SSL=false).")
-
-    # --- second server (optional) ---------------------------------------
-    p.add_argument("--name-2", default=env_str("CONFLUENCE_NAME_2"),
-                   help="Friendly name for the second Confluence server, e.g. "
-                        "'Blue' - say it in a prompt to query that server "
-                        "(env CONFLUENCE_NAME_2, default '{}').".format(DEFAULT_NAME_2))
-    p.add_argument("--base-url-2", default=env_str("CONFLUENCE_BASE_URL_2"),
-                   help="Base URL of a SECOND Confluence instance (env "
-                        "CONFLUENCE_BASE_URL_2). Setting this enables the second "
-                        "server, which then needs its own CONFLUENCE_TOKEN_2 (or "
-                        "CONFLUENCE_USER_2 + CONFLUENCE_PASSWORD_2). Leave unset "
-                        "for a single-server setup.")
-    p.add_argument("--ca-cert-2", default=env_str("CONFLUENCE_CA_CERT_2"),
-                   help="CA bundle for the second server (env "
-                        "CONFLUENCE_CA_CERT_2). Falls back to --ca-cert.")
-    # default=None so we can tell 'flag not given' from 'flag given': the second
-    # server inherits the first server's TLS setting unless told otherwise.
-    p.add_argument("--insecure-2", action="store_true", default=None,
-                   help="Disable TLS certificate verification for the second "
-                        "server only (env CONFLUENCE_VERIFY_SSL_2=false). "
-                        "Defaults to whatever the first server uses.")
-
-    # --- shared by both servers ------------------------------------------
-    p.add_argument("--timeout", type=int,
-                   default=env_int("CONFLUENCE_TIMEOUT", 30),
-                   help="HTTP request timeout in seconds, both servers "
-                        "(env CONFLUENCE_TIMEOUT).")
-    p.add_argument("--max-body", type=int,
-                   default=env_int("CONFLUENCE_MAX_BODY", 0),
-                   help="Truncate page bodies to N characters, 0 = unlimited "
-                        "(env CONFLUENCE_MAX_BODY). Applies to returned text "
-                        "only, not to saved knowledge-base files.")
-    p.add_argument("--kb-dir", default=env_str("CONFLUENCE_KB_DIR") or KB_DIR,
-                   help="Folder a page is saved into as Markdown for a local "
-                        "RAG knowledge base WHEN a tool call asks for it, i.e. "
-                        "save_to_kb=true (env CONFLUENCE_KB_DIR, then the "
-                        "KB_DIR config value - default "
-                        "C:\\Eva\\knowledge\\confluence). Files are named "
-                        "'Confluence - <title>.md' and overwritten each time; "
-                        "with two servers, 'Confluence <server> - <title>.md'. "
-                        "Pass 'off' to forbid saving entirely.")
-    p.add_argument("--kb-autosave", action="store_true",
-                   default=env_bool("CONFLUENCE_KB_AUTOSAVE", KB_AUTOSAVE),
-                   help="Save EVERY page that is read, without being asked "
-                        "(env CONFLUENCE_KB_AUTOSAVE=true). Off by default: "
-                        "pages are saved only when a tool call passes "
-                        "save_to_kb=true, so skimming a page while answering "
-                        "a question does not add it to the knowledge base. "
-                        "Turn this on to restore the pre-3.0.0 behaviour.")
     p.add_argument("--check", action="store_true",
                    help="Connect to every configured Confluence server, print "
                         "who you are authenticated as and how many spaces are "
@@ -1559,23 +1522,29 @@ def main(argv=None):
     user_2 = env_str("CONFLUENCE_USER_2")
     password_2 = env_str("CONFLUENCE_PASSWORD_2")
 
-    base_url = clean(args.base_url)
-    base_url_2 = clean(args.base_url_2)
-    name = clean(args.name) or DEFAULT_NAME_1
-    name_2 = clean(args.name_2) or DEFAULT_NAME_2
+    base_url = env_str("CONFLUENCE_BASE_URL")
+    base_url_2 = env_str("CONFLUENCE_BASE_URL_2")
+    name_set = env_str("CONFLUENCE_NAME")
+    name_2_set = env_str("CONFLUENCE_NAME_2")
+    name = name_set or DEFAULT_NAME_1
+    name_2 = name_2_set or DEFAULT_NAME_2
+    ca_cert = env_str("CONFLUENCE_CA_CERT")
+    ca_cert_2 = env_str("CONFLUENCE_CA_CERT_2")
+    insecure = not env_bool("CONFLUENCE_VERIFY_SSL", True)
+    timeout = env_int("CONFLUENCE_TIMEOUT", 30)
+    max_body = env_int("CONFLUENCE_MAX_BODY", 0)
+    kb_autosave = env_bool("CONFLUENCE_KB_AUTOSAVE", KB_AUTOSAVE)
 
-    # The knowledge-base folder has a real default, so "off" (or any other
-    # DISABLE_KEYWORDS value) is how saving is switched off from a client
-    # that can only pass strings - a blank value means "not configured" and
-    # falls back to that default.
-    kb_dir = clean(args.kb_dir)
-    if kb_dir and kb_dir.strip().lower() in DISABLE_KEYWORDS:
-        kb_dir = None
+    # The knowledge-base folder comes from the suite-wide EVA_KNOWLEDGE_DIR
+    # (sub-folder "confluence"), or CONFLUENCE_KB_DIR for a path of its own;
+    # "off" is how saving is switched off from a client that can only pass
+    # strings, since a blank value means "not configured".
+    kb_dir = resolve_kb_dir()
 
     if not base_url:
-        log("FATAL: no base URL. Set CONFLUENCE_BASE_URL or pass --base-url. "
-            "(The first server is always the default one; a second server is "
-            "configured on top of it with CONFLUENCE_BASE_URL_2.)")
+        log("FATAL: no base URL. Set CONFLUENCE_BASE_URL. (The first server is "
+            "always the default one; a second server is configured on top of "
+            "it with CONFLUENCE_BASE_URL_2.)")
         return 2
     if not token and not (user and password):
         log("FATAL: no credentials. Set the CONFLUENCE_TOKEN environment "
@@ -1586,14 +1555,13 @@ def main(argv=None):
     # settings are present without it, say so - silently ignoring them would
     # send "on Blue" questions to the first server and answer them with the
     # wrong wiki's content.
-    if not base_url_2 and (token_2 or user_2 or password_2 or clean(args.name_2)):
+    if not base_url_2 and (token_2 or user_2 or password_2 or name_2_set):
         log("WARNING: second-server settings are present but "
             "CONFLUENCE_BASE_URL_2 is not set, so only one server is "
             "configured. Set CONFLUENCE_BASE_URL_2 to enable the second one.")
 
     # spec = (name, base_url, token, user, password, verify_ssl, ca_cert)
-    specs = [(name, base_url, token, user, password,
-              not args.insecure, clean(args.ca_cert))]
+    specs = [(name, base_url, token, user, password, not insecure, ca_cert)]
 
     if base_url_2:
         if not token_2 and not (user_2 and password_2):
@@ -1608,14 +1576,12 @@ def main(argv=None):
                 "different names via CONFLUENCE_NAME and CONFLUENCE_NAME_2 "
                 "(e.g. Green and Blue) so a prompt can pick one.".format(name))
             return 2
-        # TLS settings for the second server: flag, then its own env var, then
-        # whatever the first server resolved to (usually the same internal CA).
-        insecure_2 = args.insecure_2
-        if insecure_2 is None:
-            verify_env_2 = env_bool_opt("CONFLUENCE_VERIFY_SSL_2")
-            insecure_2 = (not verify_env_2) if verify_env_2 is not None else args.insecure
+        # TLS settings for the second server: its own env var, else whatever the
+        # first server resolved to (usually the same internal CA).
+        verify_env_2 = env_bool_opt("CONFLUENCE_VERIFY_SSL_2")
+        insecure_2 = (not verify_env_2) if verify_env_2 is not None else insecure
         specs.append((name_2, base_url_2, token_2, user_2, password_2,
-                      not insecure_2, clean(args.ca_cert_2) or clean(args.ca_cert)))
+                      not insecure_2, ca_cert_2 or ca_cert))
 
     try:
         clients = [
@@ -1627,10 +1593,10 @@ def main(argv=None):
                 password=spec_password,
                 verify_ssl=spec_verify,
                 ca_cert=spec_ca,
-                timeout=args.timeout,
-                max_body=args.max_body,
+                timeout=timeout,
+                max_body=max_body,
                 kb_dir=kb_dir,
-                kb_autosave=args.kb_autosave,
+                kb_autosave=kb_autosave,
             )
             for (spec_name, spec_url, spec_token, spec_user, spec_password,
                  spec_verify, spec_ca) in specs
@@ -1645,12 +1611,12 @@ def main(argv=None):
             log("WARNING: TLS verification is disabled for {} ({}).".format(
                 client.name, client.base_url))
     if not servers.default.kb_dir:
-        log("knowledge-base saving disabled (no --kb-dir); pages are never "
-            "written to disk")
+        log("knowledge-base saving disabled (CONFLUENCE_KB_DIR=off); pages are "
+            "never written to disk")
         if servers.default.kb_autosave:
-            log("WARNING: --kb-autosave has no effect while the "
-                "knowledge-base folder is off. Set --kb-dir / "
-                "CONFLUENCE_KB_DIR to a folder to enable saving.")
+            log("WARNING: CONFLUENCE_KB_AUTOSAVE has no effect while the "
+                "knowledge-base folder is off. Unset CONFLUENCE_KB_DIR (or "
+                "point it at a folder) to enable saving.")
     elif servers.default.kb_autosave:
         log("knowledge-base AUTOSAVE is on: every page read is saved -> {}"
             .format(servers.default.kb_dir))
@@ -1662,7 +1628,7 @@ def main(argv=None):
             log("server {}: {} -> {}{}".format(
                 position, client.name, client.base_url,
                 "  (default)" if position == 1 else ""))
-        if not clean(args.name) or not clean(args.name_2):
+        if not name_set or not name_2_set:
             log("TIP: set CONFLUENCE_NAME and CONFLUENCE_NAME_2 to memorable "
                 "names (e.g. Green and Blue) so a prompt can say which server "
                 "to use; currently {}.".format(" and ".join(servers.names())))

@@ -4,7 +4,7 @@ The `powerpoint` plugin's sandbox — every `.pptx` it may open, edit and save.
 
 | | |
 |---|---|
-| **Plugin setting** | `powerpoint` → presentations folder (`--docs-dir` / `POWERPOINT_DOCS_DIR`) |
+| **Setting** | `EVA_DOCUMENTS_DIR` (the `powerpoint` plugin appends `\powerpoint`) |
 | **Default** | `C:\Eva\documents\powerpoint` |
 | **Access** | read **and write** — decks are edited in place here, and new decks are created here |
 | **Sub-folders** | yes, searched recursively |

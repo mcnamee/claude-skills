@@ -6,7 +6,7 @@ knowledge base.
 
 | | |
 |---|---|
-| **Server** | `confluence.py` v3.0.0 |
+| **Server** | `confluence.py` v4.0.0 |
 | **pip install** | _none_ — standard library only (HTTP via stdlib `urllib`) |
 | **Platform** | any |
 | **Writes to disk** | only when you ask a page to be saved — then one Markdown file in `C:\Eva\knowledge\confluence` |
@@ -24,19 +24,16 @@ knowledge base.
 | Name for this Confluence server | no | `CONFLUENCE_NAME` | e.g. `Green`. Only matters if you configure a second server; defaults to `Primary` |
 | Second Confluence base URL | no | `CONFLUENCE_BASE_URL_2` | Leave blank for a single-server setup |
 | Name for the second Confluence server | no | `CONFLUENCE_NAME_2` | e.g. `Blue` — say it in a prompt to query that server; defaults to `Secondary` |
-| Knowledge-base folder | no | `CONFLUENCE_KB_DIR` | Where a page is saved as Markdown **when you ask for it**, for the `knowledge-base` plugin to index. Defaults to `C:\Eva\knowledge\confluence`; `off` to forbid saving |
-| Python interpreter | **yes** | — | Absolute path to the `python.exe` to launch the server with |
 
-> **Blank does not mean off.** Leaving the folder prompt empty means "not
-> configured", so the default above applies. To forbid saving outright, type
-> `off` (`none`, `no`, `false` and `disabled` work too), after which the server
-> writes no local file at all.
+The Python interpreter and the folder saved pages go to are **not** prompted for:
+they come from the shared environment variables in
+[Configuration](#configuration).
 
 **Your tokens are not stored in the plugin.** Set them as Windows user
 environment variables before starting Claude Code — the plugin reads them from
-the ambient environment. Credentials are deliberately env-var only: there are no
-`--token`/`--user`/`--password` flags, because command-line arguments are
-visible to other local users in process listings.
+the ambient environment. Credentials are deliberately env-var only: there is no
+flag that could put a token in a command line, where other local users would see
+it in a process listing.
 
 ```powershell
 setx CONFLUENCE_TOKEN   "token-for-the-first-server"
@@ -111,46 +108,98 @@ credentials and the server refuses to start rather than quietly answering "on
 Blue" questions from the first instance. Set the second token *without* the
 second base URL and it warns, then runs with one server.
 
-## Configuration reference
+## Configuration
 
-Precedence is **CLI flag > environment variable > constant in the file**.
+**Four environment variables configure every plugin in this suite.** Set them
+once for your Windows account and this plugin has nothing else to configure -
+there are no folder prompts at install time and no folder command-line flags.
 
-### First server (the default one)
-
-| Env var | CLI flag | Purpose |
+| Variable | Purpose | Default |
 |---|---|---|
-| `CONFLUENCE_NAME` | `--name` | Friendly name used to pick this server in a prompt (default `Primary`) |
-| `CONFLUENCE_BASE_URL` | `--base-url` | Base URL incl. any context path, no trailing slash |
-| `CONFLUENCE_TOKEN` | _(env only)_ | Personal Access Token, sent as Bearer (preferred over basic auth) |
-| `CONFLUENCE_USER` | _(env only)_ | Username for basic auth (fallback if no token) |
-| `CONFLUENCE_PASSWORD` | _(env only)_ | Password for basic auth |
-| `CONFLUENCE_CA_CERT` | `--ca-cert` | Path to a PEM CA bundle for an internal CA |
-| `CONFLUENCE_VERIFY_SSL=false` | `--insecure` | Disable TLS certificate verification |
+| `EVA_PYTHON` | The `python.exe` every server runs under - the same one you installed the pip dependencies into | *(none - you must set it)* |
+| `EVA_DOCUMENTS_DIR` | Root of the document library | `C:\Eva\documents` |
+| `EVA_TEMPLATES_DIR` | Root of the template library | `C:\Eva\templates` |
+| `EVA_KNOWLEDGE_DIR` | Root of the RAG corpus - the one folder the index reads | `C:\Eva\knowledge` |
 
-### Second server (optional)
+```powershell
+[Environment]::SetEnvironmentVariable("EVA_PYTHON",        "C:\Python311\python.exe",     "User")
+[Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "C:\Eva\documents",             "User")
+[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\templates",   "User")
+[Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "C:\Eva\knowledge",             "User")
+```
+
+`setx NAME "value"` does the same thing from `cmd`. Neither affects processes
+that are already running, so quit and reopen your editor afterwards.
+
+Of the four, this server uses two: `EVA_PYTHON` and `EVA_KNOWLEDGE_DIR`. It
+reads no local folder at all - pages come over HTTP - so the knowledge folder is
+the only thing it ever writes to.
+
+### The folders this plugin uses
+
+Every server works in its **own sub-folder** of those roots, named after
+the plugin. This one uses `confluence`, and **each folder below must exist** -
+create them, or copy the repo's [`eva/`](../../eva) folder to `C:\Eva` and
+they all do.
+
+| Folder | What it is for | Missing? |
+|---|---|---|
+| `%EVA_KNOWLEDGE_DIR%\confluence` | Where a page is saved as Markdown **when a tool call asks for it** (`save_to_kb=true`) - `Confluence - <title>.md`, or `Confluence <server> - <title>.md` with two instances - for the `knowledge-base` plugin to index | Created on demand |
+
+### This server's own settings
+
+Everything else is an environment variable of this server's own. **Credentials
+are env-var only** - there is no flag that could leak a token into a process
+listing.
+
+#### First server (the default one)
+
+| Env var | Purpose |
+|---|---|
+| `CONFLUENCE_BASE_URL` | Base URL incl. any context path, no trailing slash. **Required** |
+| `CONFLUENCE_NAME` | Friendly name used to pick this server in a prompt (default `Primary`) |
+| `CONFLUENCE_TOKEN` | Personal Access Token, sent as Bearer (preferred over basic auth) |
+| `CONFLUENCE_USER` | Username for basic auth (fallback if no token) |
+| `CONFLUENCE_PASSWORD` | Password for basic auth |
+| `CONFLUENCE_CA_CERT` | Path to a PEM CA bundle for an internal CA |
+| `CONFLUENCE_VERIFY_SSL=false` | Disable TLS certificate verification |
+
+#### Second server (optional)
 
 Setting `CONFLUENCE_BASE_URL_2` is what enables it.
 
-| Env var | CLI flag | Purpose |
-|---|---|---|
-| `CONFLUENCE_NAME_2` | `--name-2` | Friendly name, e.g. `Blue` (default `Secondary`) |
-| `CONFLUENCE_BASE_URL_2` | `--base-url-2` | Base URL of the second instance |
-| `CONFLUENCE_TOKEN_2` | _(env only)_ | Its own Personal Access Token — tokens are per-instance |
-| `CONFLUENCE_USER_2` | _(env only)_ | Username for basic auth on the second server |
-| `CONFLUENCE_PASSWORD_2` | _(env only)_ | Password for basic auth on the second server |
-| `CONFLUENCE_CA_CERT_2` | `--ca-cert-2` | CA bundle for the second server; falls back to `CONFLUENCE_CA_CERT` |
-| `CONFLUENCE_VERIFY_SSL_2=false` | `--insecure-2` | TLS verification for the second server; falls back to the first server's setting |
+| Env var | Purpose |
+|---|---|
+| `CONFLUENCE_BASE_URL_2` | Base URL of the second instance |
+| `CONFLUENCE_NAME_2` | Friendly name, e.g. `Blue` (default `Secondary`) |
+| `CONFLUENCE_TOKEN_2` | Its own Personal Access Token — tokens are per-instance |
+| `CONFLUENCE_USER_2` | Username for basic auth on the second server |
+| `CONFLUENCE_PASSWORD_2` | Password for basic auth on the second server |
+| `CONFLUENCE_CA_CERT_2` | CA bundle for the second server; falls back to `CONFLUENCE_CA_CERT` |
+| `CONFLUENCE_VERIFY_SSL_2=false` | TLS verification for the second server; falls back to the first server's setting |
 
-### Shared by both servers
+#### Shared by both servers
 
-| Env var | CLI flag | Purpose |
-|---|---|---|
-| `CONFLUENCE_TIMEOUT` | `--timeout` | Request timeout in seconds (default 30) |
-| `CONFLUENCE_MAX_BODY` | `--max-body` | Truncate page bodies to N chars, 0 = unlimited (default). Applies only to text returned to the model, not to files saved via the knowledge-base folder |
-| `CONFLUENCE_KB_DIR` | `--kb-dir` | Folder a page is saved into as Markdown when a tool call asks for it (`save_to_kb=true`) — for feeding a local RAG knowledge base, e.g. alongside the `knowledge-base` plugin. Default `C:\Eva\knowledge\confluence`; `off` forbids saving |
-| `CONFLUENCE_KB_AUTOSAVE` | `--kb-autosave` | Save **every** page read, without being asked (default false). The pre-3.0.0 behaviour; needs `CONFLUENCE_KB_DIR` to be set |
-| — | `--check` | Connect to every configured server, print who you are authenticated as + visible space count to stderr, then exit (no server) |
-| — | `--version` | Print version and exit |
+| Env var | Purpose |
+|---|---|
+| `CONFLUENCE_TIMEOUT` | Request timeout in seconds (default 30) |
+| `CONFLUENCE_MAX_BODY` | Truncate page bodies to N chars, 0 = unlimited (default). Applies only to text returned to the model, not to saved files |
+| `CONFLUENCE_KB_DIR` | Full path to the save folder, instead of `%EVA_KNOWLEDGE_DIR%\confluence`. `off` forbids saving outright, after which the server writes no local file at all |
+| `CONFLUENCE_KB_AUTOSAVE=true` | Save **every** page read, without being asked (default false). Needs a save folder to be on |
+
+**Blank does not mean off.** A blank value means "not configured", so the shared
+root still applies. To forbid saving outright, set `CONFLUENCE_KB_DIR=off`
+(`none`, `no`, `false` and `disabled` work too).
+
+### Command-line flags
+
+Configuration is environment variables only, so nothing here sets a path. The
+flags are actions:
+
+| Flag | Purpose |
+|---|---|
+| `--check` | Connect to every configured server, print who you are authenticated as + visible space count to stderr, then exit (no server). Non-zero if any server fails |
+| `--version` | Print version and exit |
 
 ## File access
 
@@ -171,27 +220,35 @@ writes one Markdown file inside the knowledge-base folder, and nowhere else.
 
 ## Troubleshooting
 
+> **If a server fails with `Executable not found in $PATH: "${EVA_PYTHON}"`**,
+> the variable is not set in the environment Claude Code was launched from. Set
+> it (see above), then quit Claude Code completely and reopen — `setx` and
+> `[Environment]::SetEnvironmentVariable` do not reach a process that is already
+> running.
+
 `--check` connects to **every** configured server, authenticates and reports who
 you are plus how many spaces you can see. Run it before wiring the server in; it
 exits non-zero if any instance fails, so a two-server setup where only one
 answers is caught here rather than mid-conversation:
 
 ```powershell
-& "C:\path\to\python.exe" confluence.py --check
+& $env:EVA_PYTHON confluence.py --check
 ```
 
-To try a pair of servers without touching the plugin config (tokens go in the
-environment, never in the arguments):
+To try a pair of servers without touching the plugin config (every setting,
+tokens included, goes in the environment):
 
 ```powershell
-$env:CONFLUENCE_TOKEN   = "green-token"
-$env:CONFLUENCE_TOKEN_2 = "blue-token"
-& "C:\path\to\python.exe" confluence.py `
-    --name Green --base-url https://green.confluence.example.com `
-    --name-2 Blue --base-url-2 https://blue.confluence.example.com --check
+$env:CONFLUENCE_NAME       = "Green"
+$env:CONFLUENCE_BASE_URL   = "https://green.confluence.example.com"
+$env:CONFLUENCE_TOKEN      = "green-token"
+$env:CONFLUENCE_NAME_2     = "Blue"
+$env:CONFLUENCE_BASE_URL_2 = "https://blue.confluence.example.com"
+$env:CONFLUENCE_TOKEN_2    = "blue-token"
+& $env:EVA_PYTHON confluence.py --check
 ```
 
-Behind an internal CA, point `--ca-cert` at the PEM bundle rather than reaching
-for `--insecure`. If the two instances sit behind different CAs, `--ca-cert-2`
-covers the second one; leave it unset and the second server uses the first's
-bundle.
+Behind an internal CA, point `CONFLUENCE_CA_CERT` at the PEM bundle rather than
+reaching for `CONFLUENCE_VERIFY_SSL=false`. If the two instances sit behind
+different CAs, `CONFLUENCE_CA_CERT_2` covers the second one; leave it unset and
+the second server uses the first's bundle.

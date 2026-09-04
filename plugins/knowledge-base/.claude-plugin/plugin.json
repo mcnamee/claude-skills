@@ -1,7 +1,7 @@
 {
   "name": "knowledge-base",
   "displayName": "Knowledge base (RAG)",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "description": "True RAG over your own Markdown docs: a local ChromaDB vector index plus your embeddings API. Captures new notes back into it. Requires chromadb.",
   "author": {
     "name": "mcnamee"
@@ -15,54 +15,27 @@
     "embeddings"
   ],
   "userConfig": {
-    "docs_dir": {
-      "type": "directory",
-      "title": "Documents folder",
-      "description": "The indexed corpus: every .md/.markdown/.txt file under here is chunked, embedded and searchable, recursively. REQUIRED. Defaults to the Eva knowledge folder, which is where the word, outlook, confluence and pdf-to-md plugins write their mirrors - so a stock install indexes all of them.",
-      "default": "C:\\Eva\\knowledge"
-    },
-    "index_dir": {
-      "type": "directory",
-      "title": "Index folder",
-      "description": "Where the ChromaDB vector store is kept. Deliberately OUTSIDE the documents folder, so a large binary database does not sit inside the corpus. Derived and disposable: delete it and re-index to rebuild, which you must do after changing the embeddings model.",
-      "default": "C:\\Eva\\index"
-    },
-    "output_dir": {
-      "type": "directory",
-      "title": "Captures folder",
-      "description": "Where kb_capture writes new notes. Must sit INSIDE the documents folder, or captured notes would never be indexed, and must not be a dot-folder. Created on demand.",
-      "default": "C:\\Eva\\knowledge\\captures"
-    },
     "embed_url": {
       "type": "string",
       "title": "Embeddings endpoint URL",
-      "description": "Full URL of your embeddings API. REQUIRED.",
+      "description": "Full URL of your embeddings API. REQUIRED. The Python interpreter and the indexed corpus come from the suite-wide EVA_PYTHON and EVA_KNOWLEDGE_DIR environment variables - this server indexes the WHOLE knowledge root, and captures notes into its 'captures' sub-folder. Both must exist; see the plugin README.",
       "required": true
     },
     "embed_model": {
       "type": "string",
       "title": "Embeddings model",
       "description": "Optional. Model name sent in embed requests; omit if the endpoint fixes one."
-    },
-    "python": {
-      "type": "string",
-      "title": "Python interpreter",
-      "description": "Absolute path to the python.exe that has this server's pip dependencies installed (e.g. C:\\Python311\\python.exe). Use plain 'python' only if the right interpreter is first on PATH - a mismatch here is the most common cause of 'dependency missing' errors.",
-      "required": true
     }
   },
   "mcpServers": {
     "knowledge-base": {
       "type": "stdio",
-      "command": "${user_config.python}",
+      "command": "${EVA_PYTHON}",
       "args": [
         "${CLAUDE_PLUGIN_ROOT}/knowledge-base.py"
       ],
       "env": {
         "PYTHONUTF8": "1",
-        "KB_DOCS_DIR": "${user_config.docs_dir}",
-        "KB_INDEX_DIR": "${user_config.index_dir}",
-        "KB_OUTPUT_DIR": "${user_config.output_dir}",
         "KB_EMBED_URL": "${user_config.embed_url}",
         "KB_EMBED_MODEL": "${user_config.embed_model}",
         "KB_EMBED_API_KEY": "${KB_EMBED_API_KEY}"

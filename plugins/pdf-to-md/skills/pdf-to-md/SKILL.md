@@ -33,15 +33,15 @@ and to verify with `python pdf-to-md.py --check`.
 
 ## Notes
 
-- Folders are fixed at server launch (`--docs-dir` → `--output-dir`); the
-  tools cannot convert arbitrary paths outside them.
+- Both folders come from the environment at server launch
+  (`%EVA_DOCUMENTS_DIR%\pdf` → `%EVA_KNOWLEDGE_DIR%\pdf`); the tools cannot
+  convert arbitrary paths outside them.
 - Sub-folders are only included if the server was started with
-  `--recursive` (structure is mirrored in the output).
+  `PDF2MD_RECURSIVE=1` (structure is mirrored in the output).
 - Image references and "missing image" placeholder text are stripped from the
   Markdown: the server writes no image files, so every such reference is
   dangling. Text found *inside* a picture is kept. Nothing needs doing about
   images — if the user actually wants those references back, it is
-  `--keep-image-refs` / `PDF2MD_KEEP_IMAGE_REFS=1` at server launch, not a
-  tool argument.
+  `PDF2MD_KEEP_IMAGE_REFS=1` at server launch, not a tool argument.
 - OCR of scanned PDFs requires Tesseract on the machine; without it, text
   PDFs still convert and scanned ones report a clear per-file failure.

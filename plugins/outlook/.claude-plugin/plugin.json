@@ -1,7 +1,7 @@
 {
   "name": "outlook",
   "displayName": "Outlook (mail + calendar)",
-  "version": "5.0.0",
+  "version": "6.0.0",
   "description": "Read-only access to local classic Outlook mail and calendar via COM, saving an email to the knowledge base when you ask for it. Windows only; requires pywin32.",
   "author": {
     "name": "mcnamee"
@@ -15,40 +15,26 @@
     "windows"
   ],
   "userConfig": {
-    "kb_dir": {
-      "type": "directory",
-      "title": "Knowledge-base folder",
-      "description": "Where an email is saved as Markdown when you ask for it to be kept, for the knowledge-base plugin to index (blacklisted messages are never written). Reading an email does NOT save it. Keep this inside that plugin's documents folder (C:\\Eva\\knowledge) or saved mail is never indexed. Enter 'off' to forbid saving, after which this server writes no local file at all.",
-      "default": "C:\\Eva\\knowledge\\email"
-    },
     "search_folders": {
       "type": "string",
       "title": "Search folders",
-      "description": "Optional. Comma-separated folder names for outlook_search_recent, e.g. 'Inbox,Sent Items,Archive'."
+      "description": "Optional. Comma-separated folder names for outlook_search_recent, e.g. 'Inbox,Sent Items,Archive'. The Python interpreter and the folder saved email goes to come from the suite-wide EVA_PYTHON and EVA_KNOWLEDGE_DIR environment variables - this server writes into the 'email' sub-folder of the knowledge root, which must exist; see the plugin README."
     },
     "blacklist_file": {
       "type": "string",
       "title": "Blacklist file",
       "description": "Optional. Path to a file of extra content-blacklist terms, one per line."
-    },
-    "python": {
-      "type": "string",
-      "title": "Python interpreter",
-      "description": "Absolute path to the python.exe that has this server's pip dependencies installed (e.g. C:\\Python311\\python.exe). Use plain 'python' only if the right interpreter is first on PATH - a mismatch here is the most common cause of 'dependency missing' errors.",
-      "required": true
     }
   },
   "mcpServers": {
     "outlook": {
       "type": "stdio",
-      "command": "${user_config.python}",
+      "command": "${EVA_PYTHON}",
       "args": [
         "${CLAUDE_PLUGIN_ROOT}/outlook.py"
       ],
       "env": {
         "PYTHONUTF8": "1",
-        "OUTLOOK_KB_DIR": "${user_config.kb_dir}",
-        "OUTLOOK_KB_AUTOSAVE": "${OUTLOOK_KB_AUTOSAVE}",
         "OUTLOOK_SEARCH_FOLDERS": "${user_config.search_folders}",
         "OUTLOOK_BLACKLIST_FILE": "${user_config.blacklist_file}"
       }

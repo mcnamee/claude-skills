@@ -9,7 +9,7 @@ starts blank with the styling intact.
 
 | | |
 |---|---|
-| **Plugin setting** | `powerpoint` → templates folder (`--templates-dir` / `POWERPOINT_TEMPLATES_DIR`) |
+| **Setting** | `EVA_TEMPLATES_DIR` (the `powerpoint` plugin appends `\powerpoint`) |
 | **Default** | `C:\Eva\templates\powerpoint` |
 | **Formats** | `.pptx` and `.potx` (both read-only; decks always save as `.pptx`) |
 | **Access** | read **only** — every save into this folder is refused |

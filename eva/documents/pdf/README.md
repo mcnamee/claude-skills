@@ -4,7 +4,7 @@ Source PDFs, for the `pdf-to-md` plugin to convert into the knowledge base.
 
 | | |
 |---|---|
-| **Plugin setting** | `pdf-to-md` → documents folder (`--docs-dir` / `PDF2MD_DOCS_DIR`) |
+| **Setting** | `EVA_DOCUMENTS_DIR` (the `pdf-to-md` plugin appends `\pdf`) |
 | **Default** | `C:\Eva\documents\pdf` |
 | **Access** | read-only — conversion never alters a PDF |
 | **Output** | [`..\..\knowledge\pdf`](../../knowledge/pdf) |
@@ -15,7 +15,7 @@ tables inferred from column alignment.
 ## Sub-folders need switching on
 
 By default only the top level of this folder is converted. Turn on the plugin's
-recursive option (`--recursive` / `PDF2MD_RECURSIVE=1`) and sub-folders are
+recursive option (`PDF2MD_RECURSIVE=1`) and sub-folders are
 included, with the same structure mirrored into the output folder.
 
 ## Scans convert to nothing

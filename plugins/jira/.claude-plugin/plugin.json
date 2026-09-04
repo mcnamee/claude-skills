@@ -1,7 +1,7 @@
 {
   "name": "jira",
   "displayName": "Jira (read-only)",
-  "version": "1.1.3",
+  "version": "2.0.0",
   "description": "Query Jira issues, sprints and projects. Read-only (Jira Data Center v2 REST API).",
   "author": {
     "name": "mcnamee"
@@ -17,25 +17,19 @@
     "base_url": {
       "type": "string",
       "title": "Jira base URL",
-      "description": "e.g. https://jira.internal.example.com - no trailing slash. REQUIRED.",
+      "description": "e.g. https://jira.internal.example.com - no trailing slash. REQUIRED. The Python interpreter comes from the suite-wide EVA_PYTHON environment variable; this server touches no local folder. See the plugin README.",
       "required": true
     },
     "projects": {
       "type": "string",
       "title": "Project allowlist",
       "description": "Optional. Comma-separated project keys, e.g. 'ABC,DEF'. When set, every tool is confined to them."
-    },
-    "python": {
-      "type": "string",
-      "title": "Python interpreter",
-      "description": "Absolute path to the python.exe that has this server's pip dependencies installed (e.g. C:\\Python311\\python.exe). Use plain 'python' only if the right interpreter is first on PATH - a mismatch here is the most common cause of 'dependency missing' errors.",
-      "required": true
     }
   },
   "mcpServers": {
     "jira": {
       "type": "stdio",
-      "command": "${user_config.python}",
+      "command": "${EVA_PYTHON}",
       "args": [
         "${CLAUDE_PLUGIN_ROOT}/jira.py"
       ],

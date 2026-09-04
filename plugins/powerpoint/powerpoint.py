@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r"""
-powerpoint.py (v3.0.0) - A single-file MCP (Model Context Protocol) stdio server
+powerpoint.py (v4.0.0) - A single-file MCP (Model Context Protocol) stdio server
 that builds PowerPoint .pptx decks, optionally from your own template, and
 audits them against Guy Kawasaki's 10/20/30 rule.
 
@@ -32,8 +32,9 @@ WHAT IT CAN DO
       tried (so "quarterly deck" opens "Quarterly Deck 2024.pptx") and the
       result is flagged (fuzzy_matched) so the caller can confirm the pick.
       List what is available with powerpoint_list_presentations.
-    - Keep blank templates in a folder of their own with --templates-dir
-      (by default C:\Eva\templates\powerpoint). It is a READ-ONLY second root:
+    - Keep blank templates in a folder of their own - the "powerpoint"
+      sub-folder of the suite's template root, by default
+      C:\Eva\templates\powerpoint. It is a READ-ONLY second root:
       its files can be listed, opened and used as the base for
       powerpoint_create, but every attempt to SAVE over one is refused, so a
       template cannot be turned into someone's half-finished deck.
@@ -65,9 +66,9 @@ WHAT IT CAN DO
       one-line change rather than a fork.
     - On open, create and save, optionally MIRROR the deck to Markdown into a
       knowledge-base folder for a local RAG index (the same idea as word.py's
-      --kb-dir): slide titles become headings, bullets become lists, tables
-      become Markdown tables and speaker notes are included. Files are named
-      'PowerPoint - <name>.md' and overwritten each time.
+      knowledge folder): slide titles become headings, bullets become lists,
+      tables become Markdown tables and speaker notes are included. Files are
+      named 'PowerPoint - <name>.md' and overwritten each time.
 
 DECK ORDER - WHY powerpoint_add_slides EXISTS
     powerpoint_add_slide appends its slide to the END of the deck. That makes
@@ -215,6 +216,57 @@ WHAT IT CANNOT DO
         [check] ALL CHECKS PASSED
 
 =============================================================================
+ CONFIGURATION  (four environment variables, shared by every plugin)
+=============================================================================
+    The whole suite is configured by FOUR environment variables. Set them once
+    for your Windows account and every plugin in this repo picks them up:
+
+        EVA_PYTHON          full path to the python.exe that has the
+                            dependencies installed, e.g. C:\Python311\python.exe
+        EVA_DOCUMENTS_DIR   root of the document library (C:\Eva\documents)
+        EVA_TEMPLATES_DIR   root of the template library (C:\Eva\templates)
+        EVA_KNOWLEDGE_DIR   root of the RAG corpus       (C:\Eva\knowledge)
+
+    This server works in the "powerpoint" sub-folder of each root. ALL THREE
+    FOLDERS MUST EXIST:
+
+        %EVA_DOCUMENTS_DIR%\powerpoint   REQUIRED. Every .pptx this server may
+                                         open or save, searched recursively,
+                                         and where powerpoint_create writes NEW
+                                         decks - there is no separate output
+                                         folder. The server refuses to start if
+                                         it is missing.
+        %EVA_TEMPLATES_DIR%\powerpoint   Blank .pptx/.potx templates. READ-ONLY:
+                                         they can be listed, opened and used as
+                                         the base for a new deck, never saved
+                                         over.
+        %EVA_KNOWLEDGE_DIR%\powerpoint   Markdown mirror of every deck opened,
+                                         created or saved, for the
+                                         knowledge-base plugin to index.
+
+    To set them permanently for your account (PowerShell, one-off):
+
+        [Environment]::SetEnvironmentVariable("EVA_PYTHON", "C:\Python311\python.exe", "User")
+        [Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "C:\Eva\documents", "User")
+        [Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\templates", "User")
+        [Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "C:\Eva\knowledge", "User")
+
+    Copy the repo's eva\ folder to C:\Eva and every folder above exists,
+    correctly related to the others - see eva\README.md.
+
+    Server-specific settings, all optional:
+
+        POWERPOINT_DOCS_DIR       override ONE folder with a full path of its
+        POWERPOINT_TEMPLATES_DIR  own, for an endpoint whose layout differs.
+        POWERPOINT_KB_DIR         Set an optional one to "off" to switch that
+                                  feature off entirely (POWERPOINT_KB_DIR=off
+                                  stops all mirroring).
+
+    There are NO folder command-line flags: configuration is environment
+    variables only, so two settings can never disagree about a path. The only
+    flags this server takes are --check and --version.
+
+=============================================================================
  INSTALLING INTO CLAUDE CODE
 =============================================================================
     This server ships as the "powerpoint" Claude Code plugin (its manifest is
@@ -223,39 +275,13 @@ WHAT IT CANNOT DO
         /plugin marketplace add C:\path\to\claude-skills
         /plugin install powerpoint@mcnamee-claude-skills
 
-    Claude Code then prompts for each setting below and for the Python
-    interpreter - use the SAME python.exe you installed the wheels with.
-    PYTHONUTF8=1 (so Windows cp1252 cannot corrupt the stdio JSON stream) is
-    set for you by the manifest.
+    It prompts for nothing: the interpreter and all three folders come from the
+    environment variables above. PYTHONUTF8=1 (so Windows cp1252 cannot corrupt
+    the stdio JSON stream) is set for you by the manifest.
 
-    To register the server by hand instead:
+    To register the server by hand instead (PowerShell):
 
-        claude mcp add powerpoint --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\powerpoint.py
-
-    Every folder setting DEFAULTS to the matching folder of the Eva working
-    tree, so a stock C:\Eva install needs no path passed at all. To override one
-    (flag beats environment variable beats the CONFIG constant):
-
-        claude mcp add powerpoint --scope user -e PYTHONUTF8=1 -- C:\path\to\python.exe C:\path\to\powerpoint.py --docs-dir D:\Eva\documents\powerpoint --templates-dir D:\Eva\templates\powerpoint --kb-dir D:\Eva\knowledge\powerpoint
-
-    The --docs-dir folder is REQUIRED (flag, POWERPOINT_DOCS_DIR, or the
-    DOCS_DIR constant - default C:\Eva\documents\powerpoint): all open/save
-    paths must be inside it, NEW decks from powerpoint_create land in it, and
-    the server refuses to start without one. It is the ONE folder of
-    presentations - there is no separate output folder, so a deck Eva builds
-    sits alongside the ones you gave it.
-    The --templates-dir folder (POWERPOINT_TEMPLATES_DIR / TEMPLATES_DIR -
-    default C:\Eva\templates\powerpoint) holds blank .pptx/.potx templates. It
-    is readable like the presentation root but NEVER writable. It is this
-    server's own folder: the `word` plugin has its own alongside it, at
-    C:\Eva\templates\word.
-    The --kb-dir folder (POWERPOINT_KB_DIR / KB_DIR - default
-    C:\Eva\knowledge\powerpoint) turns on Markdown mirroring for a local RAG
-    knowledge base, on open, create and save; pass 'off' to disable.
-
-    Every one of those folders is part of the Eva working tree: copy the repo's
-    eva\ folder to C:\Eva and they all exist, correctly related to each other.
-    See eva\README.md for the layout and the reasoning behind it.
+        claude mcp add powerpoint --scope user -e PYTHONUTF8=1 -- $env:EVA_PYTHON C:\path\to\powerpoint.py
 
     See README.md next to this file for the full settings reference.
 
@@ -289,7 +315,7 @@ failed transfer" rule):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "3.0.0"
+__version__ = "4.0.0"
 
 # =============================================================================
 # CONFIGURATION  (all user-editable settings live here, nothing scattered below)
@@ -298,29 +324,55 @@ SERVER_NAME = "powerpoint"         # advertised to the MCP client
 SERVER_VERSION = __version__
 PROTOCOL_VERSION_FALLBACK = "2024-11-05"  # used if the client sends none
 
-# REQUIRED path sandbox. The server refuses to open or save any file outside
-# this directory tree, and REFUSES TO START if no root is configured - the
-# model chooses open/save paths, so an unconfined server could read/write any
-# .pptx this account can. Set it here, or at launch with --docs-dir or the
-# POWERPOINT_DOCS_DIR environment variable (which take priority over this
-# constant). Symlinks are resolved before the containment check.
-# This root is ALSO the base for relative paths: a bare "Kickoff.pptx" is
-# resolved against it (not the process CWD), so the model can open a file by
-# name without knowing its absolute path.
-# It is ALSO where powerpoint_create writes new decks: one folder holds every
-# .pptx, whether you put it there or Eva built it.
-# Default: the Eva working tree's PowerPoint library, searched recursively.
+# -----------------------------------------------------------------------------
+# FOLDERS - four environment variables configure the whole plugin suite
+# -----------------------------------------------------------------------------
+# Set these once for your Windows account and every plugin in this repo picks
+# them up; each server then works in its OWN sub-folder of each root, named
+# after the plugin. This server's sub-folder is "powerpoint":
+#
+#   EVA_PYTHON          the python.exe the MCP client launches (read by the
+#                       plugin manifest, not by this file)
+#   EVA_DOCUMENTS_DIR   -> %EVA_DOCUMENTS_DIR%\powerpoint  .pptx, read/written
+#   EVA_TEMPLATES_DIR   -> %EVA_TEMPLATES_DIR%\powerpoint  templates, READ-ONLY
+#   EVA_KNOWLEDGE_DIR   -> %EVA_KNOWLEDGE_DIR%\powerpoint  Markdown for the index
+#
+# The three roots below are the fallback when a variable is not set, and match
+# the Eva working tree: copy the repo's eva\ folder to C:\Eva and every folder
+# exists. There are NO folder command-line flags - configuration is environment
+# variables only, so two settings can never disagree about a path.
+#
+# To point ONE folder somewhere else on an endpoint whose layout differs, set
+# POWERPOINT_DOCS_DIR / POWERPOINT_TEMPLATES_DIR / POWERPOINT_KB_DIR to a full
+# path; a server-specific variable beats the suite-wide root. Set an optional
+# one to "off" (any of the DISABLE_KEYWORDS) to switch that feature off.
+# -----------------------------------------------------------------------------
+SUBFOLDER = "powerpoint"           # this server's sub-folder in each root
+EVA_DOCUMENTS_DIR = r"C:\Eva\documents"
+EVA_TEMPLATES_DIR = r"C:\Eva\templates"
+EVA_KNOWLEDGE_DIR = r"C:\Eva\knowledge"
+
+# Resolved from the environment in main(); the literals here are what a stock
+# C:\Eva install resolves to.
+#
+# DOCS_DIR is the REQUIRED path sandbox. The server refuses to open or save any
+# file outside this directory tree, and REFUSES TO START if the folder is
+# missing - the model chooses open/save paths, so an unconfined server could
+# read/write any .pptx this account can. Symlinks are resolved before the
+# containment check. It is ALSO the base for relative paths: a bare
+# "Kickoff.pptx" is resolved against it (not the process CWD), so the model can
+# open a file by name without knowing its absolute path. And it is where
+# powerpoint_create writes new decks: one folder holds every .pptx, whether you
+# put it there or Eva built it, searched recursively.
 # (--check is exempt: the self-test sandboxes itself to its own temp folder.)
 # Related caution: only open .pptx files from trusted sources - a maliciously
 # crafted file could use XML entity tricks to pull local file contents into
 # the slide text that the model then reads.
 DOCS_DIR = r"C:\Eva\documents\powerpoint"
 
-# OPTIONAL folder of blank .pptx/.potx TEMPLATES (the branded deck shell with
-# your title slide, section divider and content layouts). Set it here, or at
-# launch with --templates-dir or the POWERPOINT_TEMPLATES_DIR environment
-# variable (which take priority over this constant). It is a READ-ONLY second
-# root:
+# TEMPLATES_DIR holds blank .pptx/.potx TEMPLATES (the branded deck shell with
+# your title slide, section divider and content layouts). It is a READ-ONLY
+# second root:
 #   - its files can be listed (powerpoint_list_presentations), opened
 #     (powerpoint_open) and used as the base for a new deck
 #     (powerpoint_create template="..."), exactly like the presentation root;
@@ -331,20 +383,15 @@ DOCS_DIR = r"C:\Eva\documents\powerpoint"
 # beside these in C:\Eva\templates\word. The server also refuses to start if
 # this folder IS - or contains - DOCS_DIR, because that arrangement would refuse
 # every save.
-# Default: the powerpoint\ folder of the Eva working tree's templates zone.
 TEMPLATES_DIR = r"C:\Eva\templates\powerpoint"
 
-# OPTIONAL knowledge-base (RAG) folder. If set, EVERY deck opened, created or
-# saved is ALSO written out as a Markdown file into this folder, the same way
-# word.py mirrors documents, so the content can feed a local RAG index. The
-# files are named 'PowerPoint - <name>.md' and overwritten each time. This
-# folder is written to by the server only (the model never chooses the path),
-# so it does not need to sit inside DOCS_DIR. Set it here, or at launch with
-# --kb-dir or the POWERPOINT_KB_DIR environment variable (which take priority
-# over this constant). Pass 'off' to disable mirroring.
-# Default: the powerpoint\ sub-folder of the Eva knowledge base. It MUST stay
-# inside the knowledge-base plugin's documents folder (C:\Eva\knowledge) or the
-# mirrored Markdown would never be indexed.
+# KB_DIR is the knowledge-base (RAG) folder: EVERY deck opened, created or
+# saved is ALSO written out as a Markdown file into it, the same way word.py
+# mirrors documents, so the content can feed a local RAG index. The files are
+# named 'PowerPoint - <name>.md' and overwritten each time. The server writes
+# there itself (the model never chooses the path), so it does not need to sit
+# inside DOCS_DIR - but it MUST stay inside the knowledge-base plugin's corpus
+# (C:\Eva\knowledge) or the mirrored Markdown is never indexed.
 KB_DIR = r"C:\Eva\knowledge\powerpoint"
 
 # --- Guy Kawasaki's 10/20/30 rule ------------------------------------------
@@ -1708,7 +1755,7 @@ def _save_to_kb(prs, source_path):
 def _mirror_to_kb(prs, source_path, result):
     """
     Mirror a deck to the knowledge-base folder if one is configured, and record
-    the outcome on the tool's result dict. No-op when --kb-dir is unset.
+    the outcome on the tool's result dict. No-op when KB_DIR is unset.
 
     Called on open (what you READ enters the knowledge base) and on create and
     save (so does what you WRITE). Mirroring must never break the real
@@ -1974,8 +2021,8 @@ def tool_create(args):
         name = stem + ".pptx"
 
     if not DOCS_DIR:
-        raise ToolError("No presentations folder configured. Set --docs-dir "
-                        "(or POWERPOINT_DOCS_DIR).")
+        raise ToolError("No presentations folder configured. Set "
+                        "EVA_DOCUMENTS_DIR (or POWERPOINT_DOCS_DIR).")
     out_dir = os.path.realpath(os.path.expanduser(DOCS_DIR))
     try:
         os.makedirs(out_dir, exist_ok=True)
@@ -2980,7 +3027,7 @@ TOOLS = [
     },
     {
         "name": "powerpoint_create",
-        "description": "Create a NEW .pptx in the server's presentations folder (--docs-dir) and open it as a session, returning the session_id every other tool needs. Pass 'template' to inherit an existing deck's masters, layouts, theme, fonts and colours - the single most important argument here, and the way to make output match a corporate deck. The template is a .pptx/.potx in the templates folder or the presentation root, resolved the same forgiving way as powerpoint_open (bare name, relative path, or a fuzzy near-miss); it is only READ and never modified, and any example slides in it are stripped so you start blank while keeping its styling. Without a template the stock Office design is used. Then call powerpoint_list_layouts to see what the template offers, ONE powerpoint_add_slides call carrying the whole ordered deck (a series of separate powerpoint_add_slide calls can arrive out of order and shuffle the slides), and powerpoint_save.",
+        "description": "Create a NEW .pptx in the server's presentations folder and open it as a session, returning the session_id every other tool needs. Pass 'template' to inherit an existing deck's masters, layouts, theme, fonts and colours - the single most important argument here, and the way to make output match a corporate deck. The template is a .pptx/.potx in the templates folder or the presentation root, resolved the same forgiving way as powerpoint_open (bare name, relative path, or a fuzzy near-miss); it is only READ and never modified, and any example slides in it are stripped so you start blank while keeping its styling. Without a template the stock Office design is used. Then call powerpoint_list_layouts to see what the template offers, ONE powerpoint_add_slides call carrying the whole ordered deck (a series of separate powerpoint_add_slide calls can arrive out of order and shuffle the slides), and powerpoint_save.",
         "handler": tool_create,
         "inputSchema": {
             "type": "object",
@@ -3300,11 +3347,13 @@ def serve():
     if TEMPLATES_DIR:
         log("templates folder (read-only) = {}".format(TEMPLATES_DIR))
     else:
-        log("no templates folder configured (set --templates-dir to add one)")
+        log("no templates folder configured (create "
+            "%EVA_TEMPLATES_DIR%\\{} to add one)".format(SUBFOLDER))
     if KB_DIR:
         log("knowledge-base mirroring enabled -> {}".format(KB_DIR))
     else:
-        log("knowledge-base mirroring disabled (set --kb-dir to enable)")
+        log("knowledge-base mirroring disabled (create "
+            "%EVA_KNOWLEDGE_DIR%\\{} to enable)".format(SUBFOLDER))
     log("10/20/30 thresholds: {} slides / {} minutes / {} pt".format(
         KAWASAKI_MAX_SLIDES, KAWASAKI_MAX_MINUTES, KAWASAKI_MIN_FONT_PT))
 
@@ -3774,22 +3823,64 @@ def run_check():
 DISABLE_KEYWORDS = frozenset(("off", "none", "no", "false", "disabled"))
 
 
+def _env(name):
+    """Read an environment variable, treating blank as unset.
+
+    A blank value is what an MCP client substitutes for a setting the user left
+    empty, and an unexpanded "${...}" placeholder is what it leaves behind when
+    the variable it refers to does not exist. Both mean "not configured", so
+    the default still applies.
+    """
+    value = (os.environ.get(name) or "").strip()
+    if not value or (value.startswith("${") and value.endswith("}")):
+        return None
+    return value
+
+
 def _is_disabled(value):
     """True if a folder setting is one of the DISABLE_KEYWORDS.
 
-    An MCP client can only pass strings, and a BLANK string is what it
-    substitutes for a setting the user left empty - which the suite treats as
-    "not configured", falling back to the default. So a keyword is needed to say
-    "definitely off": --kb-dir off (or POWERPOINT_KB_DIR=off) disables Markdown
-    mirroring, --templates-dir off disables the templates root.
+    A BLANK value means "not configured" (see _env), so a keyword is needed to
+    say "definitely off": POWERPOINT_KB_DIR=off disables Markdown mirroring,
+    POWERPOINT_TEMPLATES_DIR=off disables the templates root.
     """
     return bool(value) and value.strip().lower() in DISABLE_KEYWORDS
 
 
+def _folder(own_var, root_var, root_default, subfolder=None):
+    """Resolve one of this server's folders from the environment.
+
+    Precedence: this server's own override variable, then the suite-wide root
+    variable, then the root default from the CONFIG block - with this server's
+    sub-folder appended to either root.
+
+    Returns (path, user_configured). A path of None means the folder is
+    switched off (one of the DISABLE_KEYWORDS). user_configured is False only
+    when nothing was set at all, which is what decides whether a MISSING folder
+    is fatal (a typo in a path the user chose) or just a warning (a part of the
+    Eva tree this endpoint has not created yet).
+    """
+    if subfolder is None:
+        subfolder = SUBFOLDER
+    own = _env(own_var)
+    if own:
+        return (None if _is_disabled(own) else own), True
+    root = _env(root_var)
+    if root:
+        if _is_disabled(root):
+            return None, True
+        return (os.path.join(root, subfolder) if subfolder else root), True
+    return (os.path.join(root_default, subfolder) if subfolder else root_default), False
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="PowerPoint (.pptx) python-pptx MCP stdio server. "
-                    "With no arguments it runs as an MCP server on stdin/stdout."
+        description="PowerPoint (.pptx) python-pptx MCP stdio server. With no "
+                    "arguments it runs as an MCP server on stdin/stdout. "
+                    "Configuration is environment variables only "
+                    "(EVA_DOCUMENTS_DIR / EVA_TEMPLATES_DIR / "
+                    "EVA_KNOWLEDGE_DIR, each with a 'powerpoint' sub-folder) - "
+                    "see the CONFIGURATION section of this file's docstring."
     )
     parser.add_argument(
         "--check", action="store_true",
@@ -3799,90 +3890,56 @@ def main():
         "--version", action="version",
         version="{0} {1}".format(SERVER_NAME, __version__)
     )
-    parser.add_argument(
-        "--docs-dir", default=os.environ.get("POWERPOINT_DOCS_DIR"), metavar="DIR",
-        help="REQUIRED path sandbox: the server refuses to open or save any "
-             "file outside this directory tree, and refuses to start without "
-             "one. Falls back to the POWERPOINT_DOCS_DIR environment variable, "
-             "then the DOCS_DIR config value (default: "
-             "C:\\Eva\\documents\\powerpoint). It is also where "
-             "powerpoint_create writes NEW decks - there is no separate output "
-             "folder. The model chooses open/save paths, so an unconfined "
-             "server could read/write any .pptx this account can."
-    )
-    parser.add_argument(
-        "--templates-dir", default=os.environ.get("POWERPOINT_TEMPLATES_DIR"),
-        metavar="DIR",
-        help="Folder of blank .pptx/.potx templates. READ-ONLY: its files can be "
-             "listed, opened and passed as powerpoint_create's 'template', but "
-             "nothing can be saved over them. Falls back to the "
-             "POWERPOINT_TEMPLATES_DIR environment variable, then the "
-             "TEMPLATES_DIR config value (default: "
-             "C:\\Eva\\templates\\powerpoint); pass 'off' to run with no "
-             "templates root at all."
-    )
-    parser.add_argument(
-        "--kb-dir", default=os.environ.get("POWERPOINT_KB_DIR"), metavar="DIR",
-        help="Every deck opened, created or saved is ALSO written as a Markdown "
-             "file into this folder for a local RAG knowledge base (falls back "
-             "to the POWERPOINT_KB_DIR environment variable, then the KB_DIR "
-             "config value, default: C:\\Eva\\knowledge\\powerpoint); pass 'off' "
-             "to disable mirroring. Files are named 'PowerPoint - <name>.md' and "
-             "overwritten each time. The folder is created if it does not exist."
-    )
     args = parser.parse_args()
 
     global DOCS_DIR, TEMPLATES_DIR, KB_DIR
 
-    # Each optional folder has a real default (the Eva working tree), so "leave
-    # it blank" cannot mean "turn this off": a blank value from an MCP client
-    # means "not configured", and falls back to the default. Pass one of the
-    # DISABLE_KEYWORDS instead to switch a folder off explicitly - the only way
-    # to do it from a client that can only supply strings.
-    # explicit_folders records which paths the user actually chose, so a typo in
-    # one still fails loudly while a default pointing at a folder this endpoint
-    # has not created yet degrades quietly.
-    explicit_folders = set()
-    for name, value in (("docs", args.docs_dir),
-                        ("templates", args.templates_dir),
-                        ("kb", args.kb_dir)):
-        if not value:
-            continue                      # unset -> keep the CONFIG default
-        chosen = None if _is_disabled(value) else value
-        explicit_folders.add(name)
-        if name == "docs":
-            DOCS_DIR = chosen
-        elif name == "templates":
-            TEMPLATES_DIR = chosen
-        else:
-            KB_DIR = chosen
+    # Every folder comes from the environment: this server's own override
+    # variable, else the suite-wide root with the "powerpoint" sub-folder
+    # appended. The second half of each pair records whether the user
+    # configured that folder at all, so a typo in a path they chose still fails
+    # loudly while a default pointing at a folder this endpoint has not created
+    # yet degrades quietly.
+    DOCS_DIR, docs_chosen = _folder(
+        "POWERPOINT_DOCS_DIR", "EVA_DOCUMENTS_DIR", EVA_DOCUMENTS_DIR)
+    TEMPLATES_DIR, templates_chosen = _folder(
+        "POWERPOINT_TEMPLATES_DIR", "EVA_TEMPLATES_DIR", EVA_TEMPLATES_DIR)
+    KB_DIR, _kb_chosen = _folder(
+        "POWERPOINT_KB_DIR", "EVA_KNOWLEDGE_DIR", EVA_KNOWLEDGE_DIR)
 
     if args.check:
         sys.exit(run_check())
 
     # File access is confined to DOCS_DIR, so a root is mandatory.
     if not DOCS_DIR:
-        log("FATAL: no presentation root configured. Pass --docs-dir, set the "
-            "POWERPOINT_DOCS_DIR environment variable, or set the DOCS_DIR "
-            "constant in this file. The server only opens/saves .pptx files "
-            "inside that folder and will not start without one.")
+        log("FATAL: the presentations folder is switched off, and this server "
+            "cannot run without one. Unset POWERPOINT_DOCS_DIR (or give it a "
+            "real path) so it resolves to %EVA_DOCUMENTS_DIR%\\{}."
+            .format(SUBFOLDER))
         sys.exit(2)
     if not os.path.isdir(DOCS_DIR):
-        log("FATAL: the configured presentation root does not exist or is not a "
+        log("FATAL: the presentations folder does not exist or is not a "
             "directory: {}".format(DOCS_DIR))
-        if "docs" not in explicit_folders:
-            log("       That is the built-in default. Create the folder, or "
-                "copy the repo's eva\\ folder to C:\\Eva to lay the whole "
-                "working tree out at once, or point --docs-dir somewhere else.")
+        if docs_chosen:
+            log("       That path came from EVA_DOCUMENTS_DIR or "
+                "POWERPOINT_DOCS_DIR. Create the folder, or fix the variable.")
+        else:
+            log("       That is the built-in default. Create the folder, set "
+                "EVA_DOCUMENTS_DIR to your own document root, or copy the "
+                "repo's eva\\ folder to C:\\Eva to lay out the whole tree.")
         sys.exit(2)
 
     # The templates folder is optional. A path the USER chose and got wrong
     # would silently mean "no templates", so that fails loudly; the built-in
     # default simply not existing yet does not.
     if TEMPLATES_DIR and not os.path.isdir(TEMPLATES_DIR):
-        if "templates" in explicit_folders:
-            log("FATAL: the configured templates folder does not exist or is "
-                "not a directory: {}".format(TEMPLATES_DIR))
+        if templates_chosen:
+            log("FATAL: the templates folder does not exist or is not a "
+                "directory: {}".format(TEMPLATES_DIR))
+            log("       That path came from EVA_TEMPLATES_DIR or "
+                "POWERPOINT_TEMPLATES_DIR. Create the folder, fix the "
+                "variable, or set POWERPOINT_TEMPLATES_DIR=off to run with no "
+                "templates.")
             sys.exit(2)
         log("WARNING: the default templates folder does not exist, so "
             "templates are disabled: {}".format(TEMPLATES_DIR))
@@ -3898,8 +3955,9 @@ def main():
         if _read_only_root(real_docs) is not None:
             log("FATAL: the templates folder ({}) is the same as - or contains "
                 "- the presentation root ({}). Templates are read-only, so "
-                "every save would be refused. Point --templates-dir at a "
-                "folder of its own.".format(TEMPLATES_DIR, DOCS_DIR))
+                "every save would be refused. Keep EVA_TEMPLATES_DIR and "
+                "EVA_DOCUMENTS_DIR pointing at separate roots."
+                .format(TEMPLATES_DIR, DOCS_DIR))
             sys.exit(2)
 
     try:

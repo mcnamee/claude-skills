@@ -4,7 +4,7 @@ The `excel` plugin's sandbox — the workbooks it may read.
 
 | | |
 |---|---|
-| **Plugin setting** | `excel` → workbook folder (`--docs-dir` / `EXCEL_DOCS_DIR`) |
+| **Setting** | `EVA_DOCUMENTS_DIR` (the `excel` plugin appends `\excel`) |
 | **Default** | `C:\Eva\documents\excel` |
 | **Access** | **read-only** — the plugin never writes a workbook |
 | **Formats** | `.xlsx`, `.xlsm` |

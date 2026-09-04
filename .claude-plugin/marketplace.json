@@ -10,7 +10,7 @@
       "name": "word",
       "source": "./plugins/word",
       "description": "Read, edit and create Word .docx files - including Word tracked changes, native styles and filling out templates.",
-      "version": "7.0.0",
+      "version": "8.0.0",
       "keywords": [
         "word",
         "docx",
@@ -22,7 +22,7 @@
       "name": "powerpoint",
       "source": "./plugins/powerpoint",
       "description": "Build PowerPoint decks that inherit your own template's layouts and theme, and audit them against Guy Kawasaki's 10/20/30 rule.",
-      "version": "3.0.0",
+      "version": "4.0.0",
       "keywords": [
         "powerpoint",
         "pptx",
@@ -35,7 +35,7 @@
       "name": "excel",
       "source": "./plugins/excel",
       "description": "Read and analyse Excel workbooks. Read-only; parses .xlsx directly so Excel is not required.",
-      "version": "4.0.0",
+      "version": "5.0.0",
       "keywords": [
         "excel",
         "xlsx",
@@ -46,7 +46,7 @@
       "name": "outlook",
       "source": "./plugins/outlook",
       "description": "Read-only access to local classic Outlook mail and calendar via COM, saving an email to the knowledge base when you ask for it. Windows only; requires pywin32.",
-      "version": "5.0.0",
+      "version": "6.0.0",
       "keywords": [
         "outlook",
         "email",
@@ -58,7 +58,7 @@
       "name": "confluence",
       "source": "./plugins/confluence",
       "description": "Search and read Confluence pages across one or two instances, saving a page to Markdown for a local RAG knowledge base when you ask for it.",
-      "version": "3.0.0",
+      "version": "4.0.0",
       "keywords": [
         "confluence",
         "wiki",
@@ -69,7 +69,7 @@
       "name": "jira",
       "source": "./plugins/jira",
       "description": "Query Jira issues, sprints and projects. Read-only (Jira Data Center v2 REST API).",
-      "version": "1.1.3",
+      "version": "2.0.0",
       "keywords": [
         "jira",
         "issues",
@@ -80,7 +80,7 @@
       "name": "knowledge-base",
       "source": "./plugins/knowledge-base",
       "description": "True RAG over your own Markdown docs: a local ChromaDB vector index plus your embeddings API. Captures new notes back into it. Requires chromadb.",
-      "version": "3.0.0",
+      "version": "4.0.0",
       "keywords": [
         "rag",
         "knowledge-base",
@@ -92,7 +92,7 @@
       "name": "pdf-to-md",
       "source": "./plugins/pdf-to-md",
       "description": "Convert PDFs to Markdown with tables preserved, for feeding a local knowledge base. Requires pymupdf.",
-      "version": "5.1.0",
+      "version": "6.0.0",
       "keywords": [
         "pdf",
         "markdown",

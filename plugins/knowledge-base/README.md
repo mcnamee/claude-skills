@@ -5,7 +5,7 @@ local ChromaDB vector index plus your own embeddings API.
 
 | | |
 |---|---|
-| **Server** | `knowledge-base.py` v3.0.0 |
+| **Server** | `knowledge-base.py` v4.0.0 |
 | **pip install** | `chromadb` (HTTP to your endpoints is stdlib `urllib` — no `requests`) |
 | **Platform** | any |
 | **Writes to disk** | yes — the vector index folder (`C:\Eva\index`), plus captured notes under `C:\Eva\knowledge\captures` |
@@ -40,33 +40,24 @@ local ChromaDB vector index plus your own embeddings API.
 /plugin install knowledge-base@mcnamee-claude-skills
 ```
 
-The three folders are pre-filled with their place in the [Eva working
-tree](../../eva) — copy the repo's [`eva/`](../../eva) folder to `C:\Eva` and
-you can accept them as they stand. Only the endpoint URL and interpreter are
-genuinely yours to supply.
+Claude Code prompts only for the two endpoint settings below; the Python
+interpreter and every folder come from the shared environment variables in
+[Configuration](#configuration).
 
-| Prompt | Default | Env var | Purpose |
+| Prompt | Required | Env var | Purpose |
 |---|---|---|---|
-| Documents folder | `C:\Eva\knowledge` | `KB_DOCS_DIR` | The indexed corpus: every `.md`/`.markdown`/`.txt` file under here, recursively. **Required** |
-| Index folder | `C:\Eva\index` | `KB_INDEX_DIR` | Where the ChromaDB vector store lives — deliberately **outside** the corpus |
-| Captures folder | `C:\Eva\knowledge\captures` | `KB_OUTPUT_DIR` | Where `kb_capture` writes new notes. Must be inside the documents folder |
-| Embeddings endpoint URL | — | `KB_EMBED_URL` | **Required.** Full URL of your embeddings API |
-| Embeddings model | — | `KB_EMBED_MODEL` | Model name sent in embed requests; omit if the endpoint fixes one |
-| Python interpreter | — | — | **Required.** Absolute path to the `python.exe` that has `chromadb` installed |
-
-Because the documents folder defaults to `C:\Eva\knowledge`, the mirrors the
-`word`, `outlook`, `confluence` and `pdf-to-md` plugins write — into
-`knowledge\word`, `knowledge\email`, `knowledge\confluence` and
-`knowledge\pdf` — are all inside the corpus, so a stock install indexes every
-one of them with no further wiring. See [`eva/knowledge`](../../eva/knowledge).
+| Embeddings endpoint URL | **yes** | `KB_EMBED_URL` | Full URL of your embeddings API |
+| Embeddings model | no | `KB_EMBED_MODEL` | Model name sent in embed requests; omit if the endpoint fixes one |
 
 **Your API key is not stored in the plugin.** Set `KB_EMBED_API_KEY` as a
 Windows user environment variable before starting Claude Code. API keys are
-deliberately env-var only: there are no `--*-api-key` flags, because
-command-line arguments are visible to other local users in process listings.
+deliberately env-var only: there is no flag that could put a key in a command
+line, where other local users would see it in a process listing.
 
 ```powershell
-setx KB_EMBED_API_KEY "your-api-key"
+setx EVA_PYTHON        "C:\Python311\python.exe"
+setx EVA_KNOWLEDGE_DIR "C:\Eva\knowledge"
+setx KB_EMBED_API_KEY  "your-api-key"
 ```
 
 `setx` does not affect processes that are already running, so quit VS Code
@@ -74,17 +65,22 @@ completely (a window reload is not enough) and reopen it. Check it took in a
 **new** window with `$env:KB_EMBED_API_KEY`.
 
 Everything else in the reference below is set with the matching `KB_*`
-environment variable (or by launching the server manually with the flag).
+environment variable.
 
 ## First run
 
 Before wiring it into the client — the docstring at the top of
-`knowledge-base.py` walks through this:
+`knowledge-base.py` walks through this. Set the configuration in the
+environment once, then the action flags do the rest:
 
 ```powershell
-& "C:\path\to\python.exe" knowledge-base.py --check
-& "C:\path\to\python.exe" knowledge-base.py --reindex
-& "C:\path\to\python.exe" knowledge-base.py --search "some topic"
+$env:EVA_KNOWLEDGE_DIR = "C:\Eva\knowledge"
+$env:KB_EMBED_URL      = "https://your-gateway/v1/embeddings"
+$env:KB_EMBED_API_KEY  = "your-api-key"
+
+& $env:EVA_PYTHON knowledge-base.py --check
+& $env:EVA_PYTHON knowledge-base.py --reindex
+& $env:EVA_PYTHON knowledge-base.py --search "some topic"
 ```
 
 If you change embedding model, run `--reindex --force` once — vector dimensions
@@ -100,50 +96,103 @@ differ between models.
 | `kb_capture` | Save a new Markdown note into the knowledge base and index it immediately |
 | `kb_status` | Documents, captured notes, index freshness + configuration summary (never shows keys) |
 
-## Configuration reference
+## Configuration
 
-Precedence is **CLI flag > environment variable > constant in the file**.
+**Four environment variables configure every plugin in this suite.** Set them
+once for your Windows account and this plugin has nothing else to configure -
+there are no folder prompts at install time and no folder command-line flags.
 
-| Env var | CLI flag | Purpose |
+| Variable | Purpose | Default |
 |---|---|---|
-| `KB_DOCS_DIR` | `--docs-dir` | **Required.** Folder of `.md`/`.markdown`/`.txt` docs, searched recursively. Default `C:\Eva\knowledge` |
-| `KB_INDEX_DIR` | `--index-dir` | ChromaDB folder. Default `C:\Eva\index` — outside the corpus, so a large binary database does not sit inside the folder you want to be able to zip or grep. Clear the `INDEX_DIR` constant to fall back to `<docs-dir>\.kb-rag-index` |
-| `KB_OUTPUT_DIR` | `--output-dir` | Folder `kb_capture` writes new notes into (default `C:\Eva\knowledge\captures`, created on demand). Must resolve **inside** `--docs-dir`, and must not be a dot-folder or sit inside the index folder — all three are pruned from indexing, so a note written there would never be searchable. The server refuses to start rather than let that happen |
-| `KB_COLLECTION` | `--collection` | ChromaDB collection name (default `kb-rag`) |
-| `KB_EMBED_URL` | `--embed-url` | **Required.** Full URL of the embeddings endpoint |
-| `KB_EMBED_MODEL` | `--embed-model` | Model name sent in embed requests (omit if the endpoint fixes one) |
-| `KB_EMBED_API_KEY` | _(env only)_ | API key for the embeddings endpoint |
-| `KB_EMBED_AUTH_HEADER` | `--embed-auth-header` | Header the key is sent in — default `Authorization` (as `Bearer <key>`); any other name (e.g. Azure's `api-key`) sends the raw key |
-| `KB_EMBED_STYLE` | `--embed-style` | Request format: `openai` (default; batch `{"input": [...]}`), `ollama` (`{"prompt": ...}` one-per-request), `kserve-jina` (KServe V2 Open Inference Protocol — texts sent as a BYTES input tensor `{"inputs": [{"name", "shape", "datatype", "data"}]}`, e.g. a Jina embeddings model served on KServe; the model name is part of the `--embed-url` path such as `https://host/v2/models/jina-embeddings/infer`, and flat FP32 output tensors are reshaped via their `shape`; nested data and KServe V1 `predictions` responses also parsed), or `raw-json` (plain `{"texts": [...]}` body — for KServe **custom** predictors and other bespoke wrappers that unpack the raw request body into their pipeline's arguments; the telltale symptom is a server error like `pipeline() missing 1 required positional argument: 'texts'` that doesn't change when the tensor name does). Response parsing additionally accepts bare `embedding`/`embeddings` shapes, so most bespoke internal endpoints work unchanged |
-| `KB_EMBED_TENSOR_NAME` | `--embed-tensor-name` | `kserve-jina` style only: name of the input tensor the texts are sent as (default `text`) |
-| `KB_EMBED_JSON_KEY` | `--embed-json-key` | `raw-json` style only: the JSON key the batch of texts is sent under (default `texts`; e.g. `instances` for a V1-flavoured custom wrapper) |
-| `KB_EMBED_TEMPLATE` | `--embed-template` | **Full request-body control** when none of the styles matches your endpoint: the complete JSON body to POST, with the JSON string `"__TEXTS__"` where the array of texts goes; `"__COUNT__"` becomes the number of texts in the batch (an integer — for strictly-validated tensor `shape` fields) and `"__MODEL__"` the `--embed-model` name. Overrides the style's request shape; batching still applies. E.g. a FastAPI custom predictor that validates `{"inputs": {"texts": [...]}}` (symptom: HTTP 422 with `loc: [body, inputs]`) is `KB_EMBED_TEMPLATE={"inputs": {"texts": "__TEXTS__"}}`; a strict V2 tensor envelope with a custom `texts` field is `{"inputs": [{"name": "texts", "shape": ["__COUNT__"], "datatype": "BYTES", "data": "__TEXTS__", "texts": "__TEXTS__"}]}`. Tip: FastAPI-wrapped endpoints publish their exact schema at `/openapi.json` (and Swagger UI at `/docs`) — fetch it with your mTLS certs instead of guessing field by field |
-| `KB_EMBED_RESPONSE_PATH` | `--embed-response-path` | Dotted path to the vectors in the response when auto-detection can't find them, e.g. `outputs.embeddings` or `result.0.vectors` (numeric parts index lists). Applies to every style |
-| `KB_DEBUG=1` | `--debug` | Log every request/response body (truncated) to stderr — run `--check` with it to see exactly what is sent and what came back, for matching an unknown endpoint |
-| `KB_EMBED_BATCH` | `--embed-batch` | Texts per embeddings request, openai and kserve-jina styles (default 16) |
-| `KB_EMBED_QUERY_PREFIX` | `--embed-query-prefix` | Prefix for query embeds, for models that need it (e5-style `"query: "`) |
-| `KB_EMBED_DOC_PREFIX` | `--embed-doc-prefix` | Prefix for document embeds (`"passage: "`) |
-| `KB_EMBED_EXTRA_HEADERS` | _(env only)_ | JSON object of extra HTTP headers for the embed endpoint |
-| `KB_CHAT_URL` | `--chat-url` | *Optional.* Chat-completions endpoint for the generate step (OpenAI shape; Ollama `/api/chat` and `/api/generate` response shapes also parsed) |
-| `KB_CHAT_MODEL` | `--chat-model` | Generation model name |
-| `KB_CHAT_API_KEY` | _(env only)_ | API key for the chat endpoint (falls back to `KB_EMBED_API_KEY`) |
-| `KB_CHAT_AUTH_HEADER` | `--chat-auth-header` | As per `KB_EMBED_AUTH_HEADER` |
-| `KB_CHAT_MAX_TOKENS` | `--chat-max-tokens` | `max_tokens` for generation (default 1024; 0 omits the field) |
-| `KB_CHAT_EXTRA_HEADERS` | _(env only)_ | JSON object of extra HTTP headers for the chat endpoint |
-| `KB_CA_CERT` | `--ca-cert` | Path to a PEM CA bundle for an internal CA |
-| `KB_CLIENT_CERT` | `--client-cert` | Path to a PEM client certificate, for gateways that require **mutual TLS (mTLS)** — the fix for errors like `CERTIFICATE_NOT_PROVIDED` / `certificate required`. Presented to both endpoints. Loaded once at startup, so a bad path/passphrase fails immediately |
-| `KB_CLIENT_KEY` | `--client-key` | Path to the PEM private key for the client certificate; omit if the `--client-cert` file contains both cert and key |
-| `KB_CLIENT_KEY_PASSWORD` | _(env only)_ | Passphrase, if the client private key is encrypted |
-| `KB_VERIFY_SSL=false` | `--insecure` | Disable TLS certificate verification. Note this cannot fix an mTLS error — it controls how *you* verify the *server*, not the certificate you present to it (that's `--client-cert`) |
-| `KB_TIMEOUT` | `--timeout` | HTTP timeout in seconds (default 120) |
-| `KB_CHUNK_CHARS` | `--chunk-chars` | Soft max characters per chunk (default 1500) |
-| `KB_CHUNK_OVERLAP` | `--chunk-overlap` | Overlap between adjacent chunks (default 200) |
-| `KB_TOP_K` | `--top-k` | Default chunks retrieved (default 5) |
-| — | `--check` | Validate config, self-test the capture path, confirm the captures folder is writable, call the endpoint(s) once, report index status, then exit. The capture checks run first and need no network, so they still tell you something on a machine that can't reach the endpoint |
-| — | `--reindex` | Build/update the vector index, then exit (add `--force` to rebuild from scratch) |
-| — | `--search QUERY` | Test retrieval from the command line, then exit |
-| — | `--ask QUESTION` | Test full RAG (retrieve + generate) from the command line, then exit |
-| — | `--version` | Print version and exit (works even without `chromadb` installed) |
+| `EVA_PYTHON` | The `python.exe` every server runs under - the same one you installed the pip dependencies into | *(none - you must set it)* |
+| `EVA_DOCUMENTS_DIR` | Root of the document library | `C:\Eva\documents` |
+| `EVA_TEMPLATES_DIR` | Root of the template library | `C:\Eva\templates` |
+| `EVA_KNOWLEDGE_DIR` | Root of the RAG corpus - the one folder the index reads | `C:\Eva\knowledge` |
+
+```powershell
+[Environment]::SetEnvironmentVariable("EVA_PYTHON",        "C:\Python311\python.exe",     "User")
+[Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "C:\Eva\documents",             "User")
+[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\templates",   "User")
+[Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "C:\Eva\knowledge",             "User")
+```
+
+`setx NAME "value"` does the same thing from `cmd`. Neither affects processes
+that are already running, so quit and reopen your editor afterwards.
+
+Of the four, this server uses `EVA_PYTHON` and `EVA_KNOWLEDGE_DIR`.
+
+### The folders this plugin uses
+
+Every other server works in its own sub-folder of the knowledge root; this one
+is the exception, and indexes the **whole root**. **Each folder below must
+exist** - create them, or copy the repo's [`eva/`](../../eva) folder to
+`C:\Eva` and they all do.
+
+| Folder | What it is for | Missing? |
+|---|---|---|
+| `%EVA_KNOWLEDGE_DIR%` | **The indexed corpus** - every `.md`/`.markdown`/`.txt` file under it, recursively. This is the plugin that reads the *whole* knowledge root rather than one sub-folder of it, which is exactly why every other plugin writes into a sub-folder: `knowledge\word`, `knowledge\email`, `knowledge\confluence`, `knowledge\pdf` and the rest are all inside the corpus, so a stock install indexes every one of them with no further wiring | **Fatal.** The server refuses to start without it |
+| `%EVA_KNOWLEDGE_DIR%\captures` | Where `kb_capture` writes new notes. It has to sit **inside** the corpus, and must not be a dot-folder or land inside the index folder - all three are pruned from indexing, so a note written there would never be searchable | Created on demand. The server refuses to start if it resolves outside the corpus, rather than let a note be written and never indexed |
+| `KB_INDEX_DIR` — default `C:\Eva\index` | The ChromaDB vector store. Deliberately **outside** the corpus, so a multi-hundred-megabyte binary database does not sit inside the folder you want to zip, copy or grep. Derived and disposable: delete it and re-index to rebuild, which you must do after changing embeddings model. This is the one folder in the suite that is not under a shared root | Created on demand. Set `KB_INDEX_DIR=off` to fall back to a hidden `.kb-rag-index` folder inside the corpus |
+
+> See [`eva/knowledge`](../../eva/knowledge) for what belongs in each
+> sub-folder of the corpus.
+
+### This server's own settings
+
+Everything else is an environment variable of this server's own. **API keys are
+env-var only** - there is no flag that could leak one into a process listing.
+`KB_DOCS_DIR` and `KB_OUTPUT_DIR` override the corpus and captures folders with
+a full path each, for an endpoint whose layout differs.
+
+| Env var | Purpose |
+|---|---|
+| `KB_DOCS_DIR` | **Required.** Folder of `.md`/`.markdown`/`.txt` docs, searched recursively. Default `C:\Eva\knowledge` |
+| `KB_INDEX_DIR` | ChromaDB folder. Default `C:\Eva\index` — outside the corpus, so a large binary database does not sit inside the folder you want to be able to zip or grep. Clear the `INDEX_DIR` constant to fall back to `<docs-dir>\.kb-rag-index` |
+| `KB_OUTPUT_DIR` | Folder `kb_capture` writes new notes into (default `C:\Eva\knowledge\captures`, created on demand). Must resolve **inside** the corpus, and must not be a dot-folder or sit inside the index folder — all three are pruned from indexing, so a note written there would never be searchable. The server refuses to start rather than let that happen |
+| `KB_COLLECTION` | ChromaDB collection name (default `kb-rag`) |
+| `KB_EMBED_URL` | **Required.** Full URL of the embeddings endpoint |
+| `KB_EMBED_MODEL` | Model name sent in embed requests (omit if the endpoint fixes one) |
+| `KB_EMBED_API_KEY` | API key for the embeddings endpoint |
+| `KB_EMBED_AUTH_HEADER` | Header the key is sent in — default `Authorization` (as `Bearer <key>`); any other name (e.g. Azure's `api-key`) sends the raw key |
+| `KB_EMBED_STYLE` | Request format: `openai` (default; batch `{"input": [...]}`), `ollama` (`{"prompt": ...}` one-per-request), `kserve-jina` (KServe V2 Open Inference Protocol — texts sent as a BYTES input tensor `{"inputs": [{"name", "shape", "datatype", "data"}]}`, e.g. a Jina embeddings model served on KServe; the model name is part of the `KB_EMBED_URL` path such as `https://host/v2/models/jina-embeddings/infer`, and flat FP32 output tensors are reshaped via their `shape`; nested data and KServe V1 `predictions` responses also parsed), or `raw-json` (plain `{"texts": [...]}` body — for KServe **custom** predictors and other bespoke wrappers that unpack the raw request body into their pipeline's arguments; the telltale symptom is a server error like `pipeline() missing 1 required positional argument: 'texts'` that doesn't change when the tensor name does). Response parsing additionally accepts bare `embedding`/`embeddings` shapes, so most bespoke internal endpoints work unchanged |
+| `KB_EMBED_TENSOR_NAME` | `kserve-jina` style only: name of the input tensor the texts are sent as (default `text`) |
+| `KB_EMBED_JSON_KEY` | `raw-json` style only: the JSON key the batch of texts is sent under (default `texts`; e.g. `instances` for a V1-flavoured custom wrapper) |
+| `KB_EMBED_TEMPLATE` | **Full request-body control** when none of the styles matches your endpoint: the complete JSON body to POST, with the JSON string `"__TEXTS__"` where the array of texts goes; `"__COUNT__"` becomes the number of texts in the batch (an integer — for strictly-validated tensor `shape` fields) and `"__MODEL__"` the `KB_EMBED_MODEL` name. Overrides the style's request shape; batching still applies. E.g. a FastAPI custom predictor that validates `{"inputs": {"texts": [...]}}` (symptom: HTTP 422 with `loc: [body, inputs]`) is `KB_EMBED_TEMPLATE={"inputs": {"texts": "__TEXTS__"}}`; a strict V2 tensor envelope with a custom `texts` field is `{"inputs": [{"name": "texts", "shape": ["__COUNT__"], "datatype": "BYTES", "data": "__TEXTS__", "texts": "__TEXTS__"}]}`. Tip: FastAPI-wrapped endpoints publish their exact schema at `/openapi.json` (and Swagger UI at `/docs`) — fetch it with your mTLS certs instead of guessing field by field |
+| `KB_EMBED_RESPONSE_PATH` | Dotted path to the vectors in the response when auto-detection can't find them, e.g. `outputs.embeddings` or `result.0.vectors` (numeric parts index lists). Applies to every style |
+| `KB_DEBUG=1` | Log every request/response body (truncated) to stderr — run `--check` with it to see exactly what is sent and what came back, for matching an unknown endpoint |
+| `KB_EMBED_BATCH` | Texts per embeddings request, openai and kserve-jina styles (default 16) |
+| `KB_EMBED_QUERY_PREFIX` | Prefix for query embeds, for models that need it (e5-style `"query: "`) |
+| `KB_EMBED_DOC_PREFIX` | Prefix for document embeds (`"passage: "`) |
+| `KB_EMBED_EXTRA_HEADERS` | JSON object of extra HTTP headers for the embed endpoint |
+| `KB_CHAT_URL` | *Optional.* Chat-completions endpoint for the generate step (OpenAI shape; Ollama `/api/chat` and `/api/generate` response shapes also parsed) |
+| `KB_CHAT_MODEL` | Generation model name |
+| `KB_CHAT_API_KEY` | API key for the chat endpoint (falls back to `KB_EMBED_API_KEY`) |
+| `KB_CHAT_AUTH_HEADER` | As per `KB_EMBED_AUTH_HEADER` |
+| `KB_CHAT_MAX_TOKENS` | `max_tokens` for generation (default 1024; 0 omits the field) |
+| `KB_CHAT_EXTRA_HEADERS` | JSON object of extra HTTP headers for the chat endpoint |
+| `KB_CA_CERT` | Path to a PEM CA bundle for an internal CA |
+| `KB_CLIENT_CERT` | Path to a PEM client certificate, for gateways that require **mutual TLS (mTLS)** — the fix for errors like `CERTIFICATE_NOT_PROVIDED` / `certificate required`. Presented to both endpoints. Loaded once at startup, so a bad path/passphrase fails immediately |
+| `KB_CLIENT_KEY` | Path to the PEM private key for the client certificate; omit if the `KB_CLIENT_CERT` file contains both cert and key |
+| `KB_CLIENT_KEY_PASSWORD` | Passphrase, if the client private key is encrypted |
+| `KB_VERIFY_SSL=false` | Disable TLS certificate verification. Note this cannot fix an mTLS error — it controls how *you* verify the *server*, not the certificate you present to it (that's `KB_CLIENT_CERT`) |
+| `KB_TIMEOUT` | HTTP timeout in seconds (default 120) |
+| `KB_CHUNK_CHARS` | Soft max characters per chunk (default 1500) |
+| `KB_CHUNK_OVERLAP` | Overlap between adjacent chunks (default 200) |
+| `KB_TOP_K` | Default chunks retrieved (default 5) |
+
+### Command-line flags
+
+Configuration is environment variables only, so nothing here sets a path. The
+flags are actions:
+
+| Flag | Purpose |
+|---|---|
+| `--check` | Validate config, self-test the capture path, confirm the captures folder is writable, call the endpoint(s) once, report index status, then exit. The capture checks run first and need no network, so they still tell you something on a machine that can't reach the endpoint |
+| `--reindex` | Build/update the vector index, then exit (add `--force` to rebuild from scratch) |
+| `--search QUERY` | Test retrieval from the command line, then exit |
+| `--ask QUESTION` | Test full RAG (retrieve + generate) from the command line, then exit |
+| `--debug` | Log every request/response body (truncated) to stderr - run `--check` with it to see exactly what is sent and what came back. Same as `KB_DEBUG=1` |
+| `--version` | Print version and exit (works even without `chromadb` installed) |
 
 ## File access
 

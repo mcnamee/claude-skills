@@ -6,7 +6,7 @@ not need to be installed.
 
 | | |
 |---|---|
-| **Server** | `excel.py` v4.0.0 |
+| **Server** | `excel.py` v5.0.0 |
 | **pip install** | _none_ — standard library only |
 | **Platform** | any |
 | **Writes to disk** | no |
@@ -18,31 +18,72 @@ not need to be installed.
 /plugin install excel@mcnamee-claude-skills
 ```
 
-This is the simplest plugin in the suite — standard library only, one prompt —
-so it's a good one to install first if you're confirming the flow works.
+This is the simplest plugin in the suite - standard library only, no prompts at
+all - so it's a good one to install first if you're confirming the flow works.
 
-| Prompt | Default | Env var | Purpose |
-|---|---|---|---|
-| Workbook folder | `C:\Eva\documents\excel` | `EXCEL_DOCS_DIR` | The only folder the server may read workbooks from. **Required** — the server refuses to start without one |
-| Python interpreter | — | — | **Required.** Absolute path to the `python.exe` to launch the server with |
+## Configuration
 
-> **Only the top level is listed.** Unlike `word`, this server does not search
-> sub-folders, so a workbook filed in `documents\excel\Finance\` will not
-> appear in `excel_list_workbooks`. Keep workbooks directly in the folder and
-> use filename prefixes (`Finance - Budget FY26.xlsx`) where you would
-> otherwise want a sub-folder. See
-> [`eva/documents/excel`](../../eva/documents/excel).
+**Four environment variables configure every plugin in this suite.** Set them
+once for your Windows account and this plugin has nothing else to configure -
+there are no folder prompts at install time and no folder command-line flags.
 
-## Configuration reference
-
-Precedence is **CLI flag > environment variable > constant in the file**.
-
-| CLI flag | Env var | Purpose |
+| Variable | Purpose | Default |
 |---|---|---|
-| `--docs-dir` | `EXCEL_DOCS_DIR` | **Required.** Folder of `.xlsx`/`.xlsm` workbooks to expose — the server only reads files inside it and refuses to start without one. Falls back to the `DOCS_DIR` constant in the file, default `C:\Eva\documents\excel`. Top level only: sub-folders are not searched |
-| `--check` | — | Print environment/config diagnostics and exit (no server) |
-| `--list` | — | List readable workbooks in the folder and exit (no server) |
-| `--version` | — | Print version and exit |
+| `EVA_PYTHON` | The `python.exe` every server runs under - the same one you installed the pip dependencies into | *(none - you must set it)* |
+| `EVA_DOCUMENTS_DIR` | Root of the document library | `C:\Eva\documents` |
+| `EVA_TEMPLATES_DIR` | Root of the template library | `C:\Eva\templates` |
+| `EVA_KNOWLEDGE_DIR` | Root of the RAG corpus - the one folder the index reads | `C:\Eva\knowledge` |
+
+```powershell
+[Environment]::SetEnvironmentVariable("EVA_PYTHON",        "C:\Python311\python.exe",     "User")
+[Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "C:\Eva\documents",             "User")
+[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\templates",   "User")
+[Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "C:\Eva\knowledge",             "User")
+```
+
+`setx NAME "value"` does the same thing from `cmd`. Neither affects processes
+that are already running, so quit and reopen your editor afterwards.
+
+Of the four, this server uses two: `EVA_PYTHON` and `EVA_DOCUMENTS_DIR`. It
+reads no templates and writes nothing at all.
+
+### The folders this plugin uses
+
+Every server works in its **own sub-folder** of those roots, named after
+the plugin. This one uses `excel`, and **each folder below must exist** -
+create them, or copy the repo's [`eva/`](../../eva) folder to `C:\Eva` and
+they all do.
+
+| Folder | What it is for | Missing? |
+|---|---|---|
+| `%EVA_DOCUMENTS_DIR%\excel` | The only folder the server may read workbooks from. **Top level only** - unlike `word`, this server does not search sub-folders | **Fatal.** The server refuses to start without it |
+
+> **Only the top level is listed.** A workbook filed in
+> `documents\excel\Finance\` will not appear in `excel_list_workbooks`. Keep
+> workbooks directly in the folder and use filename prefixes
+> (`Finance - Budget FY26.xlsx`) where you would otherwise want a sub-folder.
+> See [`eva/documents/excel`](../../eva/documents/excel).
+
+### Overriding one folder, and this server's own settings
+
+The shared roots are normally all you need. These variables are this
+server's own, and a folder variable here beats the matching root - use one
+only when an endpoint's layout really differs.
+
+| Variable | Purpose |
+|---|---|
+| `EXCEL_DOCS_DIR` | Full path to the workbook folder, instead of `%EVA_DOCUMENTS_DIR%\excel` |
+
+### Command-line flags
+
+Configuration is environment variables only, so nothing here sets a path. The
+flags are actions:
+
+| Flag | Purpose |
+|---|---|
+| `--check` | Print environment/config diagnostics and exit (no server). It reports which variable the folder came from |
+| `--list` | List readable workbooks in the folder and exit (no server) |
+| `--version` | Print version and exit |
 
 ## Finding a workbook by name
 
@@ -71,10 +112,16 @@ reach files outside it. Nothing is written.
 
 ## Troubleshooting
 
+> **If a server fails with `Executable not found in $PATH: "${EVA_PYTHON}"`**,
+> the variable is not set in the environment Claude Code was launched from. Set
+> it (see above), then quit Claude Code completely and reopen — `setx` and
+> `[Environment]::SetEnvironmentVariable` do not reach a process that is already
+> running.
+
 Run the config check before wiring it in — it's far easier to read than an MCP
 connection failure:
 
 ```powershell
-& "C:\path\to\python.exe" excel.py --check
-& "C:\path\to\python.exe" excel.py --list
+& $env:EVA_PYTHON excel.py --check
+& $env:EVA_PYTHON excel.py --list
 ```

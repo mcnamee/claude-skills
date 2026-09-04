@@ -4,7 +4,7 @@ The `word` plugin's sandbox — every `.docx` it may open, edit and save.
 
 | | |
 |---|---|
-| **Plugin setting** | `word` → documents folder (`--docs-dir` / `MSWORD_DOCS_DIR`) |
+| **Setting** | `EVA_DOCUMENTS_DIR` (the `word` plugin appends `\word`) |
 | **Default** | `C:\Eva\documents\word` |
 | **Access** | read **and write** — documents are edited in place here, and new documents are created here |
 | **Sub-folders** | yes, searched recursively |

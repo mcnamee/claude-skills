@@ -6,7 +6,7 @@ whenever it **saves** one.
 
 | | |
 |---|---|
-| **Plugin setting** | `word` → knowledge-base folder (`--kb-dir` / `MSWORD_KB_DIR`) |
+| **Setting** | `EVA_KNOWLEDGE_DIR` (the `word` plugin appends `\word`) |
 | **Default** | `C:\Eva\knowledge\word` |
 | **Filenames** | `Word - <name>.md` |
 | **Overwritten** | yes, on every open or save |

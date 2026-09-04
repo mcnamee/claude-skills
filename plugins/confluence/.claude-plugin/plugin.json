@@ -1,7 +1,7 @@
 {
   "name": "confluence",
   "displayName": "Confluence (read-only)",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "description": "Search and read Confluence pages across one or two instances, saving a page to Markdown for a local RAG knowledge base when you ask for it.",
   "author": {
     "name": "mcnamee"
@@ -17,7 +17,7 @@
     "base_url": {
       "type": "string",
       "title": "Confluence base URL",
-      "description": "e.g. https://confluence.internal.example.com - no trailing slash. REQUIRED. This is the DEFAULT server: prompts that do not name a server use it.",
+      "description": "e.g. https://confluence.internal.example.com - no trailing slash. REQUIRED. This is the DEFAULT server: prompts that do not name a server use it. The Python interpreter and the folder saved pages go to come from the suite-wide EVA_PYTHON and EVA_KNOWLEDGE_DIR environment variables - this server writes into the 'confluence' sub-folder of the knowledge root, which must exist; see the plugin README.",
       "required": true
     },
     "name": {
@@ -34,24 +34,12 @@
       "type": "string",
       "title": "Name for the second Confluence server",
       "description": "Optional, e.g. Blue. Say it in a prompt ('...on Blue') to query the second server. Defaults to 'Secondary'."
-    },
-    "kb_dir": {
-      "type": "directory",
-      "title": "Knowledge-base folder",
-      "description": "Where a page is saved as Markdown when you ask for it to be kept (shared by both servers), for the knowledge-base plugin to index. Reading a page does NOT save it. Keep this inside that plugin's documents folder (C:\\Eva\\knowledge) or saved pages are never indexed. Enter 'off' to forbid saving, after which this server writes no local file at all.",
-      "default": "C:\\Eva\\knowledge\\confluence"
-    },
-    "python": {
-      "type": "string",
-      "title": "Python interpreter",
-      "description": "Absolute path to the python.exe that has this server's pip dependencies installed (e.g. C:\\Python311\\python.exe). Use plain 'python' only if the right interpreter is first on PATH - a mismatch here is the most common cause of 'dependency missing' errors.",
-      "required": true
     }
   },
   "mcpServers": {
     "confluence": {
       "type": "stdio",
-      "command": "${user_config.python}",
+      "command": "${EVA_PYTHON}",
       "args": [
         "${CLAUDE_PLUGIN_ROOT}/confluence.py"
       ],
@@ -63,7 +51,6 @@
         "CONFLUENCE_NAME_2": "${user_config.name_2}",
         "CONFLUENCE_BASE_URL_2": "${user_config.base_url_2}",
         "CONFLUENCE_TOKEN_2": "${CONFLUENCE_TOKEN_2}",
-        "CONFLUENCE_KB_DIR": "${user_config.kb_dir}",
         "CONFLUENCE_KB_AUTOSAVE": "${CONFLUENCE_KB_AUTOSAVE}"
       }
     }

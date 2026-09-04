@@ -5,12 +5,21 @@ boilerplate, the deck shell with your title slide. A new document is **created
 from** one of these, inheriting its styles, headers, footers, page setup,
 layouts and boilerplate; the template itself is never touched.
 
-One folder per plugin, matching [`..\documents`](../documents):
+One environment variable, `EVA_TEMPLATES_DIR`, points at this folder; each
+plugin appends its own name, so there is no per-plugin folder setting. One
+folder per plugin, matching [`..\documents`](../documents):
 
-| Folder | Plugin → setting | Formats |
+| Folder | Plugin | Formats |
 |---|---|---|
-| [`word\`](word) | `word` → `--templates-dir` / `MSWORD_TEMPLATES_DIR` | `.docx` |
-| [`powerpoint\`](powerpoint) | `powerpoint` → `--templates-dir` / `POWERPOINT_TEMPLATES_DIR` | `.pptx`, `.potx` |
+| [`word\`](word) | `word` | `.docx` |
+| [`powerpoint\`](powerpoint) | `powerpoint` | `.pptx`, `.potx` |
+
+Both **must exist** for their plugin to offer templates at all: a missing one is
+not fatal, but the server starts with templates disabled and says so on stderr.
+
+```powershell
+[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\templates", "User")
+```
 
 Each folder carries its own README covering what makes a good template for that
 format, how to name it and how to ask for it. Start there.
