@@ -171,6 +171,14 @@ connected, `claude mcp list` to spot an unresolved environment variable, and
 `/plugin marketplace update mcnamee-claude-skills` after you transfer a new
 version across.
 
+`claude mcp list` is the quickest check that step 3 took: it prints the command
+each server will run, so a resolved `EVA_PYTHON` shows as a real path. If it
+shows the literal `${EVA_PYTHON}` and `Failed to connect — ENOENT: Executable
+not found in $PATH`, the variable is not set in the environment Claude Code was
+launched from — set it, then **quit Claude Code completely and reopen**, since
+neither `setx` nor `[Environment]::SetEnvironmentVariable` reaches a process
+that is already running.
+
 > **Skills are namespaced** by their plugin, so it's `/word:word` rather
 > than `/word`. To invoke one by its bare name, install the skill on its own
 > instead — see [Skills](#skills) below.

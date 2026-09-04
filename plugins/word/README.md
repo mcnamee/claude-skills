@@ -282,6 +282,12 @@ inside a configured folder cannot reach files outside it.
 
 ## Troubleshooting
 
+> **If a server fails with `Executable not found in $PATH: "${EVA_PYTHON}"`**,
+> the variable is not set in the environment Claude Code was launched from. Set
+> it (see above), then quit Claude Code completely and reopen — `setx` and
+> `[Environment]::SetEnvironmentVariable` do not reach a process that is already
+> running.
+
 - **The document came out in the wrong order** (headings bunched together, body
   text after them) — that is the signature of a document built with a series of
   separate `msword_add_heading`/`msword_add_paragraph` calls: they each append

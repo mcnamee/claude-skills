@@ -138,6 +138,12 @@ in the same RAG index.
 
 ## Troubleshooting
 
+> **If a server fails with `Executable not found in $PATH: "${EVA_PYTHON}"`**,
+> the variable is not set in the environment Claude Code was launched from. Set
+> it (see above), then quit Claude Code completely and reopen — `setx` and
+> `[Environment]::SetEnvironmentVariable` do not reach a process that is already
+> running.
+
 - **"dependency missing" after installing `pymupdf`** — the server logs
   `sys.executable` on startup. Almost always the Python interpreter you gave the
   plugin isn't the one you pip-installed into:

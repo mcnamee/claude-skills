@@ -112,6 +112,12 @@ reach files outside it. Nothing is written.
 
 ## Troubleshooting
 
+> **If a server fails with `Executable not found in $PATH: "${EVA_PYTHON}"`**,
+> the variable is not set in the environment Claude Code was launched from. Set
+> it (see above), then quit Claude Code completely and reopen — `setx` and
+> `[Environment]::SetEnvironmentVariable` do not reach a process that is already
+> running.
+
 Run the config check before wiring it in — it's far easier to read than an MCP
 connection failure:
 

@@ -220,6 +220,12 @@ writes one Markdown file inside the knowledge-base folder, and nowhere else.
 
 ## Troubleshooting
 
+> **If a server fails with `Executable not found in $PATH: "${EVA_PYTHON}"`**,
+> the variable is not set in the environment Claude Code was launched from. Set
+> it (see above), then quit Claude Code completely and reopen — `setx` and
+> `[Environment]::SetEnvironmentVariable` do not reach a process that is already
+> running.
+
 `--check` connects to **every** configured server, authenticates and reports who
 you are plus how many spaces you can see. Run it before wiring the server in; it
 exits non-zero if any instance fails, so a two-server setup where only one
