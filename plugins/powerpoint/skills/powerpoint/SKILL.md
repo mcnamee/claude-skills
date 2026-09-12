@@ -11,7 +11,9 @@ in first (see the repo README) and to verify with
 `python powerpoint.py --check`.
 
 For *what goes on the slides* — how many, how long, how few words — follow the
-[`kawasaki`](../kawasaki/SKILL.md) skill. This one is the mechanics.
+[`kawasaki`](../kawasaki/SKILL.md) skill. For the house **shape** of a deck —
+sections, dividers, `<Section> / <Slide>` titles and the notes pattern — follow
+[`slide-deck`](../slide-deck/SKILL.md). This one is the mechanics.
 
 ## Core workflow: create → layouts → slides → review → save
 
@@ -155,6 +157,39 @@ points. Notes are also:
   timed, and `powerpoint_review` says so rather than scoring it zero;
 - **indexed into the knowledge base** along with the slides, so a deck you wrote
   is searchable by what you meant, not just by its headlines.
+
+### The notes pane is the one place you DO format
+
+Everything above is about never overriding the template. Notes are the
+exception, and deliberately so: nobody in the room sees them, one person reads
+them at a lectern while talking, and prose is unusable there. The `notes` field
+renders a small Markdown-like syntax as real formatting:
+
+| You write | The pane shows |
+|---|---|
+| `**Evidence:**` | a bold run — use it for the labels |
+| `__$4m__` | an underlined run — the figure you must not misread |
+| `- Claims up 20%` | a dot point |
+| `  - mostly EMEA` | a nested dot point (two spaces, or one tab, per level) |
+| *(a blank line)* | an empty paragraph |
+| `\*` `\_` `\\` | a literal asterisk, underscore or backslash |
+
+```json
+{"layout": "bullets", "title": "Pricing / Unpriced risk costs us $4m a year",
+ "bullets": ["Claims up 20%", "Nothing repriced since 2023"],
+ "notes": "**Say**\n- Unpriced risk is costing us __$4m__ a year\n\n**Ask**\n- Sign off repricing at bind, effective __March__"}
+```
+
+- **Type the `- ` here.** This is the opposite of the slide rule above: a slide
+  layout draws its own bullet glyph, PowerPoint's notes master draws none, so
+  the server supplies it.
+- The two emphases nest (`**__4.2m__**`), and an opener with no closer on the
+  line stays literal rather than bolding the rest of it.
+- `notes_format: "plain"` switches the syntax off for one note — the escape
+  hatch for text that genuinely contains `__init__` or a literal `**`.
+- The result reports `bold_runs`, `underlined_runs`, `bullets` and
+  `note_words`, so you can see the formatting landed. `note_words` counts what a
+  presenter would *say*, excluding the bullet glyphs.
 
 ## Reviewing: `powerpoint_review`
 

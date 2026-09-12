@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r"""
-powerpoint.py (v4.0.0) - A single-file MCP (Model Context Protocol) stdio server
+powerpoint.py (v5.0.0) - A single-file MCP (Model Context Protocol) stdio server
 that builds PowerPoint .pptx decks, optionally from your own template, and
 audits them against Guy Kawasaki's 10/20/30 rule.
 
@@ -53,6 +53,11 @@ WHAT IT CAN DO
       layout's placeholders by name or index: a title, a subtitle, and bullets
       with real outline levels. Unfilled content placeholders are removed by
       default so the deck has no "Click to add text" prompts left in it.
+    - Write SPEAKER NOTES a presenter can actually read at a lectern. The
+      'notes' field takes a tiny Markdown-like syntax - **bold**, __underline__,
+      '- ' dot points and blank lines - and turns it into real formatted runs in
+      the notes pane, so a note reads as labelled, spaced, bulleted blocks
+      rather than a paragraph of prose. See SPEAKER NOTES below.
     - Edit what is there: powerpoint_set_placeholder, powerpoint_add_bullets,
       powerpoint_add_table, powerpoint_set_notes (speaker notes),
       powerpoint_delete_slide and powerpoint_move_slide.
@@ -99,6 +104,40 @@ DECK ORDER - WHY powerpoint_add_slides EXISTS
     parallel batch, not of separate conversational turns - adds an
     `order_warning` to the result, so a shuffle is reported instead of silently
     shipped.
+
+SPEAKER NOTES - THE ONE PLACE FORMATTING IS SET ON PURPOSE
+    Everything above is about NOT setting fonts: a slide inherits its look from
+    the template and an override is what breaks it. The notes pane is the
+    opposite case. Nobody in the room ever sees it; one person reads it, at a
+    lectern, a metre away, while talking - and a wall of prose is unusable
+    there. So 'notes' (on powerpoint_add_slides, powerpoint_add_slide and
+    powerpoint_set_notes) accepts a small Markdown-like syntax, applied line by
+    line:
+
+        **bold**          a bold run - use it for the labels (**Say:**, **Ask:**)
+        __underline__     an underlined run - the figure you must not misread
+        - dot point       a paragraph led by a bullet glyph, at outline level 0
+          - nested        two spaces (or one tab) per extra level, up to 4
+        (a blank line)    an empty paragraph - the white space between blocks
+        \*  \_  \\          a literal asterisk, underscore or backslash
+
+    The two emphases nest (**__4.2m__**), and an opening marker with no closer
+    on the same line stays literal rather than formatting the rest of the line.
+    Pass notes_format="plain" to switch the whole thing off and write the string
+    through verbatim - the escape hatch for a note that genuinely contains
+    '__init__' or a literal '**'.
+
+    WHY THE SERVER TYPES THE BULLET CHARACTER HERE, having spent the rest of
+    this file stripping typed bullets OUT of slide text: a slide layout draws
+    its own bullet glyph, so a typed one doubles up. PowerPoint's notes master
+    does not - its body style is buNone - so a dot point in the notes pane only
+    looks like one if the text carries the character. The paragraph's outline
+    level still does the indenting.
+
+    The Markdown mirror and powerpoint_review read the notes back as PLAIN text:
+    a RAG index is better off without emphasis markers, and the 20-minute
+    estimate counts the words a presenter would SAY, with bullet glyphs
+    excluded.
 
 WHY THE FONT-SIZE AUDIT IS NOT JUST run.font.size
     In a well-built deck almost NO run carries an explicit size: it is inherited
@@ -315,7 +354,7 @@ failed transfer" rule):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "4.0.0"
+__version__ = "5.0.0"
 
 # =============================================================================
 # CONFIGURATION  (all user-editable settings live here, nothing scattered below)
@@ -405,6 +444,25 @@ KB_DIR = r"C:\Eva\knowledge\powerpoint"
 KAWASAKI_MAX_SLIDES = 10
 KAWASAKI_MAX_MINUTES = 20
 KAWASAKI_MIN_FONT_PT = 30
+
+# --- Speaker notes ---------------------------------------------------------
+# The notes pane is read by ONE person, at a lectern, while talking, so it is
+# the one surface in this server where formatting is set explicitly rather than
+# inherited from the template (see SPEAKER NOTES in the module docstring).
+#
+# NOTES_BULLET_MARKERS is the glyph a dot point is drawn with at each nesting
+# level. The server types it because PowerPoint's notes master, unlike a slide
+# layout, draws no bullet of its own (its body style is buNone). If YOUR
+# template's notes master does draw one, set these to ("", "", "") - the
+# paragraph levels still indent.
+NOTES_BULLET_MARKERS = (u"\u2022", u"\u2013", u"\u00b7")   # bullet, en dash, middot
+# Spaces of indent per nesting level in a dot point; a tab counts as one level.
+NOTES_INDENT_SPACES = 2
+NOTES_MAX_LEVEL = 4
+# 'markdown' applies the mini-language; 'plain' writes the string through
+# untouched, for a note that genuinely contains '__init__' or a literal '**'.
+NOTES_FORMATS = ("markdown", "plain")
+NOTES_DEFAULT_FORMAT = "markdown"
 
 # Words per minute used to turn a speaker-note word count into an estimated
 # speaking time. 130 is a common figure for measured conference delivery;
@@ -1535,6 +1593,192 @@ def _fill_text_frame(text_frame, items, replace=True):
     return written
 
 
+# --- Speaker notes: the mini-language ---------------------------------------
+# See SPEAKER NOTES in the module docstring for why this is the one place the
+# server formats text itself instead of leaving it to the template.
+
+# Characters a backslash may escape inside a note.
+_NOTES_ESCAPABLE = "\\*_"
+# A line that opens with one of these (after its indent) is a dot point. Both
+# the ASCII markers a caller naturally types and the glyphs this server writes
+# are accepted, so notes read back out of a deck and sent in again round-trip.
+_NOTES_BULLET_RE = re.compile(u"^([ \t]*)([-*\u2022\u2013\u00b7])[ \t]+(.*)$")
+# Tokens made only of these carry no spoken words: a bullet glyph, or an
+# emphasis marker left in place by notes_format="plain".
+_NOTES_GLYPH_CHARS = u"\u2022\u2013\u00b7-*_ \t"
+
+
+def _spoken_words(text):
+    """
+    The number of words a presenter would actually SAY from a note: a plain
+    split, minus tokens that are nothing but a bullet glyph or an emphasis
+    marker. Counting the glyph would add one imaginary word per dot point to
+    powerpoint_review's 20-minute estimate, and notes written as dot points are
+    mostly glyphs.
+    """
+    return len([w for w in (text or "").split() if w.strip(_NOTES_GLYPH_CHARS)])
+
+
+def _normalise_notes_format(value, argname="notes_format"):
+    """Validate a notes format, mapping absent or blank to the default."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return NOTES_DEFAULT_FORMAT
+    if isinstance(value, str) and value.strip().lower() in NOTES_FORMATS:
+        return value.strip().lower()
+    raise ToolError(
+        "{} must be one of {}. 'markdown' applies the notes mini-language "
+        "(**bold**, __underline__, '- ' dot points, blank lines); 'plain' "
+        "writes the string through untouched.".format(
+            argname, ", ".join(repr(f) for f in NOTES_FORMATS)))
+
+
+def _notes_has_closer(line, start, marker):
+    """
+    True if `marker` appears at or after `start`, skipping escaped characters.
+    An opening marker with no closer is left as literal text, so a stray '**'
+    in a note cannot silently bold the rest of the line.
+    """
+    i = start
+    while i < len(line):
+        if line[i] == "\\" and i + 1 < len(line):
+            i += 2
+            continue
+        if line.startswith(marker, i):
+            return True
+        i += 1
+    return False
+
+
+def _parse_notes_runs(line):
+    """
+    Split one line of note text into runs: [{"text", "bold", "underline"}].
+    '**' opens and closes bold, '__' underline, the two nest, and a backslash
+    escapes the next character. Returns [] for a line with no text left.
+    """
+    runs = []
+    buf = []
+    state = {"bold": False, "underline": False}
+
+    def flush():
+        if buf:
+            runs.append({"text": "".join(buf),
+                         "bold": state["bold"],
+                         "underline": state["underline"]})
+            del buf[:]
+
+    i = 0
+    while i < len(line):
+        char = line[i]
+        if char == "\\" and i + 1 < len(line) and line[i + 1] in _NOTES_ESCAPABLE:
+            buf.append(line[i + 1])
+            i += 2
+            continue
+        pair = line[i:i + 2]
+        for marker, key in (("**", "bold"), ("__", "underline")):
+            if pair != marker:
+                continue
+            if state[key]:                              # closing an emphasis
+                flush()
+                state[key] = False
+                i += 2
+                break
+            if _notes_has_closer(line, i + 2, marker):  # opening one that closes
+                flush()
+                state[key] = True
+                i += 2
+                break
+        else:
+            buf.append(char)
+            i += 1
+    flush()
+    return runs
+
+
+def _notes_bullet_level(indent):
+    """Nesting level for a dot point's leading whitespace: NOTES_INDENT_SPACES
+    spaces, or one tab, per level - clamped to NOTES_MAX_LEVEL."""
+    width = indent.replace("\t", " " * NOTES_INDENT_SPACES).count(" ")
+    return min(width // NOTES_INDENT_SPACES, NOTES_MAX_LEVEL)
+
+
+def _write_notes(slide, text, fmt=NOTES_DEFAULT_FORMAT):
+    """
+    Replace a slide's speaker notes and report what was written.
+
+    With fmt="markdown" (the default) the mini-language is applied, so the pane
+    comes out as labelled, spaced, bulleted blocks a presenter can read at a
+    glance. With fmt="plain" the string is written through untouched.
+
+    Reaching slide.notes_slide CREATES a notes slide, which is wanted here and
+    is exactly why _notes_text checks has_notes_slide before reading.
+    """
+    frame = slide.notes_slide.notes_text_frame
+    text = "" if text is None else str(text)
+
+    if fmt == "plain":
+        frame.text = text
+        return {"notes_format": "plain",
+                "paragraphs": len(text.split("\n")) if text else 0,
+                "note_words": _spoken_words(text),
+                "bullets": 0, "bold_runs": 0, "underlined_runs": 0}
+
+    frame.clear()                       # leaves exactly one empty paragraph
+    lines = text.split("\n") if text else []
+    # Trailing blank lines are an artefact of how a multi-line string is
+    # usually written; they would leave stray empty paragraphs in the pane.
+    while lines and not lines[-1].strip():
+        lines.pop()
+
+    written = bullets = bold_runs = underlined_runs = 0
+    for line in lines:
+        para = None
+        if written == 0 and frame.paragraphs:
+            last = frame.paragraphs[-1]
+            if not last.text.strip() and not last.runs:
+                para = last             # reuse the one clear() left behind
+        if para is None:
+            para = frame.add_paragraph()
+        written += 1
+
+        if not line.strip():            # a blank line IS the white space
+            continue
+
+        match = _NOTES_BULLET_RE.match(line)
+        if match:
+            level = _notes_bullet_level(match.group(1))
+            body = match.group(3)
+            para.level = level
+            bullets += 1
+            marker = NOTES_BULLET_MARKERS[
+                min(level, len(NOTES_BULLET_MARKERS) - 1)]
+            if marker:
+                # Its own run, so the glyph never inherits the first word's
+                # bold or underline.
+                run = para.add_run()
+                run.text = marker + " "
+        else:
+            body = line.strip()
+
+        for spec in _parse_notes_runs(body):
+            if not spec["text"]:
+                continue
+            run = para.add_run()
+            run.text = spec["text"]
+            if spec["bold"]:
+                run.font.bold = True
+                bold_runs += 1
+            if spec["underline"]:
+                run.font.underline = True
+                underlined_runs += 1
+
+    return {"notes_format": "markdown",
+            "paragraphs": written,
+            "note_words": _spoken_words(frame.text),
+            "bullets": bullets,
+            "bold_runs": bold_runs,
+            "underlined_runs": underlined_runs}
+
+
 def _drop_empty_content_placeholders(slide):
     """
     Remove content placeholders left empty, so the deck carries no
@@ -1799,7 +2043,7 @@ def _estimate_minutes(prs):
         notes = _notes_text(slide)
         if notes:
             slides_with_notes += 1
-            words += len(notes.split())
+            words += _spoken_words(notes)
     speaking = words / float(SPEAKING_WORDS_PER_MINUTE) if words else 0.0
     overhead = (len(slides) * SPEAKING_SECONDS_PER_SLIDE) / 60.0
     total = speaking + overhead
@@ -2041,8 +2285,9 @@ def tool_create(args):
 
     template = args.get("template")
     template_used = None
+    template_fuzzy = False
     if template is not None and str(template).strip():
-        tmpl_path, _fuzzy = _resolve_existing_pptx(str(template))
+        tmpl_path, template_fuzzy = _resolve_existing_pptx(str(template))
         if os.path.realpath(tmpl_path) == os.path.realpath(target):
             raise ToolError("template and the new file resolve to the same path.")
         prs = _open_presentation(tmpl_path)
@@ -2082,6 +2327,15 @@ def tool_create(args):
     }
     if template_used:
         result["template"] = template_used
+        if template_fuzzy:
+            # powerpoint_open flags a fuzzy name match; create must too. The
+            # template decides the whole deck's look, so a near-miss taken
+            # silently is a rebuild rather than a typo.
+            result["template_fuzzy_matched"] = True
+            result["template_note"] = (
+                "'{}' was not an exact filename; the closest match in the "
+                "templates folder was used. Confirm it is the right one before "
+                "building the deck.".format(str(template).strip()))
         if removed:
             result["template_example_slides_removed"] = removed
             result["note"] = (
@@ -2232,6 +2486,8 @@ def _normalise_slide_spec(raw, where=None):
         "title": raw.get("title"),
         "subtitle": raw.get("subtitle"),
         "notes": raw.get("notes"),
+        "notes_format": _normalise_notes_format(
+            raw.get("notes_format"), _field(where, "notes_format")),
         "placeholder": raw.get("placeholder"),
         "drop_empty_placeholders": bool(raw.get("drop_empty_placeholders", True)),
         "bullets": _normalise_bullets(
@@ -2351,8 +2607,10 @@ def _build_slide(prs, spec, layout):
                        "paragraphs": written})
 
     notes = spec.get("notes")
+    notes_summary = None
     if notes is not None and str(notes).strip():
-        slide.notes_slide.notes_text_frame.text = str(notes)
+        notes_summary = _write_notes(
+            slide, str(notes), spec.get("notes_format", NOTES_DEFAULT_FORMAT))
 
     table_info = None
     if spec.get("table"):
@@ -2372,6 +2630,8 @@ def _build_slide(prs, spec, layout):
         "layout_index": list(prs.slide_layouts).index(layout),
         "filled": filled,
     }
+    if notes_summary:
+        entry["notes"] = notes_summary
     if table_info:
         entry["table"] = table_info
     if removed:
@@ -2560,13 +2820,13 @@ def tool_set_notes(args):
     text = _require(args, "notes")
     if not isinstance(text, str):
         raise ToolError("notes must be a string")
-    slide.notes_slide.notes_text_frame.text = text
-    words = len(text.split())
-    return {
-        "slide_index": index,
-        "note_words": words,
-        "adds_seconds": round(words / float(SPEAKING_WORDS_PER_MINUTE) * 60, 1),
-    }
+    summary = _write_notes(slide, text,
+                           _normalise_notes_format(args.get("notes_format")))
+    result = {"slide_index": index}
+    result.update(summary)
+    result["adds_seconds"] = round(
+        summary["note_words"] / float(SPEAKING_WORDS_PER_MINUTE) * 60, 1)
+    return result
 
 
 _TABLE_NOTE = ("Table text is styled by the deck's table style, so this server "
@@ -2792,7 +3052,7 @@ def tool_get_content(args):
             notes = _notes_text(slide)
             if notes:
                 slide_entry["notes"] = notes
-                slide_entry["note_words"] = len(notes.split())
+                slide_entry["note_words"] = _spoken_words(notes)
         slides_out.append(slide_entry)
     if only is not None and not slides_out:
         raise ToolError(
@@ -3002,6 +3262,25 @@ _LAYOUT_HELP = (
     "branded deck names its layouts something else entirely. Omit it to use the "
     "template's own bullets/content layout."
 )
+_NOTES_HELP = (
+    "Speaker notes for this slide - the sentences you will SAY, which is what "
+    "keeps text off the slide and lets it stay at 30 points, and what "
+    "powerpoint_review times the talk from. Write them to be READ AT A LECTERN, "
+    "not as an essay: this field takes a small Markdown-like syntax and turns "
+    "it into real formatting in the notes pane. '**bold**' for the labels "
+    "(**Say:**, **Evidence:**, **Ask:**), '__underline__' for a figure you must "
+    "not misread, a line starting '- ' for a dot point (indent two spaces per "
+    "extra level), and a BLANK LINE for the white space between blocks. The two "
+    "emphases nest ('**__4.2m__**'), a backslash escapes a literal '*' or '_', "
+    "and an opening marker with no closer on the line stays literal. Unlike "
+    "slide bullets, DO type the '- ': PowerPoint's notes master draws no bullet "
+    "of its own, so the server supplies the glyph."
+)
+_NOTES_FORMAT_HELP = (
+    "How to interpret 'notes': 'markdown' (default) applies the mini-language "
+    "above; 'plain' writes the string through untouched - the escape hatch for "
+    "a note that genuinely contains '__init__' or a literal '**'."
+)
 _BULLETS_HELP = (
     "Bullet points, one per item: a list of strings, or a list of "
     "{\"text\": \"...\", \"level\": 0} objects where level is the 0-based "
@@ -3066,7 +3345,7 @@ TOOLS = [
     },
     {
         "name": "powerpoint_add_slides",
-        "description": "Append MANY slides in ONE call, in the exact order given - THE TOOL TO BUILD A DECK WITH. Use it for anything past a single slide, and never fire a series of powerpoint_add_slide calls instead: each of those appends to the END of the deck, so the deck's order is the order the CALLS ARRIVE at the server, and independent tool calls issued together may be dispatched in parallel and arrive in any order - which comes out as a shuffled deck. One call carrying the whole sequence cannot be reordered. Each entry of 'slides' takes exactly what powerpoint_add_slide takes - layout, title, subtitle, bullets, placeholder, notes, drop_empty_placeholders - plus two things that used to need a second call against a slide_index: 'placeholders' (a list of {placeholder, text|bullets} for a two-content layout's other column) and 'table' ({rows: [[...]]}). Every entry, including every layout name, is validated BEFORE any slide is added, so a bad entry leaves the deck untouched and the error names its index. Returns each slide's real slide_index in order, so any later edit addresses the right slide.",
+        "description": "Append MANY slides in ONE call, in the exact order given - THE TOOL TO BUILD A DECK WITH. Use it for anything past a single slide, and never fire a series of powerpoint_add_slide calls instead: each of those appends to the END of the deck, so the deck's order is the order the CALLS ARRIVE at the server, and independent tool calls issued together may be dispatched in parallel and arrive in any order - which comes out as a shuffled deck. One call carrying the whole sequence cannot be reordered. Each entry of 'slides' takes exactly what powerpoint_add_slide takes - layout, title, subtitle, bullets, placeholder, notes, drop_empty_placeholders - plus two things that used to need a second call against a slide_index: 'placeholders' (a list of {placeholder, text|bullets} for a two-content layout's other column) and 'table' ({rows: [[...]]}). Every entry, including every layout name, is validated BEFORE any slide is added, so a bad entry leaves the deck untouched and the error names its index. Returns each slide's real slide_index in order, so any later edit addresses the right slide. Give EVERY entry its own 'notes': the field takes '**bold**', '__underline__', '- ' dot points and blank lines, and renders them as real formatting in the notes pane.",
         "handler": tool_add_slides,
         "inputSchema": {
             "type": "object",
@@ -3086,7 +3365,8 @@ TOOLS = [
                             "placeholder": {"type": ["string", "integer"], "description": "Optional: which placeholder the bullets go in, by idx, name or type word. Defaults to the layout's first body/content placeholder."},
                             "placeholders": {"type": "array", "items": {"type": "object"}, "description": "Optional EXTRA placeholder fills, each {\"placeholder\": <idx|name|type word>, \"text\": \"...\"} or {\"placeholder\": ..., \"bullets\": [...]}. This is how a two-content layout's second column is filled without a separate powerpoint_set_placeholder call."},
                             "table": {"type": "object", "description": "Optional table for this slide: {\"rows\": [[\"Region\",\"Q3\"],[\"APAC\",\"1.2m\"]]}, first row treated as the header. It takes over an empty content placeholder's position, so it lands where the template says content goes."},
-                            "notes": {"type": "string", "description": "Speaker notes for this slide - where the argument lives, so the slide can stay a headline at 30+ points. Also what powerpoint_review times the talk from."},
+                            "notes": {"type": "string", "description": _NOTES_HELP},
+                            "notes_format": {"type": "string", "enum": list(NOTES_FORMATS), "default": NOTES_DEFAULT_FORMAT, "description": _NOTES_FORMAT_HELP},
                             "drop_empty_placeholders": {"type": "boolean", "default": True, "description": "Remove TEXT placeholders left empty (default true). Picture/table/chart placeholders are never removed."},
                         },
                     },
@@ -3097,7 +3377,7 @@ TOOLS = [
     },
     {
         "name": "powerpoint_add_slide",
-        "description": "Append ONE slide built on one of the template's layouts and fill that layout's placeholders. Use this only for a single slide added on its own - to build a deck, or add any run of two or more slides, use powerpoint_add_slides, which keeps them in order (several add_slide calls issued together can be dispatched in parallel and arrive out of order, shuffling the deck). Text goes into PLACEHOLDERS, so the template's own fonts, sizes, colours and positions apply automatically; there is deliberately no way to set a font here, because that is what would break template adherence. Pass 'title', 'subtitle' and/or 'bullets' as the layout supports them, and 'notes' for the speaker notes (which is where the sentences you actually say belong). Unfilled TEXT placeholders are removed by default so the deck carries no 'Click to add text' prompts; picture/table/chart placeholders are always kept so a human can fill them in. Warns when the deck passes the 10-slide guideline.",
+        "description": "Append ONE slide built on one of the template's layouts and fill that layout's placeholders. Use this only for a single slide added on its own - to build a deck, or add any run of two or more slides, use powerpoint_add_slides, which keeps them in order (several add_slide calls issued together can be dispatched in parallel and arrive out of order, shuffling the deck). Text goes into PLACEHOLDERS, so the template's own fonts, sizes, colours and positions apply automatically; there is deliberately no way to set a font here, because that is what would break template adherence. Pass 'title', 'subtitle' and/or 'bullets' as the layout supports them, and 'notes' for the speaker notes (which is where the sentences you actually say belong - the field takes '**bold**', '__underline__', '- ' dot points and blank lines, rendered as real formatting in the notes pane). Unfilled TEXT placeholders are removed by default so the deck carries no 'Click to add text' prompts; picture/table/chart placeholders are always kept so a human can fill them in. Warns when the deck passes the 10-slide guideline.",
         "handler": tool_add_slide,
         "inputSchema": {
             "type": "object",
@@ -3110,7 +3390,8 @@ TOOLS = [
                 "placeholder": {"type": ["string", "integer"], "description": "Optional: which placeholder the bullets go in, by idx, name or type word ('body', 'content'). Defaults to the layout's first body/content placeholder - only needed for a two-content layout, where you name the second one explicitly."},
                 "placeholders": {"type": "array", "items": {"type": "object"}, "description": "Optional EXTRA placeholder fills, each {\"placeholder\": <idx|name|type word>, \"text\": \"...\"} or {\"placeholder\": ..., \"bullets\": [...]} - a two-content layout's second column, filled in this same call rather than a follow-up powerpoint_set_placeholder."},
                 "table": {"type": "object", "description": "Optional table for this slide: {\"rows\": [[\"Region\",\"Q3\"],[\"APAC\",\"1.2m\"]]}, first row treated as the header. It takes over an empty content placeholder's position, so it lands where the template says content goes."},
-                "notes": {"type": "string", "description": "Speaker notes for this slide. Under the 10/20/30 rule this is where the argument lives, so the slide can stay a headline at 30+ points; it is also what powerpoint_review times the talk from."},
+                "notes": {"type": "string", "description": _NOTES_HELP},
+                "notes_format": {"type": "string", "enum": list(NOTES_FORMATS), "default": NOTES_DEFAULT_FORMAT, "description": _NOTES_FORMAT_HELP},
                 "drop_empty_placeholders": {"type": "boolean", "default": True, "description": "Remove TEXT placeholders left empty, so no 'Click to add text' prompt remains (default true). Picture/table/chart placeholders are never removed. Set false to keep empty placeholders for a human to fill in PowerPoint."},
             },
             "required": ["session_id"],
@@ -3149,14 +3430,15 @@ TOOLS = [
     },
     {
         "name": "powerpoint_set_notes",
-        "description": "Set a slide's speaker notes, replacing any existing ones. Notes are not an afterthought under the 10/20/30 rule: the slide holds the headline and the notes hold the sentences you actually say, which is what keeps text off the slide and lets it stay at 30 points. powerpoint_review estimates the talk's length from these, so a deck with no notes cannot be timed. Returns the word count and the seconds it adds to the estimate.",
+        "description": "Set a slide's speaker notes, replacing any existing ones. Notes are not an afterthought under the 10/20/30 rule: the slide holds the headline and the notes hold the sentences you actually say, which is what keeps text off the slide and lets it stay at 30 points. powerpoint_review estimates the talk's length from these, so a deck with no notes cannot be timed. The text takes a Markdown-like syntax - '**bold**' labels, '__underline__' for figures, '- ' dot points and blank lines - which becomes real formatting in the notes pane, so the pane can be read at a glance at a lectern. For a slide you are still building, pass 'notes' in its powerpoint_add_slides entry instead, so no slide_index is ever guessed. Returns the spoken word count (bullet glyphs excluded), how many runs came out bold and underlined, and the seconds it adds to the estimate.",
         "handler": tool_set_notes,
         "inputSchema": {
             "type": "object",
             "properties": {
                 "session_id": {"type": "string"},
                 "slide_index": {"type": "integer", "description": "Zero-based slide index."},
-                "notes": {"type": "string", "description": "The speaker notes for this slide - what you will SAY, in full sentences. Pass an empty string to clear them."},
+                "notes": {"type": "string", "description": _NOTES_HELP + " Pass an empty string to clear them."},
+                "notes_format": {"type": "string", "enum": list(NOTES_FORMATS), "default": NOTES_DEFAULT_FORMAT, "description": _NOTES_FORMAT_HELP},
             },
             "required": ["session_id", "slide_index", "notes"],
         },
@@ -3454,6 +3736,14 @@ def run_check():
         sid = created["session_id"]
         expect("create from template resolves it",
                created.get("template") == "Check Template.pptx", created.get("template"))
+        expect("an exact template name is not flagged as fuzzy",
+               "template_fuzzy_matched" not in created, created)
+        near_miss = tool_create({"filename": "near-miss-deck",
+                                 "template": "check templat"})
+        expect("a near-miss template name is flagged, not taken silently",
+               near_miss.get("template") == "Check Template.pptx" and
+               near_miss.get("template_fuzzy_matched") is True, near_miss)
+        tool_close({"session_id": near_miss["session_id"]})
         expect("template example slides stripped",
                created["slides"] == 0 and
                created.get("template_example_slides_removed") == 1, created)
@@ -3533,6 +3823,76 @@ def run_check():
         notes_res = tool_set_notes({"session_id": sid, "slide_index": 1,
                                     "notes": "Replaced notes. " * 25})
         expect("notes word count reported", notes_res["note_words"] == 50, notes_res)
+
+        # --- speaker notes: the mini-language becomes real formatting -------
+        # Written through the tool, then read back off the SHAPE, because the
+        # point of the feature is what lands in the notes pane rather than what
+        # the parser returned.
+        formatted = (
+            u"**Say:**\n"
+            u"- Unpriced risk costs us __4m__ a year\n"
+            u"\n"
+            u"**Evidence:**\n"
+            u"- Claims up __20%__\n"
+            u"  - mostly **EMEA**\n"
+            u"\n"
+            u"A literal \\*\\*star pair\\*\\* stays as typed"
+        )
+        fmt_res = tool_set_notes({"session_id": sid, "slide_index": 1,
+                                  "notes": formatted})
+        expect("notes report their bold and underlined runs",
+               fmt_res["bold_runs"] == 3 and fmt_res["underlined_runs"] == 2,
+               fmt_res)
+        expect("dot points counted", fmt_res["bullets"] == 3, fmt_res)
+        notes_frame = _get_slide(SESSIONS[sid]["prs"], 1) \
+            .notes_slide.notes_text_frame
+        paras = list(notes_frame.paragraphs)
+        bold_text = [r.text for p_ in paras for r in p_.runs if r.font.bold]
+        under_text = [r.text for p_ in paras for r in p_.runs if r.font.underline]
+        expect("bold runs carry the labels",
+               bold_text == ["Say:", "Evidence:", "EMEA"], bold_text)
+        expect("underlined runs carry the figures",
+               under_text == ["4m", "20%"], under_text)
+        expect("blank lines survive as empty paragraphs",
+               len([p_ for p_ in paras if not p_.text.strip()]) == 2,
+               [p_.text for p_ in paras])
+        expect("the server draws the bullet the notes master does not",
+               notes_frame.text.count(NOTES_BULLET_MARKERS[0]) == 2 and
+               notes_frame.text.count(NOTES_BULLET_MARKERS[1]) == 1,
+               notes_frame.text)
+        expect("a nested dot point gets its outline level",
+               [p_.level for p_ in paras if p_.text.strip().startswith(
+                   NOTES_BULLET_MARKERS[1])] == [1],
+               [(p_.level, p_.text) for p_ in paras])
+        expect("a backslash escapes a literal marker",
+               "**star pair**" in notes_frame.text, notes_frame.text)
+        expect("bullet glyphs are not counted as spoken words",
+               fmt_res["note_words"] == _spoken_words(notes_frame.text) ==
+               len([w for w in notes_frame.text.split()
+                    if w not in NOTES_BULLET_MARKERS]),
+               (fmt_res["note_words"], notes_frame.text))
+
+        # notes_format="plain" is the escape hatch, and writes through verbatim.
+        plain_res = tool_set_notes({"session_id": sid, "slide_index": 1,
+                                    "notes": u"**not bold** and __init__",
+                                    "notes_format": "plain"})
+        plain_frame = _get_slide(SESSIONS[sid]["prs"], 1) \
+            .notes_slide.notes_text_frame
+        expect("notes_format=plain writes the string through untouched",
+               plain_frame.text == u"**not bold** and __init__" and
+               plain_res["bold_runs"] == 0, plain_frame.text)
+        try:
+            tool_set_notes({"session_id": sid, "slide_index": 1,
+                            "notes": "x", "notes_format": "html"})
+            expect("an unknown notes_format is refused", False, "no error")
+        except ToolError as exc:
+            expect("an unknown notes_format is refused",
+                   "markdown" in str(exc), str(exc))
+        # Put the timed notes back, so the review below measures what it did
+        # before this block ran.
+        tool_set_notes({"session_id": sid, "slide_index": 1,
+                        "notes": "Replaced notes. " * 25})
+
         table_res = tool_add_table({
             "session_id": sid, "slide_index": 0,
             "rows": [["Region", "Q3"], ["APAC", "1.2m"]]})

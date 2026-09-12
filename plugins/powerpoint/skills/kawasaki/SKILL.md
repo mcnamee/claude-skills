@@ -94,6 +94,12 @@ breaks the rule *without anyone choosing a font*. Prefer top-level bullets only.
 which slides to cut and why. Be specific — "slides 7, 9 and 12 all restate the
 value proposition; keep 7" beats "consider tightening".
 
+**Sectioned decks spend extra slides.** A deck with a divider in front of each
+section runs past ten without carrying more argument, and
+[`slide-deck`](../slide-deck/SKILL.md) builds them that way on purpose. There,
+count the rule against **content** slides and say what the total is, rather than
+deleting dividers to make `powerpoint_review` go green.
+
 ## With the `powerpoint` MCP server
 
 If the `powerpoint` tools are available, the rule is **measurable**, not just
@@ -106,7 +112,11 @@ and:
   layout is how you obey the 30-point rule without ever setting a font.
 - **`notes`** on every slide — one `powerpoint_add_slides` entry per slide, each
   carrying its own. Without notes the 20-minute estimate has nothing to measure
-  and the review says so.
+  and the review says so. The field takes `**bold**`, `__underline__`, `- ` dot
+  points and blank lines, and renders them as real formatting in the notes pane,
+  so moving text off a slide does not make it harder to deliver. Notes written
+  as dot points estimate a little **short** against prose, so treat a 19-minute
+  estimate as "about right", not as headroom.
 - **`powerpoint_review`** before saving, and again after every trim. It resolves
   each run's *effective* font size through the template inheritance chain, so it
   catches the inherited 28-point sub-bullet that reading the file would miss.

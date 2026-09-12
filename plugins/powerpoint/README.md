@@ -6,11 +6,11 @@ rule**.
 
 | | |
 |---|---|
-| **Server** | `powerpoint.py` v4.0.0 |
+| **Server** | `powerpoint.py` v5.0.0 |
 | **pip install** | `python-pptx` (pulls in `lxml`, `Pillow`, `XlsxWriter`, `typing_extensions`) |
 | **Platform** | any (PowerPoint itself is not required) |
 | **Writes to disk** | yes — confined to its configured folders |
-| **Skills** | `/powerpoint:powerpoint` (mechanics) and `/powerpoint:kawasaki` (the 10/20/30 rule) |
+| **Skills** | `/powerpoint:slide-deck` (the house deck shape), `/powerpoint:powerpoint` (mechanics) and `/powerpoint:kawasaki` (the 10/20/30 rule) |
 
 ## Install
 
@@ -19,7 +19,7 @@ rule**.
 /plugin install powerpoint@mcnamee-claude-skills
 ```
 
-Both skills are installed with the server. Claude Code prompts for nothing -
+All three skills are installed with the server. Claude Code prompts for nothing -
 every folder and the Python interpreter come from the shared environment
 variables below.
 
@@ -110,6 +110,7 @@ style is set once and every review follows it:
 | `KAWASAKI_MIN_FONT_PT` | `30` | Minimum body font, in points |
 | `SPEAKING_WORDS_PER_MINUTE` | `130` | Turns a speaker-note word count into minutes |
 | `SPEAKING_SECONDS_PER_SLIDE` | `15` | Per-slide overhead added to the estimate |
+| `NOTES_BULLET_MARKERS` | `("•", "–", "·")` | The glyph a speaker-note dot point is drawn with, by nesting level. Set to `("", "", "")` if your template's notes master draws its own |
 
 ## What it does well
 
@@ -120,10 +121,10 @@ subtitle, bullets, extra placeholder fills, a table and speaker notes:
 ```json
 {"session_id": "...", "slides": [
   {"layout": "title",   "title": "FY26 plan", "subtitle": "Board review",
-   "notes": "Thanks for making the time."},
+   "notes": "**Open**\n- Thanks for the time - __20 minutes__, then questions"},
   {"layout": "bullets", "title": "Unpriced risk costs us GBP 4m a year",
    "bullets": ["Claims up 20%", {"text": "mostly EMEA", "level": 1}],
-   "notes": "Walk through where the four million goes."},
+   "notes": "**Evidence**\n- Claims up __20%__\n  - three brokers, all EMEA\n\n**Ask**\n- Reprice at bind from March"},
   {"layout": "section", "title": "Our answer"},
   {"layout": "bullets", "title": "The numbers",
    "table": {"rows": [["Region", "Q3"], ["APAC", "1.2m"]]}},
@@ -199,12 +200,42 @@ decisions — say less, cut a slide, choose a different layout — not font
 overrides, which would break the template adherence the server exists to
 protect. `powerpoint_save` returns the headline automatically.
 
-**Speaker notes as first-class content.** `notes` on each `powerpoint_add_slides`
-entry, or `powerpoint_set_notes` against a slide index you read back. Under the rule the slide carries the headline and the
-notes carry the argument; the notes are also the only input to the timing
-estimate, and they are mirrored into the knowledge base alongside the slides, so
-a deck you wrote is searchable by what you meant rather than by its headlines
-alone.
+**Speaker notes you can actually read at a lectern.** `notes` on each
+`powerpoint_add_slides` entry, or `powerpoint_set_notes` against a slide index
+you read back. Under the rule the slide carries the headline and the notes carry
+the argument; the notes are also the only input to the timing estimate, and they
+are mirrored into the knowledge base alongside the slides, so a deck you wrote is
+searchable by what you meant rather than by its headlines alone.
+
+The notes pane is the **one** surface this server formats on purpose. Everything
+else inherits from the template and an override is what breaks it — but nobody in
+the room ever sees the notes, one person reads them while talking, and a wall of
+prose is unusable there. So `notes` takes a small Markdown-like syntax and turns
+it into real runs:
+
+| You write | The pane shows |
+|---|---|
+| `**Evidence:**` | a **bold** run — use it for the labels |
+| `__$4m__` | an underlined run — the figure you must not misread |
+| `- Claims up 20%` | a dot point |
+| `  - mostly EMEA` | a nested dot point (two spaces, or one tab, per level) |
+| *(a blank line)* | an empty paragraph — the white space between blocks |
+| `\*` `\_` `\\` | a literal asterisk, underscore or backslash |
+
+The two emphases nest (`**__4.2m__**`), and an opening marker with no closer on
+the line stays literal rather than formatting the rest of it. Pass
+`notes_format: "plain"` to switch the syntax off for a note that genuinely
+contains `__init__` or a literal `**`.
+
+**The server types the bullet character here**, having spent the rest of the file
+stripping typed bullets *out* of slide text. That is not an inconsistency: a
+slide layout draws its own bullet glyph, so a typed one doubles up, while
+PowerPoint's notes master draws none at all (its body style is `buNone`). The
+paragraph's outline level still does the indenting.
+
+The Markdown mirror and `powerpoint_review` read notes back as **plain** text: a
+RAG index is better off without emphasis markers, and the 20-minute estimate
+counts the words a presenter would say, bullet glyphs excluded.
 
 **Finding files by name.** You don't need absolute paths. Names resolve against
 the presentation root, a bare filename is found in subfolders, and a near-miss
@@ -224,7 +255,7 @@ name returns the tied candidates rather than guessing.
 | `powerpoint_add_slide` | Append ONE slide on a layout, filling title / subtitle / bullets / notes |
 | `powerpoint_set_placeholder` | Replace one placeholder's text on an existing slide |
 | `powerpoint_add_bullets` | Append bullets without clearing |
-| `powerpoint_set_notes` | Set speaker notes |
+| `powerpoint_set_notes` | Set speaker notes — `**bold**`, `__underline__`, `- ` dot points and blank lines become real formatting |
 | `powerpoint_add_table` | Add a table, taking over the layout's content placeholder position |
 | `powerpoint_get_content` | Read slides, paragraphs (with levels), tables and notes |
 | `powerpoint_delete_slide` | Delete a slide — indices shift down |
@@ -233,6 +264,20 @@ name returns the tied candidates rather than guessing.
 | `powerpoint_save` | Save in place or save-as, with a 10/20/30 headline |
 | `powerpoint_close` / `powerpoint_list_sessions` | Session management |
 
+## Skills
+
+Three ship with the plugin, and they divide by the question they answer.
+
+| Skill | Answers |
+|---|---|
+| **`/powerpoint:slide-deck`** | *What is this deck?* The house shape: a title slide, a divider introducing every section, slides inside a section titled `<Short Section Title> / <Slide Title>`, bullets where they earn their place, and speaker notes on every slide written as bold-labelled dot points |
+| `/powerpoint:powerpoint` | *How do I drive the server?* The call order, the one-call build rule, placeholders over fonts, and the sandbox |
+| `/powerpoint:kawasaki` | *How much is too much?* The 10/20/30 rule itself, how to apply it when drafting or critiquing, and when it does not fit |
+
+`slide-deck` treats 10/20/30 as aspirational, because a sectioned deck spends
+extra slides on its dividers. It counts the rule against **content** slides and
+says so rather than deleting dividers to make `powerpoint_review` go green.
+
 ## Validate before wiring in
 
 ```powershell
@@ -240,7 +285,7 @@ name returns the tied candidates rather than guessing.
 ```
 
 Builds a temp template, creates a deck from it, adds slides, saves, reopens and
-audits — 73 assertions, no network, nothing left behind. Expected tail:
+audits — 86 assertions, no network, nothing left behind. Expected tail:
 
 ```
 [check] ALL CHECKS PASSED
@@ -313,6 +358,11 @@ Put your branded deck in `%EVA_TEMPLATES_DIR%\powerpoint` (see
 - **Check the deeper outline levels.** Nearly every template shrinks each level
   (the stock Office one runs 32 / 28 / 24 / 20 point), so a level‑2 bullet
   breaks the 30-point rule without anyone choosing a font.
+- **Include a section-divider layout.** `/powerpoint:slide-deck` puts one in
+  front of every section; without one it falls back to `title_only` and says so.
+- **Leave the notes master alone.** PowerPoint's notes body style is `buNone`,
+  which is why the server types the bullet glyph itself. If yours *does* draw
+  bullets, set `NOTES_BULLET_MARKERS` to `("", "", "")`.
 - **Keep the slides empty.** Example slides are stripped on create, so they cost
   nothing — but a template that is *only* masters and layouts is clearer.
 - `.potx` works as a template; decks are always saved as `.pptx`.
@@ -326,6 +376,9 @@ Put your branded deck in `%EVA_TEMPLATES_DIR%\powerpoint` (see
   kept, never dropped) and drop the image in by hand.
 - **No theme editing.** Changing a template's fonts or colours is the template's
   job; doing it here would defeat the point.
+- **Speaker-note formatting is bold and underline only.** No sizes, colours,
+  italics or highlighting in the notes pane — those are what turn a legible note
+  back into a decorated one.
 - The **timing estimate is a planning aid, not a stopwatch** — a constant
   words-per-minute never matches a real delivery. It is reported with all its
   inputs so it can be judged.

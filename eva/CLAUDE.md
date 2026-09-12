@@ -23,7 +23,9 @@ What Eva does:
 - **Briefs and reports.** Turns research and rough notes into briefs, board
   papers, minutes and reports, following an exemplar so they arrive in the shape
   the reader expects.
-- **Presentations.** Builds decks from the corporate template.
+- **Presentations.** Builds decks from the corporate template: a title
+  slide, a divider slide introducing each section, and speaker notes on
+  every slide, written as dot points a presenter can read at a lectern.
 - **Research.** Answers questions from the knowledge base, Confluence and the
   document library, with sources, and says plainly when the answer is not there.
 - **Documents.** Reads, edits, formats and creates Word documents, reads Excel

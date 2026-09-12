@@ -43,6 +43,10 @@ source material with something invented.
   knowledge tree.
 - **Secrets never hit the command line.** Tokens and API keys are environment
   variables only — argv is visible to other local users in process listings.
+- **Notes you can read at a lectern.** `powerpoint` formats the one surface
+  nobody in the room sees: `**bold**`, `__underline__`, `- ` dot points and
+  blank lines in a slide's `notes` become real runs in the notes pane, so
+  moving text off a slide does not make it harder to deliver.
 - **They compose.** `word` and `powerpoint` mirror what they open into one
   Markdown folder, `confluence` and `outlook` save the pages and emails you ask
   them to keep into the same folder, and `pdf-to-md` fills it from PDFs; the
@@ -57,7 +61,7 @@ source material with something invented.
 | Plugin | Version | What it does | pip install |
 |---|---|---|---|
 | [**word**](plugins/word) | 8.0.0 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
-| [**powerpoint**](plugins/powerpoint) | 4.0.0 | Build `.pptx` decks that inherit your own template's layouts and theme, and audit them against the 10/20/30 rule | `python-pptx` |
+| [**powerpoint**](plugins/powerpoint) | 5.0.0 | Build sectioned `.pptx` decks that inherit your own template's layouts and theme, with formatted speaker notes, audited against the 10/20/30 rule | `python-pptx` |
 | [**excel**](plugins/excel) | 5.0.0 | Read and analyse workbooks; parses `.xlsx` directly, so Excel isn't needed | _none_ |
 | [**outlook**](plugins/outlook) | 6.0.0 | Read local Outlook mail and calendar via COM, with a content blacklist; saves an email to the knowledge base when you ask | `pywin32` |
 | [**confluence**](plugins/confluence) | 4.0.0 | Search and read Confluence pages, across one or two instances; saves a page to the knowledge base when you ask | _none_ |
@@ -359,12 +363,17 @@ edges (read-only limits, sandboxes, the tracked-changes workflow, when to
 reindex). Installing the plugin installs its skill, namespaced as
 `/<plugin>:<skill>` — so `/word:word`, not `/word`.
 
-`powerpoint` is the exception that ships **two**: `/powerpoint:powerpoint` for
-the server's mechanics, and `/powerpoint:kawasaki` for Guy Kawasaki's 10/20/30
-rule — 10 slides, 20 minutes, a 30-point minimum font. They are split because
-the rule is a way of thinking about any presentation, in any tool, while the
-other is about driving this server; the rule fires when someone asks for a deck
-at all, and reaches for the server's audit only when it is there.
+`powerpoint` is the exception that ships **three**, split by the question each
+answers. `/powerpoint:slide-deck` answers *what is this deck* — the house shape:
+a title slide, a divider introducing every section, slides inside a section
+titled `<Short Section Title> / <Slide Title>`, and speaker notes on every slide
+written as bold-labelled dot points. `/powerpoint:powerpoint` answers *how do I
+drive the server*. `/powerpoint:kawasaki` answers *how much is too much* — Guy
+Kawasaki's 10/20/30 rule, 10 slides, 20 minutes, a 30-point minimum font. They
+are split because the rule is a way of thinking about any presentation, in any
+tool, while the mechanics are about driving this server; the rule fires when
+someone asks for a deck at all, and reaches for the server's audit only when it
+is there.
 
 **[`skills/`](skills) holds standalone skills**, which need no server and no
 plugin. Install one by copying its folder:
