@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """
-outlook.py (v6.0.0)
+outlook.py (v6.1.0)
 ======================
 
 A single-file MCP (Model Context Protocol) server giving an LLM read-only
 access to a locally installed *classic* Microsoft Outlook client (mail +
-calendar) on Windows, via COM automation.
+calendar) on Windows, via COM automation. Read-only means the mailbox: nothing
+here can send, reply, accept, move or delete. What it does write is local and
+only on request - an email kept as Markdown for the knowledge base, and a
+printable PDF day planner.
 
 Designed for an airgapped Windows endpoint where Outlook is installed, running,
 and logged into an on-premises Exchange profile. This script makes NO network
@@ -24,8 +27,8 @@ REQUIREMENTS
 - Classic Win32 Outlook (NOT "New Outlook", which has no COM support).
 - Outlook installed, running, and logged into a profile.
 
-TOOLS EXPOSED (all read-only)
------------------------------
+TOOLS EXPOSED (all read-only on the mailbox itself)
+---------------------------------------------------
 - outlook_list_recent_emails : recent Inbox messages
 - outlook_search_emails      : search Inbox by subject / sender
 - outlook_get_email          : full body of one message by EntryID
@@ -36,6 +39,7 @@ TOOLS EXPOSED (all read-only)
                                match, the reply includes a [debug] section showing
                                the last 5 calendar items scanned (start date +
                                in-range flag) so a filtering fault stays visible.
+- outlook_print_calendar     : a PRINTABLE PDF day planner for one day - see below
 - outlook_list_sent_emails   : messages you SENT, in a date range (e.g. "what did I do last week")
 - outlook_search_recent      : all mail across Inbox/Archive/Sent in a date range (configurable)
 - outlook_list_folders       : list every mail folder across all stores (to configure the above)
@@ -66,6 +70,49 @@ EVERY email read, set OUTLOOK_KB_AUTOSAVE=true.
 Worth a deliberate decision either way: saving turns correspondence into plain
 text files that are then embedded and quotable in answers. See
 eva\knowledge\email\README.md.
+
+Printable day planner (outlook_print_calendar)
+----------------------------------------------
+Asked for "today's printable calendar" or "tomorrow's planner", this writes an
+A4 LANDSCAPE PDF laid out as a bifold spread: the day itself on an hour-by-hour
+timeline down the left half, and the following days summarised on the right.
+Print it single-sided and fold it in half.
+
+The 'date' argument takes 'today' (the default), 'tomorrow', 'yesterday', a day
+offset like '+2', or YYYY-MM-DD. The words are there on purpose - the server
+resolves them against the ENDPOINT's clock, so a printed planner cannot come out
+a day wrong because the model's idea of today was stale.
+
+The PDF is written with NO third-party library: it is drawn straight into the
+PDF imaging model from the standard library alone (rectangles, rules, and text
+in the base-14 Helvetica every reader carries), so printing adds nothing to the
+pip dependencies and nothing to embed. The design it follows uses Manrope;
+Helvetica is the closest stand-in that needs no font file.
+
+What ends up on the page:
+
+- Each meeting is a block positioned and sized by its real start and end.
+  Overlapping meetings share the lane in columns, the way Outlook's day view
+  does; a run of back-to-back short meetings stays one column of thin blocks.
+- The timeline covers the working day (CALENDAR_DAY_START_HOUR ..
+  CALENDAR_DAY_END_HOUR, or OUTLOOK_CALENDAR_HOURS) and STRETCHES to take in
+  anything scheduled outside it - a 6 am flight is on the page, not off it.
+- All-day items sit above the grid as a strip of chips.
+- Block colour comes from your own Outlook CATEGORIES where you have mapped
+  them (OUTLOOK_CALENDAR_COLOURS="Leadership=purple,Client=green"). Anything
+  uncategorised falls back to what Outlook can actually prove: somebody outside
+  your own SMTP domain is invited (External), it is internal (Internal), or
+  nobody is invited at all (Personal). Nothing is guessed from the subject line.
+- Tentative or free-marked time is drawn hollow, the way a diary pencils
+  something in.
+- The right-hand panel skips days with nothing in the diary by default, so a
+  Friday planner shows the week ahead rather than two blank weekend panels.
+  Pass skip_empty_days=false for strictly consecutive days.
+
+The blacklist applies in full: a withheld event never reaches the page, not even
+as an unlabelled block, and the footer carries the count. The file lands in the
+documents folder below and an existing file of the same name is overwritten, so
+re-printing a day replaces that day's sheet rather than piling up copies.
 
 ==============================================================================
 CONFIGURATION  -  all editable settings live in the "USER CONFIGURATION" block
@@ -108,6 +155,12 @@ just below this docstring. Edit them there; nothing else needs changing.
    Safety/size limits. Lower MAX_BODY_CHARS if your local model has a small
    context window. The other two are guard rails you can usually leave as-is.
 
+3b. Day-planner defaults (CALENDAR_DAY_START_HOUR / CALENDAR_DAY_END_HOUR /
+    CALENDAR_LOOKAHEAD_DAYS / CALENDAR_CATEGORY_COLOURS)
+   The working day the printed timeline covers, how many following days the
+   right-hand panel lists, and the Outlook category -> colour map. All four have
+   an environment variable so a plugin install never needs the file edited.
+
 4. SEARCH_ALL_FOLDERS  (DEFAULT folders the combined outlook_search_recent covers)
    A list of folder NAMES matched across every store in the profile (main
    mailbox, online archive, mounted PST). Default: Inbox, Sent Items, Archive.
@@ -141,25 +194,36 @@ never reduce it). Example file contents:
 CONFIGURATION  (environment variables, no folder flags)
 -------------------------------------------------------
 The whole plugin suite is configured by four environment variables, set once
-for your Windows account. This server uses two of them:
+for your Windows account. This server uses three of them:
 
     EVA_PYTHON          full path to the python.exe that has pywin32
                         installed, e.g. C:\\Python311\\python.exe (read by the
                         plugin manifest, not by this file)
     EVA_KNOWLEDGE_DIR   root of the RAG corpus (default C:\\Eva\\knowledge)
+    EVA_DOCUMENTS_DIR   root of the document library (default C:\\Eva\\documents)
 
-This server works in the "email" sub-folder of the knowledge root, and THAT
-FOLDER MUST EXIST:
+This server works in one sub-folder of each:
 
     %EVA_KNOWLEDGE_DIR%\\email   Where an email is saved as Markdown when you
                                 ask for it to be kept, for the knowledge-base
                                 plugin to index. Reading an email does NOT save
                                 it, and a blacklisted message is never written.
+                                THIS FOLDER MUST EXIST - the server will not
+                                start without it.
+
+    %EVA_DOCUMENTS_DIR%\\pdf     Where outlook_print_calendar writes the day
+                                planner. The document library is organised by
+                                file type and a printed planner is a PDF, so it
+                                lands beside your own PDFs rather than in an
+                                output folder of its own. Missing is NOT fatal:
+                                the server says so and disables printing, since
+                                mail must stay readable either way.
 
 To set them permanently for your account (PowerShell, one-off):
 
     [Environment]::SetEnvironmentVariable("EVA_PYTHON", "C:\\Python311\\python.exe", "User")
     [Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "C:\\Eva\\knowledge", "User")
+    [Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "C:\\Eva\\documents", "User")
 
 Copy the repo's eva\\ folder to C:\\Eva and the folder exists - see
 eva\\README.md.
@@ -168,10 +232,18 @@ Server-specific settings, all optional and all environment variables:
 
     OUTLOOK_KB_DIR              override the save folder with a full path of
                                 its own, or "off" to forbid saving entirely,
-                                after which this server writes no local file
-                                at all.
+                                after which no email is written to disk.
     OUTLOOK_KB_AUTOSAVE=true    save EVERY email read, without being asked
                                 (off by default - see KB_AUTOSAVE below).
+    OUTLOOK_DOCS_DIR            override the day-planner folder with a full
+                                path of its own, or "off" to forbid printing
+                                entirely.
+    OUTLOOK_CALENDAR_HOURS      the working day the printed timeline starts
+                                from, e.g. "7-19" (default "8-18"). It always
+                                stretches to fit anything outside it.
+    OUTLOOK_CALENDAR_COLOURS    Outlook category -> planner colour, e.g.
+                                "Leadership=purple,Client=green". Colours:
+                                blue, purple, green, amber, teal, rose, grey.
     OUTLOOK_SEARCH_FOLDERS      comma-separated folder names for
                                 outlook_search_recent, e.g.
                                 "Inbox,Sent Items,Archive".
@@ -208,8 +280,8 @@ USAGE / TESTING
 
       python outlook.py --check
 
-  Connects to Outlook and prints mailbox diagnostics + blacklist status to
-  stderr, then exits.
+  Connects to Outlook and prints mailbox diagnostics, folder paths and
+  blacklist status to stderr, then exits.
 
 IMPORTANT (stdio-on-Windows pitfalls)
 -------------------------------------
@@ -221,16 +293,18 @@ IMPORTANT (stdio-on-Windows pitfalls)
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "6.0.0"
+__version__ = "6.1.0"
 
 import os
 import re
 import sys
+import zlib
 import json
 import hashlib
 import argparse
 import datetime
 import traceback
+import unicodedata
 
 
 # ============================================================================
@@ -278,11 +352,47 @@ SEARCH_ALL_FOLDERS = ["Inbox", "Sent Items", "Archive"]
 #        a full path of its own. The literal here is what a stock C:\Eva
 #        install resolves to; it MUST stay inside the knowledge-base plugin's
 #        corpus (C:\Eva\knowledge) or the saved mail would never be indexed.
-#        Set OUTLOOK_KB_DIR=off to forbid saving entirely - the server then
-#        keeps no local files at all and a save_to_kb request is refused.
+#        Set OUTLOOK_KB_DIR=off to forbid saving entirely - no email is then
+#        written to disk and a save_to_kb request is refused. (The day planner
+#        has its own switch, OUTLOOK_DOCS_DIR, in 5b below.)
 SUBFOLDER = "email"                      # this server's knowledge sub-folder
 EVA_KNOWLEDGE_DIR = r"C:\Eva\knowledge"  # fallback for the suite-wide root
 KB_DIR = r"C:\Eva\knowledge\email"
+
+# --- 5b. PDF_DIR  (where outlook_print_calendar writes the printable planner).
+#        The ONE folder this server creates documents in. It is the "pdf"
+#        sub-folder of %EVA_DOCUMENTS_DIR%, because the document library is
+#        organised by file type and a printed planner is a PDF - it lands beside
+#        your own PDFs rather than in an output folder of its own.
+#        RESOLVED FROM THE ENVIRONMENT in main(); the literal here is what a
+#        stock C:\Eva install resolves to. Set OUTLOOK_DOCS_DIR to a full path
+#        of its own, or to "off" to forbid printing entirely.
+DOCS_SUBFOLDER = "pdf"                     # this server's documents sub-folder
+EVA_DOCUMENTS_DIR = r"C:\Eva\documents"     # fallback for the suite-wide root
+PDF_DIR = r"C:\Eva\documents\pdf"
+
+# --- 5c. Printable day planner defaults.
+#        CALENDAR_DAY_START_HOUR / CALENDAR_DAY_END_HOUR are the working day the
+#        timeline shows. It always STRETCHES to take in anything scheduled
+#        outside those hours, so they are a floor and a ceiling on the printed
+#        grid, not a filter. Override with OUTLOOK_CALENDAR_HOURS="7-19".
+CALENDAR_DAY_START_HOUR = 8
+CALENDAR_DAY_END_HOUR = 18
+
+#        How many following days the right-hand panel lists (1-6).
+CALENDAR_LOOKAHEAD_DAYS = 4
+
+#        Outlook CATEGORY -> block colour, so your own classification of the
+#        diary drives the page. Keys are matched case-insensitively against the
+#        categories on an appointment; the first match wins. Available colours:
+#        blue, purple, green, amber, teal, rose, grey. Anything uncategorised
+#        falls back to what Outlook can prove on its own - somebody outside your
+#        domain is invited (External), it is an internal meeting (Internal), or
+#        nobody is invited at all (Personal).
+#        Override from the environment with
+#        OUTLOOK_CALENDAR_COLOURS="Leadership=purple,Client=green".
+CALENDAR_CATEGORY_COLOURS = {
+}
 
 # --- 6. KB_AUTOSAVE. Whether reading an email saves it WITHOUT being asked.
 #        False means a message is saved only when the call passes
@@ -297,7 +407,8 @@ KB_AUTOSAVE = False
 #        string is what it substitutes for a setting the user left empty -
 #        which means "not configured", falling back to the suite-wide root. So
 #        a keyword is needed to say "definitely off": OUTLOOK_KB_DIR=off
-#        forbids saving, after which this server keeps no local files at all.
+#        forbids saving an email, OUTLOOK_DOCS_DIR=off forbids printing a
+#        planner, and with both off the server writes no local file at all.
 DISABLE_KEYWORDS = frozenset(("off", "none", "no", "false", "disabled"))
 
 # ============================================================================
@@ -363,6 +474,55 @@ def resolve_kb_dir():
     return os.path.join(EVA_KNOWLEDGE_DIR, SUBFOLDER)
 
 
+def resolve_pdf_dir():
+    """
+    The folder outlook_print_calendar writes the planner into.
+
+    Precedence: OUTLOOK_DOCS_DIR (a full path of its own, or one of the
+    DISABLE_KEYWORDS to forbid printing), then EVA_DOCUMENTS_DIR with this
+    server's "pdf" sub-folder appended, then that same sub-folder of the
+    EVA_DOCUMENTS_DIR fallback in the config block. Returns (path, configured):
+    `configured` is False only when nothing was set at all, which is what
+    decides whether a missing folder is worth complaining about. Returns
+    (None, True) when printing is switched off.
+    """
+    own = env("OUTLOOK_DOCS_DIR")
+    if own:
+        return (None, True) if own.lower() in DISABLE_KEYWORDS else (own, True)
+    root = env("EVA_DOCUMENTS_DIR")
+    if root:
+        if root.lower() in DISABLE_KEYWORDS:
+            return None, True
+        return os.path.join(root, DOCS_SUBFOLDER), True
+    return os.path.join(EVA_DOCUMENTS_DIR, DOCS_SUBFOLDER), False
+
+
+def parse_category_colours(raw):
+    """
+    Parse OUTLOOK_CALENDAR_COLOURS ("Leadership=purple,Client=green") into a
+    lower-cased category -> colour map. Unknown colour names are dropped with a
+    warning rather than failing the server: a typo in a cosmetic setting must
+    not stop mail being read.
+    """
+    mapping = {}
+    for pair in (raw or "").split(","):
+        pair = pair.strip()
+        if not pair or "=" not in pair:
+            continue
+        category, _, colour = pair.partition("=")
+        category = category.strip().lower()
+        colour = colour.strip().lower()
+        if not category:
+            continue
+        if colour not in PLANNER_COLOURS:
+            log("WARNING: ignoring OUTLOOK_CALENDAR_COLOURS entry '{0}' - "
+                "'{1}' is not one of {2}.".format(
+                    pair, colour, ", ".join(sorted(PLANNER_COLOURS))))
+            continue
+        mapping[category] = colour
+    return mapping
+
+
 # --version must work even when pywin32 is not installed (or off Windows),
 # so answer it before the import below can fail.
 if "--version" in sys.argv:
@@ -400,6 +560,10 @@ PROP_TRANSPORT_HEADERS = "http://schemas.microsoft.com/mapi/proptag/0x007D001F"
 
 # Compiled at startup by build_blacklist(); None means no filtering is active.
 _BLACKLIST_RE = None
+
+# Outlook category -> planner colour, from CALENDAR_CATEGORY_COLOURS and then
+# OUTLOOK_CALENDAR_COLOURS. Keys are lower-cased category names.
+_CATEGORY_COLOURS = {}
 
 # Effective default folder set for outlook_search_recent. Initialised from
 # SEARCH_ALL_FOLDERS; may be replaced by OUTLOOK_SEARCH_FOLDERS. A per-call
@@ -1314,35 +1478,25 @@ def _expand_recurring_occurrences(item, start_dt, end_dt):
     return list(found.items())
 
 
-def tool_get_calendar(args):
-    today = datetime.date.today()
-    try:
-        start_date = parse_date(args.get("start_date"), today)
-        end_date = parse_date(args.get("end_date"), today + datetime.timedelta(days=7))
-    except ValueError:
-        return "Error: dates must be in YYYY-MM-DD format."
+def scan_calendar(start_dt, end_dt):
+    """
+    Walk the whole calendar folder and return every occurrence inside a window.
 
-    if end_date < start_date:
-        return "Error: end_date is before start_date."
+    Returns (matches, total, debug_tail): `matches` is a list of (naive start
+    datetime, appointment COM object) sorted by start; `total` is how many items
+    the folder holds; `debug_tail` is a rolling last-5 of
+    (index, start, matched?) so an empty result can prove what was scanned.
 
-    max_results = int(args.get("max_results", 50))
-
-    start_dt = datetime.datetime.combine(start_date, datetime.time(0, 0))
-    end_dt = datetime.datetime.combine(end_date, datetime.time(23, 59, 59))
-
+    NO Outlook-side filtering happens here. Restrict() formats its date strings
+    per the machine's regional settings (US vs AU) and misbehaves with recurring
+    appointments, silently returning 0 results on some machines. Instead the
+    whole collection is walked by index (Item(i) is more reliable than COM
+    enumeration) and filtered in Python, which is locale-independent.
+    """
     ns = get_namespace()
     cal = ns.GetDefaultFolder(OL_FOLDER_CALENDAR)
     items = cal.Items
-
-    # NO Outlook-side filtering here. Restrict() formats its date strings per
-    # the machine's regional settings (US vs AU) and misbehaves with recurring
-    # appointments, silently returning 0 results on some machines. Instead the
-    # whole collection is walked by index (Item(i) is more reliable than COM
-    # enumeration) and filtered in Python, which is locale-independent.
-    try:
-        total = int(items.Count)
-    except Exception as exc:
-        return "Error: could not read the calendar folder ({0}).".format(exc)
+    total = int(items.Count)  # raises if the folder cannot be read; caller reports
 
     matches = []      # (naive start datetime, appointment COM object)
     debug_tail = []   # rolling last-5 raw items: (index, start-or-None, matched?)
@@ -1386,6 +1540,29 @@ def tool_get_calendar(args):
 
     # Outlook's Sort() is no longer used; order in Python instead.
     matches.sort(key=lambda pair: pair[0])
+    return matches, total, debug_tail
+
+
+def tool_get_calendar(args):
+    today = datetime.date.today()
+    try:
+        start_date = parse_date(args.get("start_date"), today)
+        end_date = parse_date(args.get("end_date"), today + datetime.timedelta(days=7))
+    except ValueError:
+        return "Error: dates must be in YYYY-MM-DD format."
+
+    if end_date < start_date:
+        return "Error: end_date is before start_date."
+
+    max_results = int(args.get("max_results", 50))
+
+    start_dt = datetime.datetime.combine(start_date, datetime.time(0, 0))
+    end_dt = datetime.datetime.combine(end_date, datetime.time(23, 59, 59))
+
+    try:
+        matches, total, debug_tail = scan_calendar(start_dt, end_dt)
+    except Exception as exc:
+        return "Error: could not read the calendar folder ({0}).".format(exc)
 
     lines = []
     withheld = 0
@@ -1455,6 +1632,1333 @@ def tool_get_calendar(args):
         return msg
     header = "Calendar events {0} to {1} ({2} shown):".format(start_date, end_date, len(lines))
     return header + "\n" + "\n".join(lines) + note
+
+
+# ---------------------------------------------------------------------------
+# Printable day planner - a minimal PDF writer (standard library only)
+# ---------------------------------------------------------------------------
+# There is no PDF library here on purpose: this endpoint is airgapped and the
+# only pip dependency this server has is pywin32, which it needs for COM. The
+# planner is rectangles, rules and single lines of text, all of which the PDF
+# imaging model does directly, so a few hundred lines of writer is cheaper than
+# another package to transfer and keep installed.
+#
+# Type faces are the base-14 fonts every PDF reader carries (Helvetica and
+# Helvetica-Bold), so nothing is embedded and the file opens identically on any
+# machine. The design this follows uses Manrope; Helvetica is the closest
+# stand-in available without shipping a font file.
+
+PDF_MM = 72.0 / 25.4  # points per millimetre
+
+# Glyph widths (1/1000 em) for codes 32-126 of Helvetica and Helvetica-Bold,
+# taken from the Adobe AFM metrics. Needed so text can be measured, and
+# therefore truncated with an ellipsis, without a font library.
+_HELV_WIDTHS = (
+    278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278,
+    556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556,
+    1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778,
+    667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556,
+    333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556,
+    556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584,
+)
+_HELV_BOLD_WIDTHS = (
+    278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278,
+    556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 333, 333, 584, 584, 584, 611,
+    975, 722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, 722, 778,
+    667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 333, 278, 333, 584, 556,
+    333, 556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611,
+    611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584,
+)
+# Punctuation outside ASCII that the planner actually emits. Everything else
+# non-ASCII falls back to its unaccented base letter, whose width is identical
+# in these two faces (eacute is exactly as wide as e).
+_PDF_EXTRA_WIDTHS = {
+    "…": (1000, 1000),  # ellipsis - used by truncation
+    "‘": (222, 238),    # left single quote
+    "’": (222, 238),    # right single quote / apostrophe
+    "“": (333, 500),    # left double quote
+    "”": (333, 500),    # right double quote
+    "•": (350, 350),    # bullet
+    "–": (556, 556),    # en dash
+    "—": (1000, 1000),  # em dash
+    "·": (278, 278),    # middle dot - the separator used throughout
+    " ": (278, 278),    # non-breaking space
+}
+
+
+def _one_line(value):
+    """Collapse any string to a single line of text fit to draw."""
+    if value is None:
+        return ""
+    return " ".join(str(value).split())
+
+
+def _pdf_sanitise(text):
+    """
+    Reduce text to characters WinAnsiEncoding can represent.
+
+    The base-14 fonts are WinAnsi (cp1252), so a subject containing CJK, emoji
+    or symbols has to be transliterated rather than dropped mid-render. Accented
+    Latin letters survive as themselves; anything else degrades to its base
+    letter, and failing that to '?'.
+    """
+    try:
+        text.encode("cp1252")
+        return text
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        pass
+    out = []
+    for ch in text:
+        try:
+            ch.encode("cp1252")
+            out.append(ch)
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            base = "".join(part for part in unicodedata.normalize("NFD", ch)
+                           if not unicodedata.combining(part))
+            try:
+                out.append(base.encode("cp1252").decode("cp1252") or "?")
+            except (UnicodeEncodeError, UnicodeDecodeError):
+                out.append("?")
+    return "".join(out)
+
+
+def _pdf_char_width(ch, bold):
+    """Width of one character in 1/1000 em, for the chosen weight."""
+    table = _HELV_BOLD_WIDTHS if bold else _HELV_WIDTHS
+    code = ord(ch)
+    if 32 <= code <= 126:
+        return table[code - 32]
+    extra = _PDF_EXTRA_WIDTHS.get(ch)
+    if extra:
+        return extra[1 if bold else 0]
+    # Accented Latin: identical width to the unaccented letter in both faces.
+    base = "".join(part for part in unicodedata.normalize("NFD", ch)
+                   if not unicodedata.combining(part))
+    if base and 32 <= ord(base[0]) <= 126:
+        return table[ord(base[0]) - 32]
+    return table[ord("n") - 32]
+
+
+def _pdf_escape(text):
+    """Escape a sanitised string into PDF literal-string bytes."""
+    raw = text.encode("cp1252", "replace")
+    return (raw.replace(b"\\", b"\\\\")
+               .replace(b"(", b"\\(")
+               .replace(b")", b"\\)"))
+
+
+class PdfCanvas:
+    """
+    A single-page PDF drawn from rectangles, rules and lines of text.
+
+    Coordinates are MILLIMETRES FROM THE TOP-LEFT corner, because that is how a
+    page design is described; the PDF's own bottom-left origin in points is an
+    internal detail of this class. Font sizes are in points, as in any layout.
+    """
+
+    def __init__(self, width_mm, height_mm, title="", author=""):
+        self.width_mm = float(width_mm)
+        self.height_mm = float(height_mm)
+        self.title = title
+        self.author = author
+        self._ops = []
+
+    # -- internals ----------------------------------------------------------
+
+    def _emit(self, op):
+        self._ops.append(op.encode("ascii", "replace") if isinstance(op, str) else op)
+
+    @staticmethod
+    def _num(value):
+        text = "{0:.3f}".format(float(value)).rstrip("0").rstrip(".")
+        return text if text not in ("", "-") else "0"
+
+    @classmethod
+    def _rgb(cls, colour):
+        value = colour.lstrip("#")
+        return " ".join(cls._num(int(value[i:i + 2], 16) / 255.0) for i in (0, 2, 4))
+
+    def _px(self, x_mm):
+        return x_mm * PDF_MM
+
+    def _py(self, y_mm):
+        """mm from the top -> points from the bottom, which is what PDF wants."""
+        return (self.height_mm - y_mm) * PDF_MM
+
+    def _rounded_path(self, x, y, w, h, radius):
+        x0, x1 = self._px(x), self._px(x + w)
+        y1, y0 = self._py(y), self._py(y + h)
+        r = radius * PDF_MM
+        k = r * 0.5523
+        n = self._num
+        parts = [
+            "{0} {1} m".format(n(x0 + r), n(y0)),
+            "{0} {1} l".format(n(x1 - r), n(y0)),
+            "{0} {1} {2} {3} {4} {5} c".format(
+                n(x1 - r + k), n(y0), n(x1), n(y0 + r - k), n(x1), n(y0 + r)),
+            "{0} {1} l".format(n(x1), n(y1 - r)),
+            "{0} {1} {2} {3} {4} {5} c".format(
+                n(x1), n(y1 - r + k), n(x1 - r + k), n(y1), n(x1 - r), n(y1)),
+            "{0} {1} l".format(n(x0 + r), n(y1)),
+            "{0} {1} {2} {3} {4} {5} c".format(
+                n(x0 + r - k), n(y1), n(x0), n(y1 - r + k), n(x0), n(y1 - r)),
+            "{0} {1} l".format(n(x0), n(y0 + r)),
+            "{0} {1} {2} {3} {4} {5} c".format(
+                n(x0), n(y0 + r - k), n(x0 + r - k), n(y0), n(x0 + r), n(y0)),
+            "h",
+        ]
+        return " ".join(parts)
+
+    # -- drawing ------------------------------------------------------------
+
+    def rect(self, x, y, w, h, fill=None, stroke=None, line_pt=0.6, radius=0.0):
+        """Filled and/or stroked rectangle; `radius` in mm rounds the corners."""
+        if w <= 0 or h <= 0 or (fill is None and stroke is None):
+            return
+        radius = max(0.0, min(float(radius), w / 2.0, h / 2.0))
+        if radius > 0:
+            path = self._rounded_path(x, y, w, h, radius)
+        else:
+            n = self._num
+            path = "{0} {1} {2} {3} re".format(
+                n(self._px(x)), n(self._py(y + h)),
+                n(w * PDF_MM), n(h * PDF_MM))
+
+        ops = ["q"]
+        if fill is not None:
+            ops.append("{0} rg".format(self._rgb(fill)))
+        if stroke is not None:
+            ops.append("{0} RG".format(self._rgb(stroke)))
+            ops.append("{0} w".format(self._num(line_pt)))
+        ops.append(path)
+        if fill is not None and stroke is not None:
+            ops.append("B")
+        elif fill is not None:
+            ops.append("f")
+        else:
+            ops.append("S")
+        ops.append("Q")
+        self._emit(" ".join(ops))
+
+    def line(self, x1, y1, x2, y2, colour="#E5E7EB", line_pt=0.6, dash=None):
+        """Straight rule. `dash` is a list of on/off lengths in points."""
+        n = self._num
+        ops = ["q", "{0} RG".format(self._rgb(colour)), "{0} w".format(n(line_pt))]
+        if dash:
+            ops.append("[{0}] 0 d".format(" ".join(n(value) for value in dash)))
+        ops.append("{0} {1} m {2} {3} l S".format(
+            n(self._px(x1)), n(self._py(y1)), n(self._px(x2)), n(self._py(y2))))
+        ops.append("Q")
+        self._emit(" ".join(ops))
+
+    def text_width(self, string, size, bold=False, tracking=0.0):
+        """Width of one line of text, in mm, at `size` points."""
+        string = _pdf_sanitise(_one_line(string))
+        if not string:
+            return 0.0
+        total = sum(_pdf_char_width(ch, bold) for ch in string) / 1000.0 * size
+        total += len(string) * tracking  # PDF adds Tc after every glyph
+        return total / PDF_MM
+
+    def truncate(self, string, size, max_width, bold=False, tracking=0.0):
+        """Shorten text with a trailing ellipsis so it fits `max_width` mm."""
+        string = _pdf_sanitise(_one_line(string))
+        if not string or self.text_width(string, size, bold, tracking) <= max_width:
+            return string
+        budget = max_width - self.text_width("…", size, bold, tracking)
+        if budget <= 0:
+            return ""
+        used = 0.0
+        cut = 0
+        for index, ch in enumerate(string):
+            step = (_pdf_char_width(ch, bold) / 1000.0 * size + tracking) / PDF_MM
+            if used + step > budget:
+                break
+            used += step
+            cut = index + 1
+        trimmed = string[:cut].rstrip(" ·-–")
+        return (trimmed + "…") if trimmed else ""
+
+    def text(self, x, y, string, size, bold=False, colour="#111827",
+             tracking=0.0, align="left", max_width=None):
+        """
+        Draw one line of text. `y` is the BASELINE in mm from the page top.
+
+        `align` positions the line against `x` ("left", "right" or "centre");
+        `max_width` truncates it with an ellipsis first. Returns the width drawn.
+        """
+        string = _pdf_sanitise(_one_line(string))
+        if max_width is not None:
+            string = self.truncate(string, size, max_width, bold, tracking)
+        if not string:
+            return 0.0
+
+        width = self.text_width(string, size, bold, tracking)
+        if align == "right":
+            x = x - width
+        elif align in ("centre", "center"):
+            x = x - width / 2.0
+
+        n = self._num
+        pieces = [
+            b"q ",
+            "{0} rg BT /{1} {2} Tf".format(
+                self._rgb(colour), "F2" if bold else "F1", n(size)).encode("ascii"),
+        ]
+        if tracking:
+            pieces.append(" {0} Tc".format(n(tracking)).encode("ascii"))
+        pieces.append(" 1 0 0 1 {0} {1} Tm ".format(
+            n(self._px(x)), n(self._py(y))).encode("ascii"))
+        pieces.append(b"(" + _pdf_escape(string) + b") Tj ET Q")
+        self._emit(b"".join(pieces))
+        return width
+
+    def wrap(self, string, size, max_width, bold=False, max_lines=2):
+        """Word-wrap one string into at most `max_lines` lines that each fit."""
+        string = _pdf_sanitise(_one_line(string))
+        if not string:
+            return []
+        lines = []
+        current = ""
+        for word in string.split(" "):
+            candidate = (current + " " + word).strip()
+            if current and self.text_width(candidate, size, bold) > max_width:
+                lines.append(current)
+                current = word
+                if len(lines) == max_lines:
+                    break
+            else:
+                current = candidate
+        if len(lines) < max_lines and current:
+            lines.append(current)
+        elif len(lines) == max_lines and current:
+            # More text than the allowance: fold the tail into the last line so
+            # truncation puts an honest ellipsis on the end of it.
+            lines[-1] = self.truncate(
+                (lines[-1] + " " + current).strip(), size, max_width, bold)
+        return [self.truncate(line, size, max_width, bold) for line in lines]
+
+    def text_block(self, x, y, string, size, max_width, bold=False,
+                   colour="#111827", leading=None, max_lines=2):
+        """
+        Word-wrap `string` and draw it. `y` is the baseline of the FIRST line.
+
+        Returns the baseline of the last line drawn, so a caller can carry on
+        underneath it.
+        """
+        leading = leading if leading is not None else size * 1.16 / PDF_MM
+        lines = self.wrap(string, size, max_width, bold=bold, max_lines=max_lines)
+        baseline = y
+        for index, line in enumerate(lines):
+            baseline = y + index * leading
+            self.text(x, baseline, line, size, bold=bold, colour=colour)
+        return baseline
+
+    # -- output -------------------------------------------------------------
+
+    def to_bytes(self):
+        """Serialise the page into a complete PDF file."""
+        content = zlib.compress(b"\n".join(self._ops))
+        stamp = datetime.datetime.now()
+        try:
+            offset = stamp.astimezone().utcoffset()
+            minutes = int(offset.total_seconds() // 60)
+            sign = "+" if minutes >= 0 else "-"
+            tz = "{0}{1:02d}'{2:02d}'".format(sign, abs(minutes) // 60, abs(minutes) % 60)
+        except Exception:
+            tz = "Z"
+        created = "D:{0}{1}".format(stamp.strftime("%Y%m%d%H%M%S"), tz)
+
+        def literal(value):
+            return b"(" + _pdf_escape(_pdf_sanitise(_one_line(value))) + b")"
+
+        objects = [
+            b"<< /Type /Catalog /Pages 2 0 R >>",
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            ("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {0} {1}] "
+             "/Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> "
+             "/Contents 4 0 R >>").format(
+                self._num(self.width_mm * PDF_MM),
+                self._num(self.height_mm * PDF_MM)).encode("ascii"),
+            (b"<< /Length " + str(len(content)).encode("ascii") +
+             b" /Filter /FlateDecode >>\nstream\n" + content + b"\nendstream"),
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>",
+            (b"<< /Title " + literal(self.title) +
+             b" /Author " + literal(self.author) +
+             b" /Creator (outlook-mcp " + __version__.encode("ascii") + b")" +
+             b" /Producer (outlook-mcp " + __version__.encode("ascii") + b")" +
+             b" /CreationDate (" + created.encode("ascii") + b") >>"),
+        ]
+
+        out = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+        offsets = []
+        for number, body in enumerate(objects, start=1):
+            offsets.append(len(out))
+            out += "{0} 0 obj\n".format(number).encode("ascii")
+            out += body
+            out += b"\nendobj\n"
+
+        xref_at = len(out)
+        out += "xref\n0 {0}\n".format(len(objects) + 1).encode("ascii")
+        out += b"0000000000 65535 f \n"
+        for position in offsets:
+            out += "{0:010d} 00000 n \n".format(position).encode("ascii")
+        out += ("trailer\n<< /Size {0} /Root 1 0 R /Info {1} 0 R >>\n"
+                "startxref\n{2}\n%%EOF\n").format(
+                    len(objects) + 1, len(objects), xref_at).encode("ascii")
+        return bytes(out)
+
+
+# ---------------------------------------------------------------------------
+# Printable day planner - laying the calendar out on the page
+# ---------------------------------------------------------------------------
+
+# Month and weekday names are spelled out here rather than taken from
+# strftime(): %A and %B follow the machine's locale, and this server already
+# refuses to let regional settings change what the calendar looks like.
+_WEEKDAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday",
+                  "Friday", "Saturday", "Sunday")
+_WEEKDAY_SHORT = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
+_MONTH_NAMES = ("January", "February", "March", "April", "May", "June", "July",
+                "August", "September", "October", "November", "December")
+_MONTH_SHORT = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL",
+                "AUG", "SEP", "OCT", "NOV", "DEC")
+_NUMBER_WORDS = {2: "two", 3: "three", 4: "four", 5: "five", 6: "six"}
+
+# One entry per colour an event block can take. 'fill' is the solid block,
+# 'text'/'sub' the type on it, and 'edge' the colour used when a block is drawn
+# hollow (tentative or not-yet-accepted meetings).
+PLANNER_COLOURS = {
+    "blue":   {"fill": "#3B82F6", "text": "#FFFFFF", "sub": "#DBEAFE", "edge": "#1D4ED8"},
+    "purple": {"fill": "#8B5CF6", "text": "#FFFFFF", "sub": "#EDE9FE", "edge": "#6D28D9"},
+    "green":  {"fill": "#10B981", "text": "#FFFFFF", "sub": "#D1FAE5", "edge": "#047857"},
+    "amber":  {"fill": "#F59E0B", "text": "#FFFFFF", "sub": "#FEF3C7", "edge": "#B45309"},
+    "teal":   {"fill": "#0EA5E9", "text": "#FFFFFF", "sub": "#E0F2FE", "edge": "#0369A1"},
+    "rose":   {"fill": "#F43F5E", "text": "#FFFFFF", "sub": "#FFE4E6", "edge": "#BE123C"},
+    "grey":   {"fill": "#F3F4F6", "text": "#374151", "sub": "#6B7280", "edge": "#9CA3AF"},
+}
+# Accent colour for each day down the right-hand panel, purely so the four days
+# are easy to tell apart at a glance.
+PLANNER_DAY_ACCENTS = ("blue", "purple", "green", "amber")
+
+# Page ink.
+_INK = "#111827"
+_MUTED = "#6B7280"
+_FAINT = "#9CA3AF"
+_RULE = "#E5E7EB"
+_HAIRLINE = "#F3F4F6"
+_GRID = "#D1D5DB"
+
+# Outlook's OlBusyStatus values.
+OL_BUSY_FREE = 0
+OL_BUSY_TENTATIVE = 1
+OL_BUSY_OUT_OF_OFFICE = 3
+
+CAP_RATIO = 0.716  # Helvetica cap height, as a fraction of the point size
+
+
+def _cap_mm(size_pt):
+    """Cap height of `size_pt` type, in mm - what centring text vertically needs."""
+    return size_pt * CAP_RATIO / PDF_MM
+
+
+def _fmt_day_long(day):
+    """'Monday 14 September 2026' - Australian order, no ordinal, no comma."""
+    return "{0} {1} {2} {3}".format(
+        _WEEKDAY_NAMES[day.weekday()], day.day,
+        _MONTH_NAMES[day.month - 1], day.year)
+
+
+def _fmt_day_short(day):
+    """'14 Sep'."""
+    return "{0} {1}".format(day.day, _MONTH_SHORT[day.month - 1].title())
+
+
+def _fmt_time(value):
+    """24-hour clock, as the printed grid uses throughout."""
+    return "{0:02d}:{1:02d}".format(value.hour, value.minute)
+
+
+def _fmt_duration(minutes):
+    """'5h 45m', '45m', '6h'."""
+    hours, mins = divmod(int(max(0, minutes)), 60)
+    if hours and mins:
+        return "{0}h {1}m".format(hours, mins)
+    if hours:
+        return "{0}h".format(hours)
+    return "{0}m".format(mins)
+
+
+def _minutes_into_day(value, day):
+    """Minutes from midnight on `day`, clamped either side for multi-day events."""
+    delta = value - datetime.datetime.combine(day, datetime.time(0, 0))
+    return delta.total_seconds() / 60.0
+
+
+# ---------------------------------------------------------------------------
+# Reading one appointment into a plain dict the layout can work from
+# ---------------------------------------------------------------------------
+
+def _appointment_people(item, identity, cap=40):
+    """
+    Attendee display names, and whether anyone is outside our own domain.
+
+    `identity` is the (name, address) of the mailbox owner: they are dropped
+    from the list, because a printed planner does not need to tell us we are in
+    our own meetings.
+
+    Deliberately reads only Recipients.Address, never AddressEntry: resolving an
+    address entry is slow and can touch the directory, and the '/O=' prefix of
+    an Exchange address already says 'internal' without asking anyone.
+    """
+    own_name, own_address = identity
+    own_domain = (own_address.rsplit("@", 1)[-1].lower()
+                  if "@" in own_address else "")
+    names = []
+    external = False
+    try:
+        recipients = item.Recipients
+        count = int(recipients.Count)
+    except Exception:
+        return names, external
+
+    for index in range(1, min(count, cap) + 1):
+        try:
+            recipient = recipients.Item(index)
+        except Exception:
+            continue
+        try:
+            kind = int(recipient.Type)
+        except Exception:
+            kind = 1
+        if kind == 3:  # olResource - a meeting room, not a person
+            continue
+        try:
+            name = _one_line(recipient.Name or "")
+        except Exception:
+            name = ""
+        try:
+            address = (recipient.Address or "").strip()
+        except Exception:
+            address = ""
+
+        if own_domain and address and "@" in address:
+            domain = address.rsplit("@", 1)[-1].lower()
+            if domain != own_domain:
+                external = True
+
+        if not name:
+            continue
+        is_self = ((own_address and address.lower() == own_address.lower())
+                   or (own_name and name.lower() == own_name.lower()))
+        if not is_self:
+            names.append(name)
+    return names, external
+
+
+def _appointment_to_event(item, occurrence_start, identity, want_people=True):
+    """
+    Flatten one Outlook appointment into the dict the planner layout uses.
+
+    Every field is read defensively: a calendar full of imported or malformed
+    items must not stop the page being printed.
+    """
+    def safe(getter, default=""):
+        try:
+            value = getter()
+            return default if value is None else value
+        except Exception:
+            return default
+
+    start = occurrence_start or _com_to_naive(safe(lambda: item.Start, None))
+    end = _com_to_naive(safe(lambda: item.End, None))
+    if start is None:
+        return None
+    if end is None or end <= start:
+        minutes = 30
+        try:
+            minutes = int(item.Duration) or 30
+        except Exception:
+            pass
+        end = start + datetime.timedelta(minutes=minutes)
+
+    categories = [part.strip() for part in
+                  str(safe(lambda: item.Categories, "")).split(";") if part.strip()]
+    try:
+        busy = int(item.BusyStatus)
+    except Exception:
+        busy = 2
+
+    people, external = ([], False)
+    if want_people:
+        people, external = _appointment_people(item, identity)
+
+    return {
+        "start": start,
+        "end": end,
+        "all_day": bool(safe(lambda: item.AllDayEvent, False)),
+        "subject": _one_line(safe(lambda: item.Subject, "")) or "(no subject)",
+        "location": _one_line(safe(lambda: item.Location, "")),
+        "organiser": _one_line(safe(lambda: item.Organizer, "")),
+        "categories": categories,
+        "busy": busy,
+        "people": people,
+        "external": external,
+        "recurring": bool(safe(lambda: item.IsRecurring, False)),
+    }
+
+
+def _event_bucket(event, category_colours):
+    """
+    The legend bucket an event belongs to: (label, colour key).
+
+    An Outlook category the endpoint has mapped to a colour wins, because that
+    is the user's own classification of their diary. Failing that the split is
+    one Outlook can actually prove: somebody outside our domain is on it, it is
+    an internal meeting, or it is time blocked out with nobody invited.
+    """
+    for category in event["categories"]:
+        colour = category_colours.get(category.lower())
+        if colour:
+            return category, colour
+    if event["external"]:
+        return "External", "green"
+    if event["people"]:
+        return "Internal", "blue"
+    return "Personal", "grey"
+
+
+def _bucket_rank(entry):
+    """Legend order: mapped categories first, then the built-in three."""
+    label = entry[0]
+    builtin = {"External": 1, "Internal": 2, "Personal": 3}
+    return (builtin.get(label, 0), label.lower())
+
+
+# ---------------------------------------------------------------------------
+# Timeline geometry
+# ---------------------------------------------------------------------------
+
+PLANNER_MIN_BLOCK_MM = 6.4   # a short meeting is grown to this if there is room
+PLANNER_MIN_TIGHT_MM = 3.4   # ...and never squeezed below this, so a line still fits
+PLANNER_BLOCK_GAP_MM = 1.0   # gutter between two blocks, side by side or stacked
+
+
+def _place_blocks(events, day, start_min, end_min, top, bottom, lane_x, lane_w):
+    """
+    Work out where each event's block goes on the timeline.
+
+    Two rules do the work. Events that genuinely overlap share the lane
+    Outlook-style, splitting a cluster into as many columns as it needs. And a
+    short meeting is grown to a readable height, but only into space nothing
+    else is using: a day of back-to-back half-hour meetings stays one honest
+    column of thin blocks instead of zig-zagging across two.
+    """
+    scale = (bottom - top) / float(max(1, end_min - start_min))
+    boxes = []
+    for event in events:
+        from_min = max(start_min, _minutes_into_day(event["start"], day))
+        to_min = max(from_min, min(end_min, _minutes_into_day(event["end"], day)))
+        boxes.append({
+            "event": event,
+            "from_min": from_min,
+            "to_min": to_min,
+            "top": top + (from_min - start_min) * scale,
+            "natural": (to_min - from_min) * scale,
+        })
+    boxes.sort(key=lambda box: (box["from_min"], -box["to_min"]))
+
+    # Clusters are built from the REAL times. Two meetings that only look
+    # adjacent once a 15-minute slot has been grown to a readable height are not
+    # a clash, and must not be pushed into separate columns as though they were.
+    clusters = []
+    for box in boxes:
+        if clusters and box["from_min"] < clusters[-1]["end"] - 0.01:
+            clusters[-1]["boxes"].append(box)
+            clusters[-1]["end"] = max(clusters[-1]["end"], box["to_min"])
+        else:
+            clusters.append({"boxes": [box], "end": box["to_min"]})
+
+    for cluster in clusters:
+        columns = []
+        for box in cluster["boxes"]:
+            for index, column in enumerate(columns):
+                if box["from_min"] >= column[-1]["to_min"] - 0.01:
+                    column.append(box)
+                    box["column"] = index
+                    break
+            else:
+                columns.append([box])
+                box["column"] = len(columns) - 1
+
+        width = ((lane_w - PLANNER_BLOCK_GAP_MM * (len(columns) - 1))
+                 / len(columns))
+        for column in columns:
+            for position, box in enumerate(column):
+                ceiling = (column[position + 1]["top"]
+                           if position + 1 < len(column) else bottom)
+                room = ceiling - box["top"] - PLANNER_BLOCK_GAP_MM
+                height = max(box["natural"], PLANNER_MIN_BLOCK_MM)
+                box["height"] = max(PLANNER_MIN_TIGHT_MM, min(height, max(room, 0.0)))
+                box["x"] = lane_x + box["column"] * (width + PLANNER_BLOCK_GAP_MM)
+                box["width"] = width
+                if box["top"] + box["height"] > bottom:
+                    box["top"] = max(top, bottom - box["height"])
+    return boxes
+
+
+def _block_style(event, colour_key):
+    """Fill/border/type colours for one block, including the hollow variant."""
+    palette = PLANNER_COLOURS.get(colour_key, PLANNER_COLOURS["blue"])
+    # Tentative or free-marked time is drawn hollow: an outline says "pencilled
+    # in" on a printed page the way a solid block says "booked".
+    if event["busy"] in (OL_BUSY_FREE, OL_BUSY_TENTATIVE):
+        return {
+            "fill": "#FFFFFF",
+            "stroke": palette["fill"],
+            "line_pt": 1.2,
+            "title": palette["edge"],
+            "sub": _MUTED,
+            "hollow": True,
+        }
+    if colour_key == "grey":
+        return {
+            "fill": palette["fill"],
+            "stroke": _RULE,
+            "line_pt": 0.6,
+            "title": palette["text"],
+            "sub": palette["sub"],
+            "hollow": False,
+        }
+    return {
+        "fill": palette["fill"],
+        "stroke": None,
+        "line_pt": 0,
+        "title": palette["text"],
+        "sub": palette["sub"],
+        "hollow": False,
+    }
+
+
+def _draw_block(canvas, box, show_people):
+    """
+    Draw one event block on the timeline.
+
+    Three layouts, picked by how much room the block actually has: the full
+    stacked one, a narrow variant for a block sharing its lane with an
+    overlapping meeting, and a single centred line for anything too short to
+    stack. A printed block that has been squeezed says less rather than
+    truncating everything on it into nonsense.
+    """
+    event = box["event"]
+    style = box["style"]
+    x, y = box["x"], box["top"]
+    width, height = box["width"], box["height"]
+    pad_x, pad_y = 2.2, 1.5
+    inner = width - pad_x * 2
+    if inner <= 4:
+        return
+
+    canvas.rect(x, y, width, height, fill=style["fill"], stroke=style["stroke"],
+                line_pt=style["line_pt"] or 0.6, radius=1.6)
+
+    span = "{0}–{1}".format(_fmt_time(event["start"]), _fmt_time(event["end"]))
+    floor_y = y + height - 1.0
+
+    # --- too short to stack: one centred line ------------------------------
+    if height < 8.6:
+        size = 9.0 if height >= 5.6 else (8.0 if height >= 4.4 else 7.0)
+        baseline = y + height / 2.0 + _cap_mm(size) / 2.0
+        if inner < 42.0:
+            # Short AND sharing the lane: one line is all there is, so spend it
+            # on the subject. Where the block sits already says when it is.
+            canvas.text(x + pad_x, baseline, event["subject"], size, bold=True,
+                        colour=style["title"], max_width=inner)
+            return
+        detail = span
+        if event["location"]:
+            longer = span + " · " + event["location"]
+            if canvas.text_width(longer, 7.5) < inner * 0.62:
+                detail = longer
+        detail_w = canvas.text_width(detail, 7.5)
+        title_w = inner - detail_w - 2.4
+        if title_w < 14.0:               # no room for both - the time wins
+            detail, detail_w = span, canvas.text_width(span, 7.5)
+            title_w = inner - detail_w - 2.4
+        if title_w < 10.0:               # nor for that - print the title alone
+            canvas.text(x + pad_x, baseline, event["subject"], size, bold=True,
+                        colour=style["title"], max_width=inner)
+            return
+        drawn = canvas.text(x + pad_x, baseline, event["subject"], size, bold=True,
+                            colour=style["title"], max_width=title_w)
+        canvas.text(x + pad_x + drawn + 2.4, baseline, detail, 7.5,
+                    colour=style["sub"], max_width=inner - drawn - 2.4)
+        return
+
+    # --- narrow, because it is sharing the lane ----------------------------
+    if inner < 42.0:
+        title_size = 9.0
+        baseline = y + pad_y + _cap_mm(title_size)
+        lines = canvas.wrap(event["subject"], title_size, inner, bold=True,
+                            max_lines=2 if height >= 12.0 else 1)
+        for line in lines:
+            if baseline > floor_y:
+                break
+            canvas.text(x + pad_x, baseline, line, title_size, bold=True,
+                        colour=style["title"])
+            baseline += 3.2
+        if baseline - 0.4 <= floor_y:
+            # Too narrow for both ends of the range: the start time alone beats
+            # a truncated one, and the block's position says how long it runs.
+            shown_span = (span if canvas.text_width(span, 7.5, bold=True) <= inner
+                          else _fmt_time(event["start"]))
+            canvas.text(x + pad_x, baseline, shown_span, 7.5, bold=True,
+                        colour=style["sub"], max_width=inner)
+            baseline += 2.8
+        if event["location"] and baseline <= floor_y:
+            canvas.text(x + pad_x, baseline, event["location"], 7.5,
+                        colour=style["sub"], max_width=inner)
+        return
+
+    # --- the full block ----------------------------------------------------
+    title_size = 10.5 if inner >= 62.0 else 9.5
+    span_w = canvas.text_width(span, 8.0, bold=True)
+    baseline = y + pad_y + _cap_mm(title_size)
+    canvas.text(x + pad_x, baseline, event["subject"], title_size, bold=True,
+                colour=style["title"], max_width=inner - span_w - 3.0)
+    canvas.text(x + width - pad_x, baseline, span, 8.0, bold=True,
+                colour=style["sub"], align="right")
+
+    baseline += 3.1
+    if event["location"] and baseline <= floor_y:
+        canvas.text(x + pad_x, baseline, event["location"], 8.0, bold=True,
+                    colour=style["sub"], max_width=inner)
+        baseline += 2.8
+    if show_people and event["people"] and baseline <= floor_y:
+        shown = event["people"][:4]
+        line = " · ".join(shown)
+        if len(event["people"]) > len(shown):
+            line += " +{0}".format(len(event["people"]) - len(shown))
+        canvas.text(x + pad_x, baseline, line, 7.5, colour=style["sub"],
+                    max_width=inner)
+
+
+def render_day_planner(day, day_events, ahead, identity, hours,
+                       show_people=True, withheld=0, category_colours=None):
+    """
+    Build the whole A4-landscape planner and return it as PDF bytes.
+
+    `day_events` is today's list, `ahead` a list of (date, events) for the
+    right-hand panel, `identity` the (name, address) the header and footer show,
+    and `hours` the (first, last) hour the timeline covers.
+    """
+    category_colours = category_colours or {}
+    page_w, page_h = 297.0, 210.0
+    pad_l = pad_r = 11.0
+    pad_t, pad_b = 10.0, 8.0
+    name, address = identity
+
+    canvas = PdfCanvas(page_w, page_h,
+                       title="Daily agenda - {0}".format(_fmt_day_long(day)),
+                       author=name or address or "")
+
+    timed = [event for event in day_events if not event["all_day"]]
+    all_day = [event for event in day_events if event["all_day"]]
+
+    # Buckets first: the legend can only show colours that are on the page.
+    for event in day_events:
+        label, colour_key = _event_bucket(event, category_colours)
+        event["bucket"] = label
+        event["colour"] = colour_key
+
+    # ---- header ----------------------------------------------------------
+    eyebrow = "DAILY AGENDA" + (" · " + name if name else "")
+    canvas.text(pad_l, pad_t + 2.0, eyebrow, 7.5, bold=True, colour=_MUTED,
+                tracking=0.85, max_width=120.0)
+    canvas.text(pad_l, pad_t + 8.6, _fmt_day_long(day), 19.0, bold=True, colour=_INK)
+
+    booked = sum((event["end"] - event["start"]).total_seconds() / 60.0
+                 for event in timed)
+    stats = "{0} meeting{1} · {2} booked".format(
+        len(timed), "" if len(timed) == 1 else "s", _fmt_duration(booked))
+    if all_day:
+        stats += " · {0} all day".format(len(all_day))
+    if not timed and not all_day:
+        stats = "Nothing scheduled"
+
+    cursor = page_w - pad_r
+    cursor -= canvas.text(cursor, pad_t + 8.0, stats, 7.5, bold=True,
+                          colour=_FAINT, align="right")
+    cursor -= 4.0
+    legend = sorted({(event["bucket"], event["colour"]) for event in day_events},
+                    key=_bucket_rank)
+    if any(event["busy"] in (OL_BUSY_FREE, OL_BUSY_TENTATIVE) for event in day_events):
+        legend.append(("Tentative", None))
+    if legend:
+        canvas.line(cursor, pad_t + 3.4, cursor, pad_t + 9.2, _RULE, 0.6)
+        cursor -= 4.0
+    for label, colour_key in reversed(legend):
+        cursor -= canvas.text(cursor, pad_t + 8.0, label, 7.5, bold=True,
+                              colour="#374151", align="right")
+        cursor -= 2.0
+        if colour_key is None:  # the hollow swatch
+            canvas.rect(cursor - 2.6, pad_t + 5.7, 2.6, 2.6, fill="#FFFFFF",
+                        stroke=_INK, line_pt=0.9, radius=0.9)
+        else:
+            canvas.rect(cursor - 2.6, pad_t + 5.7, 2.6, 2.6,
+                        fill=PLANNER_COLOURS[colour_key]["fill"],
+                        stroke=_RULE if colour_key == "grey" else None,
+                        line_pt=0.6, radius=0.9)
+        cursor -= 2.6 + 6.0
+        if cursor < pad_l + 130.0:  # ran out of header - drop the rest
+            break
+
+    header_rule = pad_t + 12.8
+    canvas.line(pad_l, header_rule, page_w - pad_r, header_rule, _INK, 1.2)
+
+    # ---- page frame ------------------------------------------------------
+    body_top = header_rule + 5.0
+    footer_rule = page_h - pad_b - 4.6
+    body_bottom = footer_rule - 2.5
+    centre_x = pad_l + (page_w - pad_l - pad_r) / 2.0
+    left_x = pad_l
+    left_w = centre_x - 9.0 - left_x
+    right_x = centre_x + 9.0
+    right_w = (page_w - pad_r) - right_x
+    canvas.line(centre_x, header_rule + 4.0, centre_x, footer_rule - 2.0,
+                _GRID, 0.6, dash=[2.2, 2.2])
+
+    # ---- left panel: the day itself --------------------------------------
+    today = datetime.date.today()
+    if day == today:
+        panel_title = "Today"
+    elif day == today + datetime.timedelta(days=1):
+        panel_title = "Tomorrow"
+    else:
+        panel_title = _WEEKDAY_NAMES[day.weekday()]
+    canvas.text(left_x, body_top + 3.0, panel_title, 10.5, bold=True, colour=_INK)
+    canvas.text(left_x + left_w, body_top + 3.0,
+                "{0:02d}:00 — {1:02d}:00".format(hours[0], hours[1]), 7.0,
+                bold=True, colour=_FAINT, tracking=0.8, align="right")
+
+    cursor_y = body_top + 6.4
+
+    # All-day items have no place on an hour grid, so they sit above it as a
+    # strip of chips - which is also where a printed diary puts them.
+    if all_day:
+        chip_h = 5.0
+        chip_x, chip_y = left_x, cursor_y
+        rows = 1
+        for event in all_day:
+            label = event["subject"]
+            style = _block_style(event, event["colour"])
+            chip_w = min(left_w, canvas.text_width(label, 8.0, bold=True) + 5.0)
+            if chip_x + chip_w > left_x + left_w and chip_x > left_x:
+                if rows >= 2:
+                    canvas.text(chip_x + 1.0, chip_y + chip_h / 2.0 + _cap_mm(7.5) / 2.0,
+                                "+{0} more".format(
+                                    len(all_day) - all_day.index(event)),
+                                7.5, bold=True, colour=_MUTED)
+                    break
+                rows += 1
+                chip_x = left_x
+                chip_y += chip_h + 1.2
+            canvas.rect(chip_x, chip_y, chip_w, chip_h, fill=style["fill"],
+                        stroke=style["stroke"], line_pt=style["line_pt"] or 0.6,
+                        radius=1.2)
+            canvas.text(chip_x + 2.5, chip_y + chip_h / 2.0 + _cap_mm(8.0) / 2.0,
+                        label, 8.0, bold=True, colour=style["title"],
+                        max_width=chip_w - 5.0)
+            chip_x += chip_w + 1.6
+        cursor_y = chip_y + chip_h + 2.6
+
+    # ---- the hour grid ---------------------------------------------------
+    gutter = 13.0
+    grid_top = cursor_y + 2.2
+    grid_bottom = body_bottom - 2.2
+    lane_x = left_x + gutter
+    lane_w = (left_x + left_w) - lane_x
+    start_min, end_min = hours[0] * 60, hours[1] * 60
+    scale = (grid_bottom - grid_top) / float(max(1, end_min - start_min))
+
+    label_step = 1 if (60.0 * scale) >= 4.0 else 2
+    for hour in range(hours[0], hours[1] + 1):
+        y = grid_top + (hour * 60 - start_min) * scale
+        canvas.line(lane_x, y, left_x + left_w, y, _GRID, 0.75, dash=[0.6, 1.8])
+        if (hour - hours[0]) % label_step == 0:
+            canvas.text(left_x, y + _cap_mm(7.5) / 2.0,
+                        "{0:02d}:00".format(hour), 7.5, bold=True, colour=_FAINT)
+
+    if timed:
+        for box in _place_blocks(timed, day, start_min, end_min,
+                                 grid_top, grid_bottom, lane_x, lane_w):
+            box["style"] = _block_style(box["event"], box["event"]["colour"])
+            _draw_block(canvas, box, show_people)
+    elif not all_day:
+        canvas.text(lane_x + lane_w / 2.0, (grid_top + grid_bottom) / 2.0,
+                    "Nothing in the diary", 10.0, bold=True, colour=_GRID,
+                    align="centre")
+
+    # ---- right panel: the days after -------------------------------------
+    if ahead:
+        first, last = ahead[0][0], ahead[-1][0]
+        if len(ahead) == 1:
+            ahead_title = "Then {0}".format(_WEEKDAY_NAMES[first.weekday()])
+            ahead_range = _fmt_day_short(first)
+        else:
+            ahead_title = "The next {0} days".format(
+                _NUMBER_WORDS.get(len(ahead), len(ahead)))
+            ahead_range = "{0} — {1}".format(
+                first.day if first.month == last.month else _fmt_day_short(first),
+                _fmt_day_short(last))
+    else:
+        ahead_title, ahead_range = "The days ahead", ""
+
+    canvas.text(right_x, body_top + 3.0, ahead_title, 10.5, bold=True, colour=_INK)
+    canvas.text(right_x + right_w, body_top + 3.0, ahead_range, 7.0, bold=True,
+                colour=_FAINT, tracking=0.8, align="right")
+
+    rows_top = body_top + 6.4
+    time_col = 19.0
+    date_col = 17.0
+    date_block_mm = 12.4   # the DOW / number / month stack down the left
+    row_gap_mm = 2.8
+    base_line_mm = 4.3
+
+    # Rows are sized to what is in them and then scaled to fill the panel, so a
+    # quiet Wednesday does not take up as much of the page as a full Thursday.
+    natural = [max(date_block_mm, 2.6 + max(1, len(events)) * base_line_mm) + row_gap_mm
+               for _ahead_day, events in ahead]
+    available = body_bottom - rows_top
+    factor = available / sum(natural) if sum(natural) else 1.0
+    heights = [height * factor for height in natural]
+
+    top = rows_top
+    for index, (ahead_day, ahead_events) in enumerate(ahead):
+        row_h = heights[index]
+        accent = PLANNER_COLOURS[PLANNER_DAY_ACCENTS[index % len(PLANNER_DAY_ACCENTS)]]
+        canvas.text(right_x, top + 2.2, _WEEKDAY_SHORT[ahead_day.weekday()], 7.5,
+                    bold=True, colour=accent["fill"], tracking=0.75)
+        canvas.text(right_x, top + 7.2, str(ahead_day.day), 14.0, bold=True, colour=_INK)
+        canvas.text(right_x, top + 10.6, _MONTH_SHORT[ahead_day.month - 1], 7.0,
+                    bold=True, colour=_FAINT)
+
+        list_x = right_x + date_col
+        list_w = right_w - date_col
+        # Spread the day's lines over the row it was given, within reason: a
+        # short list looks deliberate spaced out, and absurd spaced to the floor.
+        line_h = base_line_mm
+        if ahead_events:
+            line_h = max(base_line_mm, min(6.4, (row_h - row_gap_mm - 2.6)
+                                           / max(1, len(ahead_events))))
+        capacity = max(1, int((row_h - row_gap_mm - 2.2) / line_h))
+        baseline = top + 2.6
+
+        if not ahead_events:
+            canvas.text(list_x, baseline, "Nothing scheduled", 9.0, colour=_FAINT)
+        else:
+            shown = ahead_events[:capacity]
+            if len(ahead_events) > capacity:
+                shown = ahead_events[:max(1, capacity - 1)]
+            for event in shown:
+                when = ("all day" if event["all_day"]
+                        else "{0}–{1}".format(_fmt_time(event["start"]),
+                                              _fmt_time(event["end"])))
+                canvas.text(list_x, baseline, when, 8.0, bold=True, colour=_MUTED,
+                            max_width=time_col - 1.0)
+                canvas.text(list_x + time_col + 2.0, baseline, event["subject"], 9.0,
+                            bold=True, colour=_INK,
+                            max_width=list_w - time_col - 2.0)
+                baseline += line_h
+            if len(ahead_events) > len(shown):
+                canvas.text(list_x + time_col + 2.0, baseline,
+                            "+{0} more".format(len(ahead_events) - len(shown)),
+                            8.0, bold=True, colour=_FAINT)
+
+        if index < len(ahead) - 1:
+            rule_y = top + row_h - row_gap_mm / 2.0
+            canvas.line(right_x, rule_y, right_x + right_w, rule_y, _HAIRLINE, 0.5)
+        top += row_h
+
+    # ---- footer ----------------------------------------------------------
+    canvas.line(pad_l, footer_rule, page_w - pad_r, footer_rule, _RULE, 0.5)
+    left_footer = "Outlook Calendar" + (" · " + address if address else "")
+    if withheld:
+        left_footer += " · {0} item{1} withheld by the content policy".format(
+            withheld, "" if withheld == 1 else "s")
+    canvas.text(pad_l, footer_rule + 3.4, left_footer, 7.0, bold=True,
+                colour=_FAINT, max_width=170.0)
+    printed = datetime.datetime.now()
+    canvas.text(page_w - pad_r, footer_rule + 3.4,
+                "Printed {0} at {1}".format(
+                    _fmt_day_short(printed.date()), _fmt_time(printed)),
+                7.0, bold=True, colour=_FAINT, align="right")
+
+    return canvas.to_bytes()
+
+
+# ---------------------------------------------------------------------------
+# The outlook_print_calendar tool
+# ---------------------------------------------------------------------------
+
+PLANNER_SCAN_HORIZON_DAYS = 14   # how far ahead empty days may be skipped over
+PLANNER_MAX_LOOKAHEAD = 6        # more rows than this and the panel is unreadable
+
+_identity_cache = None
+
+
+def current_user_identity(ns):
+    """
+    (display name, SMTP address) for the mailbox owner, for the header/footer.
+
+    Tried in order of how cheap and how likely each is to work; every step is
+    optional, because a planner with no name on it still prints.
+    """
+    global _identity_cache
+    if _identity_cache is not None:
+        return _identity_cache
+
+    name, address = "", ""
+    try:
+        name = _one_line(ns.CurrentUser.Name or "")
+    except Exception:
+        pass
+    try:
+        accounts = ns.Accounts
+        for index in range(1, int(accounts.Count) + 1):
+            candidate = _one_line(accounts.Item(index).SmtpAddress or "")
+            if "@" in candidate:
+                address = candidate
+                break
+    except Exception:
+        pass
+    if not address:
+        try:
+            exchange_user = ns.CurrentUser.AddressEntry.GetExchangeUser()
+            if exchange_user is not None:
+                address = _one_line(exchange_user.PrimarySmtpAddress or "")
+        except Exception:
+            pass
+    _identity_cache = (name, address)
+    return _identity_cache
+
+
+def parse_planner_date(value, today):
+    """
+    Turn the tool's 'date' argument into a real date.
+
+    YYYY-MM-DD, or one of 'today' / 'tomorrow' / 'yesterday', or a signed day
+    offset like '+2'. The words are accepted on purpose: the machine's clock is
+    the authority on an airgapped endpoint, so 'tomorrow' should not depend on
+    the model having today's date right. Raises ValueError on anything else.
+    """
+    text = (value or "").strip().lower()
+    if not text or text == "today":
+        return today
+    if text == "tomorrow":
+        return today + datetime.timedelta(days=1)
+    if text == "yesterday":
+        return today - datetime.timedelta(days=1)
+    if re.fullmatch(r"[+-]\d{1,3}", text):
+        return today + datetime.timedelta(days=int(text))
+    return datetime.datetime.strptime(text, "%Y-%m-%d").date()
+
+
+def _planner_hours(events, day):
+    """
+    The first and last hour the timeline covers.
+
+    Starts from the configured working day and stretches, whole hours at a time,
+    to take in anything scheduled outside it - an early flight or a late call
+    belongs on the page, not off the top of it.
+    """
+    first, last = CALENDAR_DAY_START_HOUR, CALENDAR_DAY_END_HOUR
+    for event in events:
+        if event["all_day"]:
+            continue
+        start_h = int(_minutes_into_day(event["start"], day) // 60)
+        end_min = _minutes_into_day(event["end"], day)
+        end_h = int(-(-end_min // 60))  # ceiling division
+        first = min(first, max(0, start_h))
+        last = max(last, min(24, end_h))
+    if last <= first:
+        last = min(24, first + 1)
+    return first, last
+
+
+def _collect_planner_events(start_date, end_date, with_people):
+    """
+    Read the calendar between two dates into plain dicts, one per occurrence.
+
+    Returns (events by date, withheld count). Blacklisted items are dropped
+    before anything is laid out, so a withheld meeting cannot reach the page
+    even as an unlabelled block.
+    """
+    start_dt = datetime.datetime.combine(start_date, datetime.time(0, 0))
+    end_dt = datetime.datetime.combine(end_date, datetime.time(23, 59, 59))
+    try:
+        matches, _total, _tail = scan_calendar(start_dt, end_dt)
+    except Exception as exc:
+        raise RuntimeError(
+            "could not read the calendar folder ({0})".format(exc))
+
+    identity = current_user_identity(get_namespace())
+
+    by_date = {}
+    withheld = 0
+    for item_start, item in matches:
+        reason = appointment_block_reason(item)
+        if reason:
+            withheld += 1
+            log("Withheld a calendar item from the planner (blacklist match: {0}).".format(reason))
+            continue
+        day = item_start.date()
+        event = _appointment_to_event(
+            item, item_start, identity,
+            want_people=(with_people and day == start_date))
+        if event is None:
+            continue
+        by_date.setdefault(day, []).append(event)
+
+    for events in by_date.values():
+        events.sort(key=lambda event: (not event["all_day"], event["start"]))
+    return by_date, withheld
+
+
+def _planner_ahead_days(by_date, day, wanted, skip_empty):
+    """
+    Which days fill the right-hand panel.
+
+    With `skip_empty` on, days with nothing in the diary are passed over in
+    favour of the next day that has something - printing Friday's planner should
+    show the week ahead, not two blank weekend panels. If nothing at all is
+    scheduled in the horizon, the plain consecutive days are shown instead.
+    """
+    ahead = []
+    if not skip_empty:
+        return [(day + datetime.timedelta(days=offset),
+                 by_date.get(day + datetime.timedelta(days=offset), []))
+                for offset in range(1, wanted + 1)]
+
+    for offset in range(1, PLANNER_SCAN_HORIZON_DAYS + 1):
+        candidate = day + datetime.timedelta(days=offset)
+        events = by_date.get(candidate)
+        if events:
+            ahead.append((candidate, events))
+        if len(ahead) == wanted:
+            break
+    if not ahead:
+        return [(day + datetime.timedelta(days=offset), [])
+                for offset in range(1, wanted + 1)]
+    return ahead
+
+
+def tool_print_calendar(args):
+    if not PDF_DIR:
+        return ("Error: printing is switched off on this server "
+                "(OUTLOOK_DOCS_DIR is set to off), so no PDF was written. "
+                "Give OUTLOOK_DOCS_DIR a real folder, or unset it to use "
+                "%EVA_DOCUMENTS_DIR%\\{0}.".format(DOCS_SUBFOLDER))
+
+    today = datetime.date.today()
+    try:
+        day = parse_planner_date(args.get("date"), today)
+    except ValueError:
+        return ("Error: 'date' must be YYYY-MM-DD, or one of 'today', "
+                "'tomorrow', 'yesterday', or a day offset like '+2'.")
+
+    try:
+        wanted = int(args.get("lookahead_days", CALENDAR_LOOKAHEAD_DAYS))
+    except (TypeError, ValueError):
+        wanted = CALENDAR_LOOKAHEAD_DAYS
+    wanted = max(1, min(PLANNER_MAX_LOOKAHEAD, wanted))
+    show_people = bool(args.get("show_attendees", True))
+    skip_empty = bool(args.get("skip_empty_days", True))
+
+    horizon = day + datetime.timedelta(
+        days=PLANNER_SCAN_HORIZON_DAYS if skip_empty else wanted)
+    try:
+        by_date, withheld = _collect_planner_events(day, horizon, show_people)
+    except RuntimeError as exc:
+        return "Error: {0}.".format(exc)
+
+    day_events = by_date.get(day, [])
+    ahead = _planner_ahead_days(by_date, day, wanted, skip_empty)
+    hours = _planner_hours(day_events, day)
+
+    try:
+        pdf = render_day_planner(
+            day, day_events, ahead, current_user_identity(get_namespace()),
+            hours, show_people=show_people, withheld=withheld,
+            category_colours=_CATEGORY_COLOURS)
+    except Exception as exc:
+        log("Planner render failed:\n{0}".format(traceback.format_exc()))
+        return "Error: the planner could not be laid out ({0}).".format(exc)
+
+    # basename() then safe_filename() so a path in 'filename' cannot escape the
+    # folder: "..\\elsewhere\\x.pdf" resolves to "x.pdf" inside it.
+    requested = _one_line(args.get("filename") or "")
+    if requested:
+        stem = safe_filename(os.path.splitext(os.path.basename(requested))[0])
+    else:
+        stem = "Calendar - {0} {1}".format(
+            day.isoformat(), _WEEKDAY_NAMES[day.weekday()])
+    path = os.path.join(PDF_DIR, stem + ".pdf")
+
+    # Re-printing a day overwrites that day's own sheet, which is the point. A
+    # NAMED file is different: the documents folder holds the user's own PDFs
+    # too, and silently replacing one of those would be unforgivable.
+    if requested and os.path.exists(path):
+        return ("Error: {0} already exists and this call named it explicitly, "
+                "so nothing was written - a file you already have must not be "
+                "replaced without asking. Choose another name, or drop "
+                "'filename' to write the dated sheet, which does overwrite "
+                "its own previous copy.".format(path))
+
+    try:
+        os.makedirs(PDF_DIR, exist_ok=True)
+        with open(path, "wb") as handle:
+            handle.write(pdf)
+    except OSError as exc:
+        return ("Error: could not write the planner to {0} ({1}). The folder "
+                "comes from OUTLOOK_DOCS_DIR, or %EVA_DOCUMENTS_DIR%\\{2}."
+                .format(path, exc, DOCS_SUBFOLDER))
+
+    log("Wrote day planner: {0}".format(path))
+
+    timed = [event for event in day_events if not event["all_day"]]
+    booked = sum((event["end"] - event["start"]).total_seconds() / 60.0
+                 for event in timed)
+    lines = [
+        "Printable day planner written to:",
+        "  {0}".format(path),
+        "",
+        "{0}: {1} meeting(s), {2} booked, {3} all-day item(s). Timeline "
+        "{4:02d}:00-{5:02d}:00.".format(
+            _fmt_day_long(day), len(timed), _fmt_duration(booked),
+            len(day_events) - len(timed), hours[0], hours[1]),
+    ]
+    for event in day_events:
+        when = ("all day" if event["all_day"]
+                else "{0}-{1}".format(_fmt_time(event["start"]),
+                                      _fmt_time(event["end"])))
+        lines.append("  - {0}  {1}{2}".format(
+            when, event["subject"],
+            " ({0})".format(event["location"]) if event["location"] else ""))
+    if not day_events:
+        lines.append("  (nothing in the diary - the page prints empty)")
+
+    lines.append("")
+    lines.append("Following days on the page: " + (", ".join(
+        "{0} ({1} item(s))".format(_fmt_day_short(other), len(events))
+        for other, events in ahead) or "none"))
+    if withheld:
+        lines.append("[{0} event(s) withheld by the content blacklist and left "
+                     "off the page.]".format(withheld))
+    lines.append("It is A4 landscape - print it single-sided and fold it in "
+                 "half for a bifold day planner.")
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -1544,6 +3048,66 @@ TOOLS = [
         },
     },
     {
+        "name": "outlook_print_calendar",
+        "description": (
+            "Create a PRINTABLE PDF day planner for one day, laid out A4 landscape "
+            "as a bifold: an hour-by-hour timeline of that day on the left half, and "
+            "a summary of the following days on the right. Use it whenever the user "
+            "asks for a printable/printed calendar, a day planner, an agenda to print "
+            "or take into a meeting, or 'today's calendar as a PDF'. 'date' accepts "
+            "'today' (the default), 'tomorrow', 'yesterday', a day offset like '+2', "
+            "or YYYY-MM-DD - prefer the words, because the server uses the endpoint's "
+            "own clock. The file is written into the documents folder and the tool "
+            "reports the full path plus what is on the page. Reading the calendar is "
+            "still read-only; events withheld by the content policy are left off the "
+            "page and counted in the footer."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string",
+                    "description": (
+                        "Day to print: 'today' (default), 'tomorrow', 'yesterday', "
+                        "an offset like '+2'/'-1', or YYYY-MM-DD."
+                    ),
+                },
+                "lookahead_days": {
+                    "type": "integer",
+                    "description": (
+                        "How many following days the right-hand panel lists, 1-6 "
+                        "(default 4)."
+                    ),
+                },
+                "skip_empty_days": {
+                    "type": "boolean",
+                    "description": (
+                        "Default true: days with nothing in the diary are passed over "
+                        "in favour of the next day that has something, so a Friday "
+                        "planner shows the week ahead instead of two blank weekend "
+                        "panels. Set false for strictly consecutive days."
+                    ),
+                },
+                "show_attendees": {
+                    "type": "boolean",
+                    "description": (
+                        "Default true: print attendee names inside the day's larger "
+                        "meeting blocks. Set false for a planner that can be left on "
+                        "a desk."
+                    ),
+                },
+                "filename": {
+                    "type": "string",
+                    "description": (
+                        "Optional file name for the PDF. Defaults to "
+                        "'Calendar - <date> <weekday>.pdf'; an existing file of the "
+                        "same name is overwritten."
+                    ),
+                },
+            },
+        },
+    },
+    {
         "name": "outlook_list_sent_emails",
         "description": (
             "List messages you SENT, within a date range (inclusive), newest first. "
@@ -1614,6 +3178,7 @@ TOOL_DISPATCH = {
     "outlook_search_emails": tool_search_emails,
     "outlook_get_email": tool_get_email,
     "outlook_get_calendar": tool_get_calendar,
+    "outlook_print_calendar": tool_print_calendar,
     "outlook_list_sent_emails": tool_list_sent_emails,
     "outlook_search_recent": tool_search_recent,
     "outlook_list_folders": tool_list_folders,
@@ -1730,6 +3295,14 @@ def run_check():
         cal = ns.GetDefaultFolder(OL_FOLDER_CALENDAR)
         log("Calendar folder     : {0}".format(cal.Name))
         log("Search folders      : {0}".format(", ".join(_SEARCH_FOLDERS)))
+        if PDF_DIR:
+            log("Planner PDF folder  : {0}".format(PDF_DIR))
+        else:
+            log("Planner PDF folder  : disabled - outlook_print_calendar is off")
+        if _CATEGORY_COLOURS:
+            log("Planner colours     : {0}".format(", ".join(
+                "{0}={1}".format(key, value)
+                for key, value in sorted(_CATEGORY_COLOURS.items()))))
         if KB_DIR:
             log("KB save folder      : {0} ({1})".format(
                 KB_DIR,
@@ -1747,7 +3320,8 @@ def run_check():
 
 
 def main():
-    global KB_DIR, KB_AUTOSAVE
+    global KB_DIR, KB_AUTOSAVE, PDF_DIR, _CATEGORY_COLOURS
+    global CALENDAR_DAY_START_HOUR, CALENDAR_DAY_END_HOUR
 
     parser = argparse.ArgumentParser(
         description=(
@@ -1755,7 +3329,8 @@ def main():
             "with a content blacklist that withholds classified/marked items. With "
             "no check flag it runs as an stdio MCP server. Configuration is "
             "environment variables only: EVA_KNOWLEDGE_DIR (this server saves "
-            "into its 'email' sub-folder), OUTLOOK_SEARCH_FOLDERS, "
+            "into its 'email' sub-folder), EVA_DOCUMENTS_DIR (it prints the "
+            "day planner into the 'pdf' one), OUTLOOK_SEARCH_FOLDERS, "
             "OUTLOOK_BLACKLIST_FILE - see the CONFIGURATION section of this "
             "file's docstring."
         )
@@ -1803,6 +3378,47 @@ def main():
             log("WARNING: OUTLOOK_KB_AUTOSAVE has no effect while the "
                 "knowledge-base folder is off. Unset OUTLOOK_KB_DIR (or give "
                 "it a real path) to enable saving.")
+
+    # Printable day planner. Unlike the knowledge-base folder this is NOT fatal
+    # when it cannot be used: printing is one tool, and mail and calendar must
+    # still be readable on an endpoint where the document library is missing.
+    PDF_DIR, docs_configured = resolve_pdf_dir()
+    if PDF_DIR:
+        try:
+            os.makedirs(PDF_DIR, exist_ok=True)
+            log("Day planner PDFs -> {0}".format(PDF_DIR))
+        except OSError as exc:
+            log("WARNING: cannot use the planner folder {0}: {1}".format(PDF_DIR, exc))
+            log("         It resolves from {0}. outlook_print_calendar is "
+                "disabled until it exists.".format(
+                    "OUTLOOK_DOCS_DIR / EVA_DOCUMENTS_DIR (sub-folder '{0}')".format(
+                        DOCS_SUBFOLDER)
+                    if docs_configured
+                    else "the built-in default {0}".format(PDF_DIR)))
+            PDF_DIR = None
+    else:
+        log("Day planner printing disabled (OUTLOOK_DOCS_DIR=off); no PDF is "
+            "written")
+
+    # Category -> colour map for the planner: the file's own value first, then
+    # the environment on top of it.
+    _CATEGORY_COLOURS = {key.lower(): value.lower()
+                         for key, value in CALENDAR_CATEGORY_COLOURS.items()}
+    _CATEGORY_COLOURS.update(parse_category_colours(env("OUTLOOK_CALENDAR_COLOURS")))
+
+    # Working-day window for the printed timeline, e.g. OUTLOOK_CALENDAR_HOURS="7-19".
+    hours_raw = env("OUTLOOK_CALENDAR_HOURS")
+    if hours_raw:
+        match = re.fullmatch(r"\s*(\d{1,2})\s*[-:to]+\s*(\d{1,2})\s*", hours_raw)
+        if match and 0 <= int(match.group(1)) < int(match.group(2)) <= 24:
+            CALENDAR_DAY_START_HOUR = int(match.group(1))
+            CALENDAR_DAY_END_HOUR = int(match.group(2))
+            log("Planner timeline hours set to {0:02d}:00-{1:02d}:00.".format(
+                CALENDAR_DAY_START_HOUR, CALENDAR_DAY_END_HOUR))
+        else:
+            log("WARNING: OUTLOOK_CALENDAR_HOURS='{0}' is not a range like '7-19'; "
+                "keeping {1:02d}:00-{2:02d}:00.".format(
+                    hours_raw, CALENDAR_DAY_START_HOUR, CALENDAR_DAY_END_HOUR))
 
     # Load any external blacklist terms and compile the filter BEFORE serving.
     extra_terms = []

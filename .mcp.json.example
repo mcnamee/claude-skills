@@ -75,7 +75,9 @@
       "args": ["C:\\path\\to\\claude-skills\\plugins\\outlook\\outlook.py"],
       "env": {
         "PYTHONUTF8": "1",
-        "OUTLOOK_SEARCH_FOLDERS": "Inbox,Sent Items,Archive"
+        "OUTLOOK_SEARCH_FOLDERS": "Inbox,Sent Items,Archive",
+        "OUTLOOK_CALENDAR_HOURS": "8-18",
+        "OUTLOOK_CALENDAR_COLOURS": "Leadership=purple,Client=green"
       }
     },
     "confluence": {

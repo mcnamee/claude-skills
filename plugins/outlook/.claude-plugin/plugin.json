@@ -1,8 +1,8 @@
 {
   "name": "outlook",
   "displayName": "Outlook (mail + calendar)",
-  "version": "6.0.0",
-  "description": "Read-only access to local classic Outlook mail and calendar via COM, saving an email to the knowledge base when you ask for it. Windows only; requires pywin32.",
+  "version": "6.1.0",
+  "description": "Read-only access to local classic Outlook mail and calendar via COM, plus a printable PDF day planner for any day. Saves an email to the knowledge base when you ask for it. Windows only; requires pywin32.",
   "author": {
     "name": "mcnamee"
   },
@@ -18,12 +18,22 @@
     "search_folders": {
       "type": "string",
       "title": "Search folders",
-      "description": "Optional. Comma-separated folder names for outlook_search_recent, e.g. 'Inbox,Sent Items,Archive'. The Python interpreter and the folder saved email goes to come from the suite-wide EVA_PYTHON and EVA_KNOWLEDGE_DIR environment variables - this server writes into the 'email' sub-folder of the knowledge root, which must exist; see the plugin README."
+      "description": "Optional. Comma-separated folder names for outlook_search_recent, e.g. 'Inbox,Sent Items,Archive'. The Python interpreter and the folders this server writes to come from the suite-wide EVA_PYTHON, EVA_KNOWLEDGE_DIR (saved email goes to its 'email' sub-folder, which must exist) and EVA_DOCUMENTS_DIR (printed day planners go to its 'pdf' one) environment variables; see the plugin README."
     },
     "blacklist_file": {
       "type": "string",
       "title": "Blacklist file",
       "description": "Optional. Path to a file of extra content-blacklist terms, one per line."
+    },
+    "calendar_hours": {
+      "type": "string",
+      "title": "Printed day hours",
+      "description": "Optional. The working day the printable planner's timeline starts from, e.g. '7-19'. Defaults to 8-18, and always stretches to fit anything scheduled outside it."
+    },
+    "calendar_colours": {
+      "type": "string",
+      "title": "Calendar category colours",
+      "description": "Optional. Maps your Outlook categories to planner block colours, e.g. 'Leadership=purple,Client=green'. Colours: blue, purple, green, amber, teal, rose, grey. Uncategorised events fall back to External / Internal / Personal."
     }
   },
   "mcpServers": {
@@ -36,7 +46,9 @@
       "env": {
         "PYTHONUTF8": "1",
         "OUTLOOK_SEARCH_FOLDERS": "${user_config.search_folders}",
-        "OUTLOOK_BLACKLIST_FILE": "${user_config.blacklist_file}"
+        "OUTLOOK_BLACKLIST_FILE": "${user_config.blacklist_file}",
+        "OUTLOOK_CALENDAR_HOURS": "${user_config.calendar_hours}",
+        "OUTLOOK_CALENDAR_COLOURS": "${user_config.calendar_colours}"
       }
     }
   }

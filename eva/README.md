@@ -51,7 +51,7 @@ C:\Eva\
 │  ├─ word\            .docx  (searched recursively)
 │  ├─ powerpoint\      .pptx  (searched recursively)
 │  ├─ excel\           .xlsx  (top level only — see its README)
-│  └─ pdf\             .pdf   source PDFs
+│  └─ pdf\             .pdf   source PDFs, and planners outlook printed
 └─ templates\        blank branded files new documents start from
    ├─ word\             .docx templates        (read-only)
    └─ powerpoint\       .pptx / .potx templates (read-only)
@@ -96,7 +96,7 @@ Where each plugin lands, and **which folders must exist**:
 | `powerpoint` | `documents\powerpoint\` | `templates\powerpoint\` | `knowledge\powerpoint\` |
 | `excel` | `documents\excel\` | — | — |
 | `pdf-to-md` | `documents\pdf\` | — | `knowledge\pdf\` |
-| `outlook` | — | — | `knowledge\email\` |
+| `outlook` | `documents\pdf\` *(planners it prints)* | — | `knowledge\email\` |
 | `confluence` | — | — | `knowledge\confluence\` |
 | `knowledge-base` | `knowledge\` *(the whole root - it indexes everything)* | — | `knowledge\captures\` |
 | `jira` | — | — | — |

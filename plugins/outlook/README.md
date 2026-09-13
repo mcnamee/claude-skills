@@ -2,14 +2,14 @@
 
 Read-only access to your local classic Outlook mail and calendar over COM, with
 a content blacklist that withholds classified/compliance-marked items from the
-AI entirely.
+AI entirely — plus a printable PDF day planner for any day.
 
 | | |
 |---|---|
-| **Server** | `outlook.py` v6.0.0 |
+| **Server** | `outlook.py` v6.1.0 |
 | **pip install** | `pywin32` |
 | **Platform** | **Windows only** — requires classic Win32 Outlook (not "New Outlook") installed, running, and logged into a profile |
-| **Writes to disk** | only when you ask an email to be saved — then one Markdown file in `C:\Eva\knowledge\email` |
+| **Writes to disk** | only on request: an email saved as Markdown in `C:\Eva\knowledge\email`, or a day planner PDF in `C:\Eva\documents\pdf` |
 
 ## Install
 
@@ -26,6 +26,59 @@ variables in [Configuration](#configuration).
 |---|---|---|
 | Search folders | `OUTLOOK_SEARCH_FOLDERS` | Comma-separated default folder set for `outlook_search_recent`, e.g. `Inbox,Sent Items,Archive` |
 | Blacklist file | `OUTLOOK_BLACKLIST_FILE` | Path to a file of extra content-blacklist terms |
+| Printed day hours | `OUTLOOK_CALENDAR_HOURS` | Working day the printed planner's timeline starts from, e.g. `7-19` (default `8-18`) |
+| Calendar category colours | `OUTLOOK_CALENDAR_COLOURS` | Outlook category → planner colour, e.g. `Leadership=purple,Client=green` |
+
+## The printable day planner
+
+Ask for "today's printable calendar", "tomorrow's planner" or "an agenda I can
+take into the meeting" and `outlook_print_calendar` writes an **A4 landscape
+PDF** into `C:\Eva\documents\pdf`. Print it single-sided and fold it in half:
+the day itself runs down the left panel on an hour-by-hour timeline, the
+following days are summarised on the right.
+
+| You say | What you get |
+|---|---|
+| "Print today's calendar" | `Calendar - 2026-09-14 Monday.pdf` for today, with the next four days that have something on them |
+| "Tomorrow's planner" | The same for tomorrow |
+| "…without the attendee names" | `show_attendees: false`, for a sheet you can leave on a desk |
+| "Show the next week down the side" | `lookahead_days: 6` |
+
+The `date` argument takes `today` (the default), `tomorrow`, `yesterday`, an
+offset like `+2`, or `YYYY-MM-DD`. Prefer the words: the server resolves them
+against **this machine's** clock, so a planner cannot come out a day wrong
+because the model's idea of today was stale.
+
+### What ends up on the page
+
+- **Meetings are blocks**, positioned and sized by their real start and end.
+  Two that genuinely clash share the lane in columns the way Outlook's day view
+  does; a run of back-to-back short meetings stays one column of thin blocks.
+- **The timeline stretches.** It starts from your working day
+  (`OUTLOOK_CALENDAR_HOURS`, default 08:00–18:00) and grows to take in anything
+  outside it, so a 6 am flight is on the page rather than off the top of it.
+- **All-day items** sit above the grid as a strip of chips.
+- **Colour comes from your own Outlook categories**, where you have mapped them
+  with `OUTLOOK_CALENDAR_COLOURS`. Anything uncategorised falls back to what
+  Outlook can actually prove: someone outside your SMTP domain is invited
+  (External, green), it is internal (Internal, blue), or nobody is invited at
+  all (Personal, grey). Nothing is inferred from the subject line, and the
+  legend across the top names whichever of these are on the page.
+- **Tentative or free-marked time is drawn hollow**, the way a diary pencils
+  something in.
+- **Empty days are skipped** in the right-hand panel, so a Friday sheet shows
+  the week ahead instead of two blank weekend panels. Ask for the literal next
+  four days and it passes `skip_empty_days: false`.
+- **Blacklisted events never reach the page** — not even as an unlabelled
+  block. The footer carries the count.
+
+Re-printing a day overwrites that day's file rather than piling up copies.
+
+> **No PDF library is involved.** The planner is drawn straight into the PDF
+> imaging model from the standard library alone, so printing adds nothing to the
+> pip dependencies and there is nothing extra to transfer. Type is the base-14
+> Helvetica every PDF reader carries; the design it follows uses Manrope, which
+> would mean shipping a font file.
 
 ## Saving to the knowledge base
 
@@ -82,22 +135,28 @@ there are no folder prompts at install time and no folder command-line flags.
 `setx NAME "value"` does the same thing from `cmd`. Neither affects processes
 that are already running, so quit and reopen your editor afterwards.
 
-Of the four, this server uses two: `EVA_PYTHON` and `EVA_KNOWLEDGE_DIR`. Mail
-comes from Outlook over COM, so it reads no local folder at all.
+Of the four, this server uses three: `EVA_PYTHON`, `EVA_KNOWLEDGE_DIR` and
+`EVA_DOCUMENTS_DIR`. Mail comes from Outlook over COM, so it **reads** no local
+folder at all; the two below are where it writes, and only when you ask.
 
 ### The folders this plugin uses
-
-Every server works in its **own sub-folder** of those roots, named after
-the plugin. This one uses `email`, and **each folder below must exist** -
-create them, or copy the repo's [`eva/`](../../eva) folder to `C:\Eva` and
-they all do.
 
 | Folder | What it is for | Missing? |
 |---|---|---|
 | `%EVA_KNOWLEDGE_DIR%\email` | Where `outlook_get_email` saves a message as Markdown **when the call asks for it** (`Email - <date> - <subject> (<id>).md`, overwritten if the same message is saved again), for the `knowledge-base` plugin to index. Blacklisted messages are never written | Created at startup. If it cannot be created the server refuses to start, rather than failing on the first email you ask it to keep |
+| `%EVA_DOCUMENTS_DIR%\pdf` | Where `outlook_print_calendar` writes the day planner (`Calendar - <date> <weekday>.pdf`, overwritten when you re-print that day) | Created at startup. If it cannot be created the server **still starts** and says so; only printing is disabled, so mail and calendar stay readable |
 
-> This server reads no local folder at all - mail comes from Outlook over COM.
-> The knowledge folder is the only thing it ever writes to.
+Create them, or copy the repo's [`eva/`](../../eva) folder to `C:\Eva` and they
+both exist.
+
+> **Why `documents\pdf` and not `documents\outlook`?** The document library is
+> organised by **file type**, and a printed planner is a PDF. It lands beside
+> your own PDFs rather than in an output folder of its own, which is the same
+> rule `word` and `powerpoint` follow for the documents they create. Note the
+> `pdf-to-md` plugin also reads that folder: a planner left there will be
+> converted into the knowledge base along with everything else if you run a bulk
+> conversion, which is rarely what you want, so tidy old sheets out or point
+> `OUTLOOK_DOCS_DIR` somewhere of its own.
 
 ### Overriding one folder, and this server's own settings
 
@@ -107,7 +166,10 @@ only when an endpoint's layout really differs.
 
 | Variable | Purpose |
 |---|---|
-| `OUTLOOK_KB_DIR` | Full path to the save folder, instead of `%EVA_KNOWLEDGE_DIR%\email`. `off` forbids saving outright, after which the server writes no local file at all |
+| `OUTLOOK_KB_DIR` | Full path to the save folder, instead of `%EVA_KNOWLEDGE_DIR%\email`. `off` forbids saving outright, after which no email is written to disk |
+| `OUTLOOK_DOCS_DIR` | Full path to the day-planner folder, instead of `%EVA_DOCUMENTS_DIR%\pdf`. `off` forbids printing outright |
+| `OUTLOOK_CALENDAR_HOURS` | The working day the printed timeline starts from, e.g. `7-19` (default `8-18`). It always stretches to fit anything scheduled outside it |
+| `OUTLOOK_CALENDAR_COLOURS` | Outlook category → planner block colour, e.g. `Leadership=purple,Client=green`. Colours: `blue`, `purple`, `green`, `amber`, `teal`, `rose`, `grey`. An unknown colour name is ignored with a warning |
 | `OUTLOOK_KB_AUTOSAVE=true` | Save **every** email read, without being asked (default false). Needs a save folder to be on |
 | `OUTLOOK_SEARCH_FOLDERS` | Comma-separated folder names used as the **default** set for `outlook_search_recent`, overriding the `SEARCH_ALL_FOLDERS` value in the file (e.g. `"Inbox,Sent Items,Archive"`). A per-call `folders` argument still takes priority |
 | `OUTLOOK_BLACKLIST_FILE` | Path to a file of extra content-blacklist terms (one per line, `#` for comments), added to the built-in list |
@@ -115,7 +177,8 @@ only when an endpoint's layout really differs.
 
 **Blank does not mean off.** A blank value means "not configured", so the shared
 root still applies. To forbid saving outright, set `OUTLOOK_KB_DIR=off` (`none`,
-`no`, `false` and `disabled` work too).
+`no`, `false` and `disabled` work too); `OUTLOOK_DOCS_DIR=off` does the same for
+printing. With both off the server writes no local file at all.
 
 ### Command-line flags
 
@@ -143,13 +206,17 @@ top of `outlook.py` directly (there are no CLI flags/env vars for these):
 | `BLACKLIST_TERMS` | Built-in list of classification/compliance terms that cause an item to be withheld from the AI entirely |
 | `BLACKLIST_MATCH_MODE` | `"word"` (default, whole-term match) or `"substring"` (for terms containing punctuation) |
 | `MAX_BODY_CHARS` / `CALENDAR_HARD_CAP` / `SEARCH_SCAN_CAP` | Safety caps on body length / items scanned |
+| `CALENDAR_DAY_START_HOUR` / `CALENDAR_DAY_END_HOUR` | Working day the printed planner's timeline starts from — `OUTLOOK_CALENDAR_HOURS` overrides both |
+| `CALENDAR_LOOKAHEAD_DAYS` | How many following days the planner's right-hand panel lists by default (4); a per-call `lookahead_days` still takes priority |
+| `CALENDAR_CATEGORY_COLOURS` | Outlook category → planner colour, merged with (and beaten by) `OUTLOOK_CALENDAR_COLOURS` |
 | `SEARCH_ALL_FOLDERS` | Folder names (matched across every store) that `outlook_search_recent` searches by default — `["Inbox", "Sent Items", "Archive"]`; use `outlook_list_folders` to see real folder names first. This is only the built-in default: override it with `OUTLOOK_SEARCH_FOLDERS`, or per call by passing a `folders` argument |
 
 ## File access
 
-No local file access until a call asks for an email to be saved; then it writes
-one Markdown file inside the knowledge-base folder, and nowhere else. The
-optional blacklist file is read once at startup.
+No local file access until a call asks for something to be written: an email
+saved as Markdown inside the knowledge-base folder, or a day planner written as
+a PDF inside the documents folder. It writes nowhere else, and it reads no local
+folder at all (the optional blacklist file is read once at startup).
 
 ## Usage examples
 
@@ -162,6 +229,8 @@ optional blacklist file is read once at startup.
 7. "Find everything about the 'Acme renewal' across my Inbox, Sent Items and Archive from the last month." → `outlook_search_recent`
 8. "Search only my 'Projects' and 'Sent Items' folders for anything about the budget review." → `outlook_search_recent` with a `folders` argument overriding the default set
 9. "What are my actual Outlook folder names, so I can point the search at the right archive?" → `outlook_list_folders`
+10. "Give me today's calendar to print." → `outlook_print_calendar` — an A4 landscape day planner in `C:\Eva\documents\pdf`
+11. "Print tomorrow's planner, without the attendee names on it." → `outlook_print_calendar` with `date: "tomorrow"`, `show_attendees: false`
 
 The save folder sits inside the same knowledge root the `knowledge-base` server
 indexes - which is what `EVA_KNOWLEDGE_DIR` being one shared setting buys you -
@@ -179,6 +248,10 @@ so the emails you keep land alongside your Confluence pages and Word documents.
 & $env:EVA_PYTHON outlook.py --check
 ```
 
-connects to Outlook and prints diagnostics plus the blacklist status. If it
-can't connect, confirm classic Outlook (not "New Outlook") is running and logged
-into a profile.
+connects to Outlook and prints diagnostics, the folder paths it resolved and the
+blacklist status. If it can't connect, confirm classic Outlook (not "New
+Outlook") is running and logged into a profile.
+
+> **A planner printed with no meetings on it** usually means the day really is
+> empty — `outlook_get_calendar` for the same day is the quick check, and if
+> that is empty too its `[debug]` section says what was scanned.

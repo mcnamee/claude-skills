@@ -45,12 +45,13 @@
     {
       "name": "outlook",
       "source": "./plugins/outlook",
-      "description": "Read-only access to local classic Outlook mail and calendar via COM, saving an email to the knowledge base when you ask for it. Windows only; requires pywin32.",
-      "version": "6.0.0",
+      "description": "Read-only access to local classic Outlook mail and calendar via COM, plus a printable PDF day planner for any day. Windows only; requires pywin32.",
+      "version": "6.1.0",
       "keywords": [
         "outlook",
         "email",
         "calendar",
+        "planner",
         "windows"
       ]
     },

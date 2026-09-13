@@ -1,12 +1,13 @@
 # documents\pdf\
 
-Source PDFs, for the `pdf-to-md` plugin to convert into the knowledge base.
+The PDF folder: source PDFs for the `pdf-to-md` plugin to convert into the
+knowledge base, and the day planners the `outlook` plugin prints.
 
 | | |
 |---|---|
-| **Setting** | `EVA_DOCUMENTS_DIR` (the `pdf-to-md` plugin appends `\pdf`) |
+| **Setting** | `EVA_DOCUMENTS_DIR` (both the `pdf-to-md` and `outlook` plugins append `\pdf`) |
 | **Default** | `C:\Eva\documents\pdf` |
-| **Access** | read-only — conversion never alters a PDF |
+| **Access** | `pdf-to-md` reads only — conversion never alters a PDF. `outlook` writes day planners here and touches nothing else |
 | **Output** | [`..\..\knowledge\pdf`](../../knowledge/pdf) |
 
 Conversion preserves reading order, headings and tables, including borderless
@@ -25,6 +26,18 @@ photographed signature page — produces an empty or near-empty Markdown file, a
 it does so quietly. If a converted file looks suspiciously thin, open the PDF
 and check whether its text is selectable. Getting a scan into the knowledge base
 means OCRing it elsewhere first.
+
+## Printed day planners
+
+Ask for "today's printable calendar" or "tomorrow's planner" and `outlook` writes
+`Calendar - <date> <weekday>.pdf` here: A4 landscape, the day on an hour-by-hour
+timeline down one half and the following days down the other. Print it
+single-sided and fold it in half. Re-printing a day overwrites that day's sheet
+rather than piling up copies.
+
+They are **not worth converting**. A bulk `pdf-to-md` run will pick them up along
+with everything else and fill the index with last week's meetings, so tidy old
+sheets out, or set `OUTLOOK_DOCS_DIR` to a folder of its own if you print often.
 
 ## Where the PDFs stay
 
