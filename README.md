@@ -49,8 +49,9 @@ source material with something invented.
   moving text off a slide does not make it harder to deliver.
 - **A day you can print.** `outlook` turns a day's calendar into an A4
   landscape PDF planner - the day on an hour-by-hour timeline, the days after it
-  down the other half - drawn from the standard library alone, so printing adds
-  no dependency to an airgapped endpoint.
+  down the other half - keeping the colours your Outlook categories already
+  have, at a strength that survives a printer. It is drawn from the standard
+  library alone, so printing adds no dependency to an airgapped endpoint.
 - **They compose.** `word` and `powerpoint` mirror what they open into one
   Markdown folder, `confluence` and `outlook` save the pages and emails you ask
   them to keep into the same folder, and `pdf-to-md` fills it from PDFs; the
@@ -67,7 +68,7 @@ source material with something invented.
 | [**word**](plugins/word) | 8.0.0 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
 | [**powerpoint**](plugins/powerpoint) | 5.0.0 | Build sectioned `.pptx` decks that inherit your own template's layouts and theme, with formatted speaker notes, audited against the 10/20/30 rule | `python-pptx` |
 | [**excel**](plugins/excel) | 5.0.0 | Read and analyse workbooks; parses `.xlsx` directly, so Excel isn't needed | _none_ |
-| [**outlook**](plugins/outlook) | 6.1.0 | Read local Outlook mail and calendar via COM, with a content blacklist; prints a day as an A4 PDF planner, and saves an email to the knowledge base when you ask | `pywin32` |
+| [**outlook**](plugins/outlook) | 6.2.0 | Read local Outlook mail and calendar via COM, with a content blacklist; prints a day as an A4 PDF planner in your own category colours, and saves an email to the knowledge base when you ask | `pywin32` |
 | [**confluence**](plugins/confluence) | 4.0.0 | Search and read Confluence pages, across one or two instances; saves a page to the knowledge base when you ask | _none_ |
 | [**jira**](plugins/jira) | 2.0.0 | Query issues, sprints and projects (Jira Data Center v2 API) | _none_ |
 | [**knowledge-base**](plugins/knowledge-base) | 4.0.0 | True RAG over your own Markdown: local ChromaDB index + your embeddings API, and capture notes back into it | `chromadb` |

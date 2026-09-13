@@ -1,7 +1,7 @@
 {
   "name": "outlook",
   "displayName": "Outlook (mail + calendar)",
-  "version": "6.1.0",
+  "version": "6.2.0",
   "description": "Read-only access to local classic Outlook mail and calendar via COM, plus a printable PDF day planner for any day. Saves an email to the knowledge base when you ask for it. Windows only; requires pywin32.",
   "author": {
     "name": "mcnamee"
@@ -33,7 +33,7 @@
     "calendar_colours": {
       "type": "string",
       "title": "Calendar category colours",
-      "description": "Optional. Maps your Outlook categories to planner block colours, e.g. 'Leadership=purple,Client=green'. Colours: blue, purple, green, amber, teal, rose, grey. Uncategorised events fall back to External / Internal / Personal."
+      "description": "Optional, and usually unnecessary: the planner already reads the colour Outlook holds against each category and prints it at full strength. Set this only to overrule one, e.g. 'Leadership=purple,Client=green'. Names: red, orange, peach, yellow, amber, green, teal, olive, blue, purple, maroon, rose, steel, silver, slate, black, grey, each also with a 'dark-' prefix. Uncategorised events fall back to External / Internal / Personal."
     }
   },
   "mcpServers": {

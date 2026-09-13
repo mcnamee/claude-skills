@@ -6,7 +6,7 @@ AI entirely — plus a printable PDF day planner for any day.
 
 | | |
 |---|---|
-| **Server** | `outlook.py` v6.1.0 |
+| **Server** | `outlook.py` v6.2.0 |
 | **pip install** | `pywin32` |
 | **Platform** | **Windows only** — requires classic Win32 Outlook (not "New Outlook") installed, running, and logged into a profile |
 | **Writes to disk** | only on request: an email saved as Markdown in `C:\Eva\knowledge\email`, or a day planner PDF in `C:\Eva\documents\pdf` |
@@ -27,7 +27,7 @@ variables in [Configuration](#configuration).
 | Search folders | `OUTLOOK_SEARCH_FOLDERS` | Comma-separated default folder set for `outlook_search_recent`, e.g. `Inbox,Sent Items,Archive` |
 | Blacklist file | `OUTLOOK_BLACKLIST_FILE` | Path to a file of extra content-blacklist terms |
 | Printed day hours | `OUTLOOK_CALENDAR_HOURS` | Working day the printed planner's timeline starts from, e.g. `7-19` (default `8-18`) |
-| Calendar category colours | `OUTLOOK_CALENDAR_COLOURS` | Outlook category → planner colour, e.g. `Leadership=purple,Client=green` |
+| Calendar category colours | `OUTLOOK_CALENDAR_COLOURS` | Usually leave blank — the planner already uses your Outlook category colours. Only overrules one, e.g. `Leadership=purple` |
 
 ## The printable day planner
 
@@ -58,12 +58,14 @@ because the model's idea of today was stale.
   (`OUTLOOK_CALENDAR_HOURS`, default 08:00–18:00) and grows to take in anything
   outside it, so a 6 am flight is on the page rather than off the top of it.
 - **All-day items** sit above the grid as a strip of chips.
-- **Colour comes from your own Outlook categories**, where you have mapped them
-  with `OUTLOOK_CALENDAR_COLOURS`. Anything uncategorised falls back to what
-  Outlook can actually prove: someone outside your SMTP domain is invited
-  (External, green), it is internal (Internal, blue), or nobody is invited at
-  all (Personal, grey). Nothing is inferred from the subject line, and the
-  legend across the top names whichever of these are on the page.
+- **Colour comes from your own Outlook categories, with nothing to configure.**
+  Outlook already stores a colour against each category; the planner reads it
+  off the profile and prints it at full strength. See
+  [Category colours](#category-colours) below. Anything uncategorised falls back
+  to what Outlook can actually prove: someone outside your SMTP domain is
+  invited (External, green), it is internal (Internal, blue), or nobody is
+  invited at all (Personal, grey). Nothing is inferred from the subject line,
+  and the legend across the top names whichever of these are on the page.
 - **Tentative or free-marked time is drawn hollow**, the way a diary pencils
   something in.
 - **Empty days are skipped** in the right-hand panel, so a Friday sheet shows
@@ -73,6 +75,44 @@ because the model's idea of today was stale.
   block. The footer carries the count.
 
 Re-printing a day overwrites that day's file rather than piling up copies.
+
+### Category colours
+
+Colour-code your diary in Outlook and the planner prints it back to you in the
+same scheme. Outlook's swatches are deliberately muted on screen, which is
+wrong for paper, so each of its 25 category colours maps to a bold equivalent:
+
+| Outlook colour | On the page | Outlook colour | On the page |
+|---|---|---|---|
+| Red | `#EF4444` | Dark Red | `#B91C1C` |
+| Orange | `#F97316` | Dark Orange | `#C2410C` |
+| Peach | `#FDBA74` | Dark Peach | `#FB923C` |
+| Yellow | `#FACC15` | Dark Yellow | `#CA8A04` |
+| Green | `#10B981` | Dark Green | `#047857` |
+| Teal | `#0D9488` | Dark Teal | `#0F766E` |
+| Olive | `#84CC16` | Dark Olive | `#4D7C0F` |
+| Blue | `#3B82F6` | Dark Blue | `#1D4ED8` |
+| Purple | `#8B5CF6` | Dark Purple | `#6D28D9` |
+| Maroon | `#9F1239` | Dark Maroon | `#881337` |
+| Steel | `#64748B` | Dark Steel | `#475569` |
+| Gray | `#9CA3AF` | Dark Gray | `#6B7280` |
+| Black | `#1F2937` | *(None)* | falls through to the next category |
+
+The subject on a block goes white or dark by itself, chosen from how bright the
+fill is, so a Yellow category prints as dark type on yellow rather than
+white-on-white. An appointment with several categories takes the first one that
+has a colour.
+
+`OUTLOOK_CALENDAR_COLOURS` is only for overruling one of these — say a category
+Outlook has in Peach that you want loud on the page:
+
+```powershell
+setx OUTLOOK_CALENDAR_COLOURS "Board=dark-maroon,Leave=silver"
+```
+
+The names are those in the table (lower case, hyphenated: `dark-maroon`), plus
+`amber`, `rose`, `silver`, `slate` and `grey`, which is the near-white block a
+Personal appointment gets.
 
 > **No PDF library is involved.** The planner is drawn straight into the PDF
 > imaging model from the standard library alone, so printing adds nothing to the
@@ -169,7 +209,7 @@ only when an endpoint's layout really differs.
 | `OUTLOOK_KB_DIR` | Full path to the save folder, instead of `%EVA_KNOWLEDGE_DIR%\email`. `off` forbids saving outright, after which no email is written to disk |
 | `OUTLOOK_DOCS_DIR` | Full path to the day-planner folder, instead of `%EVA_DOCUMENTS_DIR%\pdf`. `off` forbids printing outright |
 | `OUTLOOK_CALENDAR_HOURS` | The working day the printed timeline starts from, e.g. `7-19` (default `8-18`). It always stretches to fit anything scheduled outside it |
-| `OUTLOOK_CALENDAR_COLOURS` | Outlook category → planner block colour, e.g. `Leadership=purple,Client=green`. Colours: `blue`, `purple`, `green`, `amber`, `teal`, `rose`, `grey`. An unknown colour name is ignored with a warning |
+| `OUTLOOK_CALENDAR_COLOURS` | Overrules the colour Outlook already holds against a category, e.g. `Leadership=purple,Client=green` — see [Category colours](#category-colours). An unknown colour name is ignored with a warning |
 | `OUTLOOK_KB_AUTOSAVE=true` | Save **every** email read, without being asked (default false). Needs a save folder to be on |
 | `OUTLOOK_SEARCH_FOLDERS` | Comma-separated folder names used as the **default** set for `outlook_search_recent`, overriding the `SEARCH_ALL_FOLDERS` value in the file (e.g. `"Inbox,Sent Items,Archive"`). A per-call `folders` argument still takes priority |
 | `OUTLOOK_BLACKLIST_FILE` | Path to a file of extra content-blacklist terms (one per line, `#` for comments), added to the built-in list |
@@ -208,7 +248,8 @@ top of `outlook.py` directly (there are no CLI flags/env vars for these):
 | `MAX_BODY_CHARS` / `CALENDAR_HARD_CAP` / `SEARCH_SCAN_CAP` | Safety caps on body length / items scanned |
 | `CALENDAR_DAY_START_HOUR` / `CALENDAR_DAY_END_HOUR` | Working day the printed planner's timeline starts from — `OUTLOOK_CALENDAR_HOURS` overrides both |
 | `CALENDAR_LOOKAHEAD_DAYS` | How many following days the planner's right-hand panel lists by default (4); a per-call `lookahead_days` still takes priority |
-| `CALENDAR_CATEGORY_COLOURS` | Outlook category → planner colour, merged with (and beaten by) `OUTLOOK_CALENDAR_COLOURS` |
+| `CALENDAR_CATEGORY_COLOURS` | Category → colour overrides in the file itself, merged with (and beaten by) `OUTLOOK_CALENDAR_COLOURS`. Both sit on top of the colours read from Outlook |
+| `PLANNER_COLOURS` / `OL_CATEGORY_COLOURS` | The bold palette, and which Outlook category colour maps to which name |
 | `SEARCH_ALL_FOLDERS` | Folder names (matched across every store) that `outlook_search_recent` searches by default — `["Inbox", "Sent Items", "Archive"]`; use `outlook_list_folders` to see real folder names first. This is only the built-in default: override it with `OUTLOOK_SEARCH_FOLDERS`, or per call by passing a `folders` argument |
 
 ## File access

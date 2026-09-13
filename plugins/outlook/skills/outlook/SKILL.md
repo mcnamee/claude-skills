@@ -58,9 +58,11 @@ right. Tell the user the path, and that it prints single-sided and folds in half
   wasted round trip.
 - **Re-printing the same day overwrites that day's file.** That is deliberate,
   so say "updated" rather than warning about a clash.
-- Block colour comes from the endpoint's Outlook **categories** where they have
-  been mapped, falling back to External / Internal / Personal, which the legend
-  on the page names. Do not describe a colour as meaning anything else.
+- Block colour comes from the endpoint's Outlook **categories** — the colour
+  Outlook already holds against each one, printed bolder than Outlook shows it —
+  falling back to External / Internal / Personal, which the legend on the page
+  names. Do not describe a colour as meaning anything else, and do not offer to
+  "set up" colours: they are already the user's own.
 - Empty days in the right-hand panel are skipped by default, so a Friday sheet
   shows the week ahead. Pass `skip_empty_days: false` if the user wants the
   literal next four days.

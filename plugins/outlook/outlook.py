@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-outlook.py (v6.1.0)
+outlook.py (v6.2.0)
 ======================
 
 A single-file MCP (Model Context Protocol) server giving an LLM read-only
@@ -98,11 +98,18 @@ What ends up on the page:
   CALENDAR_DAY_END_HOUR, or OUTLOOK_CALENDAR_HOURS) and STRETCHES to take in
   anything scheduled outside it - a 6 am flight is on the page, not off it.
 - All-day items sit above the grid as a strip of chips.
-- Block colour comes from your own Outlook CATEGORIES where you have mapped
-  them (OUTLOOK_CALENDAR_COLOURS="Leadership=purple,Client=green"). Anything
+- Block colour comes from your own Outlook CATEGORIES, and needs nothing
+  configured: the colour Outlook already holds against each category is read
+  off the profile and printed at full strength. Outlook's own swatches are
+  muted on screen and would wash out on paper, so each of its 25 colours maps
+  to a bold equivalent (its green becomes a bold green, and so on). Use
+  OUTLOOK_CALENDAR_COLOURS="Leadership=purple,Client=green" only to overrule a
+  category whose Outlook colour is not the one you want on the page. Anything
   uncategorised falls back to what Outlook can actually prove: somebody outside
   your own SMTP domain is invited (External), it is internal (Internal), or
   nobody is invited at all (Personal). Nothing is guessed from the subject line.
+- Type on a block goes white or dark automatically, by how bright the fill is,
+  so a yellow category is readable rather than white-on-yellow.
 - Tentative or free-marked time is drawn hollow, the way a diary pencils
   something in.
 - The right-hand panel skips days with nothing in the diary by default, so a
@@ -241,9 +248,16 @@ Server-specific settings, all optional and all environment variables:
     OUTLOOK_CALENDAR_HOURS      the working day the printed timeline starts
                                 from, e.g. "7-19" (default "8-18"). It always
                                 stretches to fit anything outside it.
-    OUTLOOK_CALENDAR_COLOURS    Outlook category -> planner colour, e.g.
-                                "Leadership=purple,Client=green". Colours:
-                                blue, purple, green, amber, teal, rose, grey.
+    OUTLOOK_CALENDAR_COLOURS    Overrule the colour Outlook already holds
+                                against a category, e.g.
+                                "Leadership=purple,Client=green". Names:
+                                red, orange, peach, yellow, amber, green,
+                                teal, olive, blue, purple, maroon, rose,
+                                steel, silver, slate, black, grey, and a
+                                "dark-" prefix on red, orange, peach, yellow,
+                                green, teal, olive, blue, purple, maroon.
+                                Normally unnecessary - the colours come from
+                                Outlook on their own.
     OUTLOOK_SEARCH_FOLDERS      comma-separated folder names for
                                 outlook_search_recent, e.g.
                                 "Inbox,Sent Items,Archive".
@@ -293,7 +307,7 @@ IMPORTANT (stdio-on-Windows pitfalls)
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "6.1.0"
+__version__ = "6.2.0"
 
 import os
 import re
@@ -382,15 +396,16 @@ CALENDAR_DAY_END_HOUR = 18
 #        How many following days the right-hand panel lists (1-6).
 CALENDAR_LOOKAHEAD_DAYS = 4
 
-#        Outlook CATEGORY -> block colour, so your own classification of the
-#        diary drives the page. Keys are matched case-insensitively against the
-#        categories on an appointment; the first match wins. Available colours:
-#        blue, purple, green, amber, teal, rose, grey. Anything uncategorised
-#        falls back to what Outlook can prove on its own - somebody outside your
-#        domain is invited (External), it is an internal meeting (Internal), or
-#        nobody is invited at all (Personal).
-#        Override from the environment with
-#        OUTLOOK_CALENDAR_COLOURS="Leadership=purple,Client=green".
+#        Outlook CATEGORY -> block colour. Usually EMPTY, because the colour
+#        Outlook already holds against each category is read off the profile
+#        and printed at full strength (see OL_CATEGORY_COLOURS). Put an entry
+#        here, or in OUTLOOK_CALENDAR_COLOURS, only to overrule a category whose
+#        Outlook colour is not the one you want on the page. Keys are matched
+#        case-insensitively against the categories on an appointment; the first
+#        match wins. Names are the keys of PLANNER_COLOURS. Anything
+#        uncategorised falls back to what Outlook can prove on its own -
+#        somebody outside your domain is invited (External), it is an internal
+#        meeting (Internal), or nobody is invited at all (Personal).
 CALENDAR_CATEGORY_COLOURS = {
 }
 
@@ -2029,15 +2044,122 @@ _NUMBER_WORDS = {2: "two", 3: "three", 4: "four", 5: "five", 6: "six"}
 # One entry per colour an event block can take. 'fill' is the solid block,
 # 'text'/'sub' the type on it, and 'edge' the colour used when a block is drawn
 # hollow (tentative or not-yet-accepted meetings).
+# The planner palette: one BOLD hex per colour name, deliberately saturated so a
+# block reads across a printed page and a photocopy. The names line up with
+# Outlook's own 25 category colours (see OL_CATEGORY_COLOURS below), which are
+# muted on screen; printing them at this strength is the point - it keeps your
+# own colour-coding, just loud enough to be worth printing.
+#
+# 'grey' is the odd one out and stays near-white: it is the quiet block a
+# personal appointment with nobody invited gets, not Outlook's Gray category
+# (that is 'silver').
 PLANNER_COLOURS = {
-    "blue":   {"fill": "#3B82F6", "text": "#FFFFFF", "sub": "#DBEAFE", "edge": "#1D4ED8"},
-    "purple": {"fill": "#8B5CF6", "text": "#FFFFFF", "sub": "#EDE9FE", "edge": "#6D28D9"},
-    "green":  {"fill": "#10B981", "text": "#FFFFFF", "sub": "#D1FAE5", "edge": "#047857"},
-    "amber":  {"fill": "#F59E0B", "text": "#FFFFFF", "sub": "#FEF3C7", "edge": "#B45309"},
-    "teal":   {"fill": "#0EA5E9", "text": "#FFFFFF", "sub": "#E0F2FE", "edge": "#0369A1"},
-    "rose":   {"fill": "#F43F5E", "text": "#FFFFFF", "sub": "#FFE4E6", "edge": "#BE123C"},
-    "grey":   {"fill": "#F3F4F6", "text": "#374151", "sub": "#6B7280", "edge": "#9CA3AF"},
+    "red": "#EF4444",
+    "dark-red": "#B91C1C",
+    "orange": "#F97316",
+    "dark-orange": "#C2410C",
+    "peach": "#FDBA74",
+    "dark-peach": "#FB923C",
+    "yellow": "#FACC15",
+    "dark-yellow": "#CA8A04",
+    "amber": "#F59E0B",
+    "green": "#10B981",
+    "dark-green": "#047857",
+    "teal": "#0D9488",
+    "dark-teal": "#0F766E",
+    "olive": "#84CC16",
+    "dark-olive": "#4D7C0F",
+    "blue": "#3B82F6",
+    "dark-blue": "#1D4ED8",
+    "purple": "#8B5CF6",
+    "dark-purple": "#6D28D9",
+    "maroon": "#9F1239",
+    "dark-maroon": "#881337",
+    "rose": "#F43F5E",
+    "steel": "#64748B",
+    "dark-steel": "#475569",
+    "silver": "#9CA3AF",
+    "slate": "#6B7280",
+    "black": "#1F2937",
+    "grey": "#F3F4F6",
+    "gray": "#F3F4F6",      # same block, spelled either way
 }
+
+# Outlook's OlCategoryColor enum -> the palette name above. This is what turns
+# "the category is Outlook green" into a bold green block: Outlook's own colour
+# for a category is read straight off the profile, so a diary already colour-
+# coded in Outlook prints in the same scheme without configuring anything.
+# 0 (olCategoryColorNone) is absent on purpose: a category with no colour set
+# falls through to the next one on the appointment, then to the built-in split.
+OL_CATEGORY_COLOURS = {
+    1: "red",          2: "orange",       3: "peach",       4: "yellow",
+    5: "green",        6: "teal",         7: "olive",       8: "blue",
+    9: "purple",      10: "maroon",      11: "steel",      12: "dark-steel",
+    13: "silver",     14: "slate",       15: "black",      16: "dark-red",
+    17: "dark-orange", 18: "dark-peach", 19: "dark-yellow", 20: "dark-green",
+    21: "dark-teal",  22: "dark-olive",  23: "dark-blue",  24: "dark-purple",
+    25: "dark-maroon",
+}
+
+# Fill above which type has to go dark instead of white. Tuned so orange and
+# both yellows take dark type (white on any of them is unreadable in print)
+# while green, teal and blue keep the white the design uses.
+PLANNER_LIGHT_ABOVE = 0.54
+
+_palette_cache = {}
+
+
+def _hex_rgb(colour):
+    value = colour.lstrip("#")
+    return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def _mix(colour, towards, amount):
+    """Blend `colour` `amount` of the way towards another colour, as hex."""
+    source, target = _hex_rgb(colour), _hex_rgb(towards)
+    return "#{0:02X}{1:02X}{2:02X}".format(*[
+        int(round(source[i] + (target[i] - source[i]) * amount)) for i in range(3)
+    ])
+
+
+def _brightness(colour):
+    """Perceived brightness, 0 (black) to 1 (white)."""
+    red, green, blue = _hex_rgb(colour)
+    return (0.299 * red + 0.587 * green + 0.114 * blue) / 255.0
+
+
+def planner_palette(colour_key):
+    """
+    The four colours one named block needs, derived from its single hex.
+
+    'fill' is the block, 'text' the subject on it, 'sub' the time/location/people
+    line, and 'edge' the darker version used for a hollow block's border and
+    type. Deriving them beats writing four hex values per colour by hand: every
+    colour in the palette then behaves the same way, and a light fill such as
+    yellow gets dark type automatically instead of white-on-white.
+    """
+    if colour_key in _palette_cache:
+        return _palette_cache[colour_key]
+
+    fill = PLANNER_COLOURS.get(colour_key) or PLANNER_COLOURS["blue"]
+    light = _brightness(fill) > PLANNER_LIGHT_ABOVE
+    palette = {
+        "fill": fill,
+        "light": light,
+        # On a dark fill, white type with a pale tint under it. On a light one,
+        # two shades of the fill itself, which keeps the block on-hue.
+        "text": _mix(fill, "#000000", 0.78) if light else "#FFFFFF",
+        "sub": _mix(fill, "#000000", 0.56) if light else _mix(fill, "#FFFFFF", 0.84),
+        # A hollow block puts 'edge' on white, so a pale fill has to be taken
+        # much further down or its outline and title vanish on the page.
+        "edge": _mix(fill, "#000000", 0.66 if light else 0.34),
+        # A near-white block needs an outline or it floats off the page.
+        "border": _mix(fill, "#000000", 0.10) if light else None,
+    }
+    _palette_cache[colour_key] = palette
+    return palette
+
+
 # Accent colour for each day down the right-hand panel, purely so the four days
 # are easy to tell apart at a glance.
 PLANNER_DAY_ACCENTS = ("blue", "purple", "green", "amber")
@@ -2240,6 +2362,7 @@ def _bucket_rank(entry):
 # Timeline geometry
 # ---------------------------------------------------------------------------
 
+PLANNER_MAX_LEGEND = 5       # colour chips across the header, before Tentative
 PLANNER_MIN_BLOCK_MM = 6.4   # a short meeting is grown to this if there is room
 PLANNER_MIN_TIGHT_MM = 3.4   # ...and never squeezed below this, so a line still fits
 PLANNER_BLOCK_GAP_MM = 1.0   # gutter between two blocks, side by side or stacked
@@ -2310,31 +2433,24 @@ def _place_blocks(events, day, start_min, end_min, top, bottom, lane_x, lane_w):
 
 def _block_style(event, colour_key):
     """Fill/border/type colours for one block, including the hollow variant."""
-    palette = PLANNER_COLOURS.get(colour_key, PLANNER_COLOURS["blue"])
+    palette = planner_palette(colour_key)
     # Tentative or free-marked time is drawn hollow: an outline says "pencilled
     # in" on a printed page the way a solid block says "booked".
     if event["busy"] in (OL_BUSY_FREE, OL_BUSY_TENTATIVE):
         return {
             "fill": "#FFFFFF",
-            "stroke": palette["fill"],
+            # A pale fill makes a pale outline, so a light colour borrows its
+            # own darker edge for both the rule and the subject on it.
+            "stroke": palette["edge"] if palette["light"] else palette["fill"],
             "line_pt": 1.2,
             "title": palette["edge"],
             "sub": _MUTED,
             "hollow": True,
         }
-    if colour_key == "grey":
-        return {
-            "fill": palette["fill"],
-            "stroke": _RULE,
-            "line_pt": 0.6,
-            "title": palette["text"],
-            "sub": palette["sub"],
-            "hollow": False,
-        }
     return {
         "fill": palette["fill"],
-        "stroke": None,
-        "line_pt": 0,
+        "stroke": palette["border"],
+        "line_pt": 0.6,
         "title": palette["text"],
         "sub": palette["sub"],
         "hollow": False,
@@ -2476,7 +2592,8 @@ def render_day_planner(day, day_events, ahead, identity, hours,
     eyebrow = "DAILY AGENDA" + (" · " + name if name else "")
     canvas.text(pad_l, pad_t + 2.0, eyebrow, 7.5, bold=True, colour=_MUTED,
                 tracking=0.85, max_width=120.0)
-    canvas.text(pad_l, pad_t + 8.6, _fmt_day_long(day), 19.0, bold=True, colour=_INK)
+    date_w = canvas.text(pad_l, pad_t + 8.6, _fmt_day_long(day), 19.0,
+                         bold=True, colour=_INK)
 
     booked = sum((event["end"] - event["start"]).total_seconds() / 60.0
                  for event in timed)
@@ -2491,10 +2608,27 @@ def render_day_planner(day, day_events, ahead, identity, hours,
     cursor -= canvas.text(cursor, pad_t + 8.0, stats, 7.5, bold=True,
                           colour=_FAINT, align="right")
     cursor -= 4.0
-    legend = sorted({(event["bucket"], event["colour"]) for event in day_events},
-                    key=_bucket_rank)
+
+    # Legend. With Outlook's own categories driving the colours there can be
+    # more of them than the header has room for, so rank by how much of the day
+    # each one accounts for, keep what fits, and put the survivors back in the
+    # order the legend always uses so it does not reshuffle day to day.
+    counts = {}
+    for event in day_events:
+        key = (event["bucket"], event["colour"])
+        counts[key] = counts.get(key, 0) + 1
+    legend = sorted(sorted(counts, key=lambda key: (-counts[key], _bucket_rank(key)))
+                    [:PLANNER_MAX_LEGEND], key=_bucket_rank)
     if any(event["busy"] in (OL_BUSY_FREE, OL_BUSY_TENTATIVE) for event in day_events):
         legend.append(("Tentative", None))
+
+    def chip_width(text):
+        return 2.6 + 2.0 + canvas.text_width(text, 7.5, bold=True) + 6.0
+
+    room = cursor - (pad_l + date_w + 8.0)
+    while legend and sum(chip_width(entry[0]) for entry in legend) > room:
+        legend.pop()  # the least of the day goes first, never the most of it
+
     if legend:
         canvas.line(cursor, pad_t + 3.4, cursor, pad_t + 9.2, _RULE, 0.6)
         cursor -= 4.0
@@ -2506,13 +2640,10 @@ def render_day_planner(day, day_events, ahead, identity, hours,
             canvas.rect(cursor - 2.6, pad_t + 5.7, 2.6, 2.6, fill="#FFFFFF",
                         stroke=_INK, line_pt=0.9, radius=0.9)
         else:
-            canvas.rect(cursor - 2.6, pad_t + 5.7, 2.6, 2.6,
-                        fill=PLANNER_COLOURS[colour_key]["fill"],
-                        stroke=_RULE if colour_key == "grey" else None,
-                        line_pt=0.6, radius=0.9)
+            swatch = planner_palette(colour_key)
+            canvas.rect(cursor - 2.6, pad_t + 5.7, 2.6, 2.6, fill=swatch["fill"],
+                        stroke=swatch["border"], line_pt=0.6, radius=0.9)
         cursor -= 2.6 + 6.0
-        if cursor < pad_l + 130.0:  # ran out of header - drop the rest
-            break
 
     header_rule = pad_t + 12.8
     canvas.line(pad_l, header_rule, page_w - pad_r, header_rule, _INK, 1.2)
@@ -2637,7 +2768,8 @@ def render_day_planner(day, day_events, ahead, identity, hours,
     top = rows_top
     for index, (ahead_day, ahead_events) in enumerate(ahead):
         row_h = heights[index]
-        accent = PLANNER_COLOURS[PLANNER_DAY_ACCENTS[index % len(PLANNER_DAY_ACCENTS)]]
+        accent = planner_palette(
+            PLANNER_DAY_ACCENTS[index % len(PLANNER_DAY_ACCENTS)])
         canvas.text(right_x, top + 2.2, _WEEKDAY_SHORT[ahead_day.weekday()], 7.5,
                     bold=True, colour=accent["fill"], tracking=0.75)
         canvas.text(right_x, top + 7.2, str(ahead_day.day), 14.0, bold=True, colour=_INK)
@@ -2742,6 +2874,43 @@ def current_user_identity(ns):
             pass
     _identity_cache = (name, address)
     return _identity_cache
+
+
+def outlook_category_colours(ns):
+    """
+    Every Outlook category the profile has, as {lower-case name: palette key}.
+
+    Outlook already stores a colour against each category, which is the user's
+    own colour-coding of their diary. Reading it means a calendar coloured in
+    Outlook prints in the same scheme with nothing to configure - just at the
+    strength the printed design uses, since Outlook's swatches are muted on
+    screen and would wash out on paper.
+
+    A category set to "None" is skipped, so it falls through to the next
+    category on the appointment and then to the built-in External / Internal /
+    Personal split. Any failure returns what was read so far: colour is a
+    nicety, and a planner still prints without it.
+    """
+    mapping = {}
+    try:
+        categories = ns.Categories
+        count = int(categories.Count)
+    except Exception:
+        log("Could not read the Outlook category list; the planner will fall "
+            "back to External / Internal / Personal colours.")
+        return mapping
+
+    for index in range(1, count + 1):
+        try:
+            category = categories.Item(index)
+            name = _one_line(category.Name or "")
+            colour = int(category.Color)
+        except Exception:
+            continue
+        key = OL_CATEGORY_COLOURS.get(colour)
+        if name and key:
+            mapping[name.lower()] = key
+    return mapping
 
 
 def parse_planner_date(value, today):
@@ -2887,11 +3056,17 @@ def tool_print_calendar(args):
     ahead = _planner_ahead_days(by_date, day, wanted, skip_empty)
     hours = _planner_hours(day_events, day)
 
+    # Outlook's own category colours first, then the endpoint's explicit map on
+    # top: OUTLOOK_CALENDAR_COLOURS is there to overrule a category whose
+    # Outlook colour is not the one you want on paper, so it has to win.
+    category_colours = outlook_category_colours(get_namespace())
+    category_colours.update(_CATEGORY_COLOURS)
+
     try:
         pdf = render_day_planner(
             day, day_events, ahead, current_user_identity(get_namespace()),
             hours, show_people=show_people, withheld=withheld,
-            category_colours=_CATEGORY_COLOURS)
+            category_colours=category_colours)
     except Exception as exc:
         log("Planner render failed:\n{0}".format(traceback.format_exc()))
         return "Error: the planner could not be laid out ({0}).".format(exc)
