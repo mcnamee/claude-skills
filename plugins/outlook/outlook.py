@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-outlook.py (v8.0.0)
+outlook.py (v8.1.0)
 ======================
 
 A single-file MCP (Model Context Protocol) server giving an LLM near-read-only
@@ -162,6 +162,19 @@ that order, and the middle one will not take a name - only an address.
    draft looks finished and gets sent without the person it was for. The
    content blacklist applies in this direction too - a subject or body
    carrying a protective marking is refused rather than written into Outlook.
+
+   THE SUBJECT AND THE AGENDA. Both are ordinary arguments, and the usual
+   shape of the request is two steps: write an agenda, then "find a time with
+   Josh to discuss it". The agenda belongs in 'body' - the caller should carry
+   it across rather than making the user type it again, having shown them what
+   is being attached, because a meeting body is read by everyone invited.
+
+   AppointmentItem.Body is PLAIN TEXT and Outlook renders no Markdown, so an
+   agenda drafted in conversation would otherwise reach the invitees with its
+   asterisks still on it. plain_text_body() strips **bold**, leading
+   #-headings, and normalises * and + bullets to -. It does no more than that
+   on purpose: a lone asterisk is as likely to be a footnote mark as emphasis,
+   and "C#" is not a heading.
 
 RECURRING SERIES  (why a meeting can be in Outlook but not in the results)
 --------------------------------------------------------------------------
@@ -456,7 +469,7 @@ IMPORTANT (stdio-on-Windows pitfalls)
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "8.0.0"
+__version__ = "8.1.0"
 
 import os
 import re
@@ -4448,6 +4461,32 @@ def parse_meeting_start(value):
         "'2026-09-16 10:00'. Got: {0!r}".format(value))
 
 
+# Markdown that must not survive into a meeting invitation. An agenda drafted
+# in conversation arrives as Markdown by habit, and AppointmentItem.Body is
+# PLAIN TEXT - Outlook renders none of it, so "**Agenda**" reaches everyone
+# invited with the asterisks still on it.
+_MD_STRONG = re.compile(r"(\*\*|__)(?=\S)(.+?)(?<=\S)\1", re.DOTALL)
+_MD_HEADING = re.compile(r"^[ \t]{0,3}#{1,6}[ \t]+", re.MULTILINE)
+_MD_BULLET = re.compile(r"^([ \t]*)[*+][ \t]+", re.MULTILINE)
+
+
+def plain_text_body(text):
+    """
+    Strip the Markdown an agenda arrives with, leaving plain text.
+
+    Deliberately narrow: **bold** and __bold__, a leading #-heading, and * or
+    + bullets normalised to -. Nothing else.
+
+    A LONE asterisk is left alone, because in an agenda it is as likely to be
+    a footnote mark as emphasis. "C#" and "#3" survive too, because only a #
+    followed by a SPACE at the start of a line is a heading. Getting this
+    wrong is visible to everyone invited, so it does less rather than more.
+    """
+    cleaned = _MD_STRONG.sub(r"\2", text)
+    cleaned = _MD_HEADING.sub("", cleaned)
+    return _MD_BULLET.sub(r"\1- ", cleaned)
+
+
 def _add_meeting_recipients(appointment, specs, recipient_type, label, failures):
     """Attach one class of recipient, recording anything that will not resolve."""
     added = []
@@ -4517,15 +4556,17 @@ def tool_draft_meeting(args):
                 "'optional_attendees' or 'rooms'. Use outlook_find_people to "
                 "turn a name into an address first.")
 
-    body = (args.get("body") or "").strip()
-    if len(body) > MEETING_MAX_BODY_CHARS:
+    raw_body = (args.get("body") or "").strip()
+    if len(raw_body) > MEETING_MAX_BODY_CHARS:
         return "Error: 'body' is longer than {0} characters.".format(
             MEETING_MAX_BODY_CHARS)
+    body = plain_text_body(raw_body)
 
     # The content blacklist applies in BOTH directions. A subject or body
     # carrying a protective marking must not be routed through the AI on its
-    # way into Outlook any more than on its way out.
-    marking = blacklisted_match("{0}\n{1}".format(subject, body))
+    # way into Outlook any more than on its way out. Both forms of the body
+    # are scanned, so stripping markup can never open a gap in the filter.
+    marking = blacklisted_match("{0}\n{1}\n{2}".format(subject, raw_body, body))
     if marking:
         log("Refused to draft a meeting (blacklist match: {0}).".format(marking))
         return ("Refused: the subject or body of this meeting contains "
@@ -4951,7 +4992,17 @@ TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "subject": {"type": "string", "description": "Meeting subject line."},
+                "subject": {
+                    "type": "string",
+                    "description": (
+                        "Meeting subject line - the first thing every invitee "
+                        "reads. Use the user's own words for it. Where they have "
+                        "not given any, name what the meeting is about from the "
+                        "conversation (the agenda just drafted, the document just "
+                        "written) and put that to them before drafting; never "
+                        "invent a subject and never leave it vague."
+                    ),
+                },
                 "start": {
                     "type": "string",
                     "description": (
@@ -4981,7 +5032,21 @@ TOOLS = [
                     ),
                 },
                 "location": {"type": "string", "description": "Free-text location. Defaults to the room names when rooms are booked."},
-                "body": {"type": "string", "description": "Meeting body / agenda. Keep it to what the user asked for."},
+                "body": {
+                    "type": "string",
+                    "description": (
+                        "Meeting body - where the agenda goes. When the user has "
+                        "just written or agreed an agenda and then asks for a time "
+                        "'to discuss it', put THAT agenda here rather than asking "
+                        "them to retype it; show them what you are attaching first, "
+                        "because everyone invited reads it. Never invent agenda "
+                        "items, and leave out your own working notes and any "
+                        "options they discarded. Write plain text: Outlook renders "
+                        "no Markdown, so headings and bullets arrive as typed "
+                        "(the server strips ** and normalises * bullets, and does "
+                        "nothing more)."
+                    ),
+                },
                 "reminder_minutes": {"type": "integer", "description": "Reminder lead time in minutes (default 15; 0 for no reminder)."},
                 "busy_status": {
                     "type": "string",

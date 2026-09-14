@@ -1,7 +1,7 @@
 {
   "name": "outlook",
   "displayName": "Outlook (mail + calendar)",
-  "version": "8.0.0",
+  "version": "8.1.0",
   "description": "Read local classic Outlook mail and calendar via COM, schedule meetings (fuzzy directory search, free/busy, and an unsent meeting draft you send yourself), and print a day as a PDF planner. It can never send anything. Windows only; requires pywin32.",
   "author": {
     "name": "mcnamee"

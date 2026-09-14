@@ -1,6 +1,6 @@
 ---
 name: meeting-scheduler
-description: Schedule a meeting through the outlook MCP server - fuzzy-find people and rooms in the enterprise directory, check everyone's free/busy, and save an unsent meeting draft for the user to review and send. Use when the user wants to find a time with someone, book a meeting or a room, asks "when are Josh and I both free", "set up 30 minutes with the team next week", "find a suitable time with Josh Smith in Room R5-3-84", or asks for a meeting invite to be drafted.
+description: Schedule a meeting through the outlook MCP server - fuzzy-find people and rooms in the enterprise directory, check everyone's free/busy, and save an unsent meeting draft for the user to review and send, carrying across an agenda already written in the conversation. Use when the user wants to find a time with someone, book a meeting or a room, asks "when are Josh and I both free", "set up 30 minutes with the team next week", "find a suitable time with Josh Smith in Room R5-3-84", says "now find a time to discuss this" after drafting an agenda or a document, or asks for a meeting invite to be drafted.
 ---
 
 # Scheduling a meeting (via the `outlook` MCP server)
@@ -34,7 +34,8 @@ Worked example — *"Find a suitable time with Josh Smith in Room R5-3-84"*:
    rooms: ["r5-3-84@contoso.com"], duration_minutes: 30}`.
 5. Put the options to the user as a short numbered list. **Stop there.**
 6. They pick one → `outlook_draft_meeting` with that exact `start` and
-   `duration_minutes`, plus a subject you have confirmed.
+   `duration_minutes`, plus a confirmed subject and, if there's an agenda in
+   play, the `body` to match.
 
 ## Rules that matter
 
@@ -45,8 +46,11 @@ Worked example — *"Find a suitable time with Josh Smith in Room R5-3-84"*:
   a top match below about 0.8, is a question for the user, not a coin toss.
   Show the job title and department: that is usually what tells two people
   with the same name apart.
-- **Confirm the subject.** Never make one up. If the user hasn't said, ask —
-  or offer one and wait. The subject is the first thing every invitee reads.
+- **Confirm the subject, don't invent one.** Where the user hasn't named it,
+  take it from what the conversation is already about and put that to them —
+  see [The subject and the agenda](#the-subject-and-the-agenda). Asking from
+  scratch for something you're both looking at is a wasted turn; guessing
+  silently is worse.
 - **Nothing is sent.** The server cannot send: `outlook_draft_meeting` saves
   the meeting with its invitations unsent and opens it on screen. Always
   close by telling the user it is a draft and that **they** press Send. Never
@@ -75,6 +79,48 @@ Judgement calls the tool makes, so you don't have to:
   higher.
 - Suggestions are already **spread across days** rather than being the same
   afternoon in 15-minute steps, so offer them as they come.
+
+## The subject and the agenda
+
+The usual shape of this request is two steps, and the second one leans on the
+first:
+
+> *"Draft an agenda for the platform migration review."*
+> *"Now find a time with Josh Mann to discuss."*
+
+"To discuss" means **that agenda**. Carry it across; don't make them type it
+again, and don't start over with "what should the subject be?".
+
+**The subject**, in order of preference:
+
+1. What the user called it — their words win, always.
+2. What the conversation is plainly about: the agenda you just drafted, the
+   document you just wrote, the email thread you just read. Propose it.
+3. Nothing to go on → ask. A meeting called "Catch-up" tells the invitees
+   nothing.
+
+**The agenda** goes in `body`:
+
+- Attach what was actually written or agreed. **Never invent items** to pad it
+  out — a fabricated agenda item is read as a commitment by everyone invited.
+- Leave out your own scaffolding: working notes, options the user rejected,
+  your commentary on their draft.
+- **Write plain text.** Outlook renders no Markdown in a meeting body, so
+  `**Agenda**` arrives with the asterisks showing. The server strips `**` and
+  normalises `*` bullets to `-`, and deliberately does nothing more — headings
+  and tables are on you.
+- Nothing to attach is a perfectly good answer. A one-line body, or none, beats
+  a padded one.
+
+**Show both before you draft.** One short confirmation covering the subject,
+the time, who's invited, the room and the body text — then draft on a yes:
+
+> Subject: *Platform migration review*. Tuesday 16 Sep, 10:00–10:30, Room
+> R5-3-84, with Joshua Smith. Agenda in the body: migration status, outstanding
+> risks, go/no-go decision. Draft that?
+
+That single check is what stops a wrong subject or a half-finished agenda
+going out to a room full of people — it is cheaper than any of the fixes.
 
 ## When nothing fits
 
@@ -113,8 +159,11 @@ outlook_draft_meeting {
   `busy_status`, `categories`, `end` instead of a duration.
 - `open_in_outlook` defaults to true and pops the draft on screen. Pass false
   only if the user asks you not to interrupt them.
-- Keep `body` to what the user asked for. A meeting body is read by everyone
-  invited — do not pad it with an agenda they didn't write.
+- **`body` is where the agenda goes** — carry across one the user has just
+  written rather than making them retype it, and show it to them first. What
+  must never appear there is anything they *didn't* write: invented agenda
+  items, your own working notes, options they rejected. Everyone invited
+  reads it.
 
 ## Notes
 

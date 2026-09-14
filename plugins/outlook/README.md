@@ -7,7 +7,7 @@ day planner for any day.
 
 | | |
 |---|---|
-| **Server** | `outlook.py` v8.0.0 |
+| **Server** | `outlook.py` v8.1.0 |
 | **pip install** | `pywin32` |
 | **Platform** | **Windows only** — requires classic Win32 Outlook (not "New Outlook") installed, running, and logged into a profile |
 | **Sends** | **never.** Not an email, not a reply, not a meeting invitation. It cannot accept, move or delete anything either |
@@ -119,6 +119,19 @@ the file, so nobody is notified until you press Send yourself.
   `Restrict()` unusable elsewhere in this server.
 - The content blacklist applies in this direction too — a subject or body
   carrying a protective marking is refused rather than written into Outlook.
+
+**The subject and the agenda** are ordinary arguments, and the usual shape of
+the request is two steps — *"draft an agenda for the migration review"*, then
+*"now find a time with Josh Mann to discuss"*. The second step should carry
+the first one's agenda into `body` rather than asking you to retype it, and
+should show you the subject and body before drafting: everyone invited reads
+them.
+
+`AppointmentItem.Body` is **plain text** and Outlook renders no Markdown, so an
+agenda drafted in conversation would otherwise arrive with its asterisks still
+on it. The server strips `**bold**`, leading `#` headings, and normalises `*`
+and `+` bullets to `-`. It does no more than that on purpose: a lone asterisk
+is as likely to be a footnote mark as emphasis, and `C#` is not a heading.
 
 Set `OUTLOOK_ALLOW_DRAFTS=false` and the tool is not offered at all (not
 listed, not dispatched), leaving the server read-only on the mailbox. Removing
@@ -445,6 +458,7 @@ delete — `Send()` is never called anywhere in the file, and
 14. "Find a suitable time with Josh Smith in Room R5-3-84." → `outlook_find_people` twice, then `outlook_suggest_meeting_times`
 15. "When are Josh and Sam both free for an hour next week?" → `outlook_suggest_meeting_times` with `duration_minutes: 60`, `start_date: "+7"`
 16. "Book the Tuesday 10am one." → `outlook_draft_meeting` — saved to your calendar **unsent**, opened for you to review and send
+17. "Draft an agenda for the migration review." … "Now find a time with Josh Mann to discuss." → the agenda is carried into the meeting body, shown to you, then drafted
 
 The save folder sits inside the same knowledge root the `knowledge-base` server
 indexes - which is what `EVA_KNOWLEDGE_DIR` being one shared setting buys you -
