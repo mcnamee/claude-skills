@@ -6,7 +6,7 @@ AI entirely — plus a printable PDF day planner for any day.
 
 | | |
 |---|---|
-| **Server** | `outlook.py` v6.3.0 |
+| **Server** | `outlook.py` v7.0.0 |
 | **pip install** | `pywin32` |
 | **Platform** | **Windows only** — requires classic Win32 Outlook (not "New Outlook") installed, running, and logged into a profile |
 | **Writes to disk** | only on request: an email saved as Markdown in `C:\Eva\knowledge\email`, or a day planner PDF in `C:\Eva\documents\pdf` |
@@ -41,7 +41,6 @@ following days are summarised on the right.
 |---|---|
 | "Print today's calendar" | `Calendar - 2026-09-14 Monday.pdf` for today, with the next four days that have something on them |
 | "Tomorrow's planner" | The same for tomorrow |
-| "…without the attendee names" | `show_attendees: false`, for a sheet you can leave on a desk |
 | "Show the next week down the side" | `lookahead_days: 6` |
 
 The `date` argument takes `today` (the default), `tomorrow`, `yesterday`, an
@@ -58,6 +57,14 @@ because the model's idea of today was stale.
   (`OUTLOOK_CALENDAR_HOURS`, default 08:00–18:00) and grows to take in anything
   outside it, so a 6 am flight is on the page rather than off the top of it.
 - **All-day items** sit above the grid as a strip of chips.
+- **No colour legend across the top.** The blocks carry the colour; a printed
+  page is looked at rather than decoded.
+- **Attendees are never printed.** Who is in a meeting is in the invitation, it
+  crowds out the subject and location the sheet is for, and it puts other
+  people's names on something left on a desk. They are still read, since an
+  outside-domain attendee is what colours an uncategorised block.
+- **Type is small on purpose** (6pt floor). A planner is read at desk distance,
+  and a subject that fits on its block beats large type with an ellipsis.
 - **Colour comes from your own Outlook categories, with nothing to configure.**
   Outlook already stores a colour against each category; the planner reads it
   off the profile and prints it at full strength. See
@@ -319,7 +326,7 @@ folder at all (the optional blacklist file is read once at startup).
 8. "Search only my 'Projects' and 'Sent Items' folders for anything about the budget review." → `outlook_search_recent` with a `folders` argument overriding the default set
 9. "What are my actual Outlook folder names, so I can point the search at the right archive?" → `outlook_list_folders`
 10. "Give me today's calendar to print." → `outlook_print_calendar` — an A4 landscape day planner in `C:\Eva\documents\pdf`
-11. "Print tomorrow's planner, without the attendee names on it." → `outlook_print_calendar` with `date: "tomorrow"`, `show_attendees: false`
+11. "Print tomorrow's planner with the whole week down the side." → `outlook_print_calendar` with `date: "tomorrow"`, `lookahead_days: 6`
 
 The save folder sits inside the same knowledge root the `knowledge-base` server
 indexes - which is what `EVA_KNOWLEDGE_DIR` being one shared setting buys you -

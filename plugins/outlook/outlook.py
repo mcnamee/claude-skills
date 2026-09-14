@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-outlook.py (v6.3.0)
+outlook.py (v7.0.0)
 ======================
 
 A single-file MCP (Model Context Protocol) server giving an LLM read-only
@@ -146,8 +146,16 @@ What ends up on the page:
   uncategorised falls back to what Outlook can actually prove: somebody outside
   your own SMTP domain is invited (External), it is internal (Internal), or
   nobody is invited at all (Personal). Nothing is guessed from the subject line.
+  There is no colour legend across the top: a printed page is looked at, not
+  decoded, and the header reads better given back to the date.
 - Type on a block goes white or dark automatically, by how bright the fill is,
-  so a yellow category is readable rather than white-on-yellow.
+  so a yellow category is readable rather than white-on-yellow. It is small on
+  purpose (6pt floor): a planner is read at desk distance, and the subject of a
+  meeting fitting on its block matters more than large type.
+- ATTENDEES ARE NEVER PRINTED. Who is in a meeting is in the invitation, it
+  crowds out the subject and location the sheet is actually for, and it puts
+  other people's names on something left on a desk. They are still read, since
+  an outside-domain attendee is what colours an uncategorised block.
 - Tentative or free-marked time is drawn hollow, the way a diary pencils
   something in.
 - The right-hand panel skips days with nothing in the diary by default, so a
@@ -346,7 +354,7 @@ IMPORTANT (stdio-on-Windows pitfalls)
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "6.3.0"
+__version__ = "7.0.0"
 
 import os
 import re
@@ -2537,21 +2545,13 @@ def _event_bucket(event, category_colours):
     return "Personal", "grey"
 
 
-def _bucket_rank(entry):
-    """Legend order: mapped categories first, then the built-in three."""
-    label = entry[0]
-    builtin = {"External": 1, "Internal": 2, "Personal": 3}
-    return (builtin.get(label, 0), label.lower())
-
-
 # ---------------------------------------------------------------------------
 # Timeline geometry
 # ---------------------------------------------------------------------------
 
-PLANNER_MAX_LEGEND = 5       # colour chips across the header, before Tentative
 PLANNER_MIN_BLOCK_MM = 6.4   # a short meeting is grown to this if there is room
 PLANNER_MIN_TIGHT_MM = 3.4   # ...and never squeezed below this, so a line still fits
-PLANNER_BLOCK_GAP_MM = 1.0   # gutter between two blocks, side by side or stacked
+PLANNER_BLOCK_GAP_MM = 1.6   # white space between two blocks, side by side or stacked
 
 
 def _place_blocks(events, day, start_min, end_min, top, bottom, lane_x, lane_w):
@@ -2608,7 +2608,11 @@ def _place_blocks(events, day, start_min, end_min, top, bottom, lane_x, lane_w):
                 ceiling = (column[position + 1]["top"]
                            if position + 1 < len(column) else bottom)
                 room = ceiling - box["top"] - PLANNER_BLOCK_GAP_MM
-                height = max(box["natural"], PLANNER_MIN_BLOCK_MM)
+                # The gap comes out of the block itself, not just out of the
+                # overflow case, so two back-to-back meetings read as two blocks
+                # with white between them rather than one continuous slab.
+                natural = max(box["natural"] - PLANNER_BLOCK_GAP_MM, 0.0)
+                height = max(natural, PLANNER_MIN_BLOCK_MM)
                 box["height"] = max(PLANNER_MIN_TIGHT_MM, min(height, max(room, 0.0)))
                 box["x"] = lane_x + box["column"] * (width + PLANNER_BLOCK_GAP_MM)
                 box["width"] = width
@@ -2643,7 +2647,7 @@ def _block_style(event, colour_key):
     }
 
 
-def _draw_block(canvas, box, show_people):
+def _draw_block(canvas, box):
     """
     Draw one event block on the timeline.
 
@@ -2652,12 +2656,16 @@ def _draw_block(canvas, box, show_people):
     overlapping meeting, and a single centred line for anything too short to
     stack. A printed block that has been squeezed says less rather than
     truncating everything on it into nonsense.
+
+    Type is deliberately small. A day planner is read at desk distance, and the
+    subject of a meeting fitting on the block matters more than the type being
+    large enough to read across a room; 6pt is the floor.
     """
     event = box["event"]
     style = box["style"]
     x, y = box["x"], box["top"]
     width, height = box["width"], box["height"]
-    pad_x, pad_y = 2.2, 1.5
+    pad_x, pad_y = 2.0, 1.2
     inner = width - pad_x * 2
     if inner <= 4:
         return
@@ -2666,13 +2674,13 @@ def _draw_block(canvas, box, show_people):
                 line_pt=style["line_pt"] or 0.6, radius=1.6)
 
     span = "{0}–{1}".format(_fmt_time(event["start"]), _fmt_time(event["end"]))
-    floor_y = y + height - 1.0
+    floor_y = y + height - 0.8
 
     # --- too short to stack: one centred line ------------------------------
-    if height < 8.6:
-        size = 9.0 if height >= 5.6 else (8.0 if height >= 4.4 else 7.0)
+    if height < 7.4:
+        size = 7.0 if height >= 5.0 else (6.5 if height >= 4.0 else 6.0)
         baseline = y + height / 2.0 + _cap_mm(size) / 2.0
-        if inner < 42.0:
+        if inner < 36.0:
             # Short AND sharing the lane: one line is all there is, so spend it
             # on the subject. Where the block sits already says when it is.
             canvas.text(x + pad_x, baseline, event["subject"], size, bold=True,
@@ -2681,79 +2689,80 @@ def _draw_block(canvas, box, show_people):
         detail = span
         if event["location"]:
             longer = span + " · " + event["location"]
-            if canvas.text_width(longer, 7.5) < inner * 0.62:
+            if canvas.text_width(longer, 6.0) < inner * 0.62:
                 detail = longer
-        detail_w = canvas.text_width(detail, 7.5)
-        title_w = inner - detail_w - 2.4
-        if title_w < 14.0:               # no room for both - the time wins
-            detail, detail_w = span, canvas.text_width(span, 7.5)
-            title_w = inner - detail_w - 2.4
-        if title_w < 10.0:               # nor for that - print the title alone
+        detail_w = canvas.text_width(detail, 6.0)
+        title_w = inner - detail_w - 2.0
+        if title_w < 12.0:               # no room for both - the time wins
+            detail, detail_w = span, canvas.text_width(span, 6.0)
+            title_w = inner - detail_w - 2.0
+        if title_w < 9.0:                # nor for that - print the title alone
             canvas.text(x + pad_x, baseline, event["subject"], size, bold=True,
                         colour=style["title"], max_width=inner)
             return
         drawn = canvas.text(x + pad_x, baseline, event["subject"], size, bold=True,
                             colour=style["title"], max_width=title_w)
-        canvas.text(x + pad_x + drawn + 2.4, baseline, detail, 7.5,
-                    colour=style["sub"], max_width=inner - drawn - 2.4)
+        canvas.text(x + pad_x + drawn + 2.0, baseline, detail, 6.0,
+                    colour=style["sub"], max_width=inner - drawn - 2.0)
         return
 
     # --- narrow, because it is sharing the lane ----------------------------
-    if inner < 42.0:
-        title_size = 9.0
+    if inner < 36.0:
+        title_size = 7.0
         baseline = y + pad_y + _cap_mm(title_size)
+        # Two lines of subject beat one truncated line plus a time: the block's
+        # position on the grid already says when it is, and what the meeting is
+        # cannot be read off anything else.
         lines = canvas.wrap(event["subject"], title_size, inner, bold=True,
-                            max_lines=2 if height >= 12.0 else 1)
+                            max_lines=2 if height >= 7.8 else 1)
         for line in lines:
             if baseline > floor_y:
                 break
             canvas.text(x + pad_x, baseline, line, title_size, bold=True,
                         colour=style["title"])
-            baseline += 3.2
+            baseline += 2.6
         if baseline - 0.4 <= floor_y:
             # Too narrow for both ends of the range: the start time alone beats
             # a truncated one, and the block's position says how long it runs.
-            shown_span = (span if canvas.text_width(span, 7.5, bold=True) <= inner
+            shown_span = (span if canvas.text_width(span, 6.0, bold=True) <= inner
                           else _fmt_time(event["start"]))
-            canvas.text(x + pad_x, baseline, shown_span, 7.5, bold=True,
+            canvas.text(x + pad_x, baseline, shown_span, 6.0, bold=True,
                         colour=style["sub"], max_width=inner)
-            baseline += 2.8
+            baseline += 2.3
         if event["location"] and baseline <= floor_y:
-            canvas.text(x + pad_x, baseline, event["location"], 7.5,
+            canvas.text(x + pad_x, baseline, event["location"], 6.0,
                         colour=style["sub"], max_width=inner)
         return
 
     # --- the full block ----------------------------------------------------
-    title_size = 10.5 if inner >= 62.0 else 9.5
-    span_w = canvas.text_width(span, 8.0, bold=True)
+    title_size = 8.5 if inner >= 56.0 else 7.5
+    span_w = canvas.text_width(span, 6.5, bold=True)
     baseline = y + pad_y + _cap_mm(title_size)
     canvas.text(x + pad_x, baseline, event["subject"], title_size, bold=True,
-                colour=style["title"], max_width=inner - span_w - 3.0)
-    canvas.text(x + width - pad_x, baseline, span, 8.0, bold=True,
+                colour=style["title"], max_width=inner - span_w - 2.5)
+    canvas.text(x + width - pad_x, baseline, span, 6.5, bold=True,
                 colour=style["sub"], align="right")
 
-    baseline += 3.1
+    baseline += 2.6
     if event["location"] and baseline <= floor_y:
-        canvas.text(x + pad_x, baseline, event["location"], 8.0, bold=True,
+        canvas.text(x + pad_x, baseline, event["location"], 6.5, bold=True,
                     colour=style["sub"], max_width=inner)
-        baseline += 2.8
-    if show_people and event["people"] and baseline <= floor_y:
-        shown = event["people"][:4]
-        line = " · ".join(shown)
-        if len(event["people"]) > len(shown):
-            line += " +{0}".format(len(event["people"]) - len(shown))
-        canvas.text(x + pad_x, baseline, line, 7.5, colour=style["sub"],
-                    max_width=inner)
 
 
 def render_day_planner(day, day_events, ahead, identity, hours,
-                       show_people=True, withheld=0, category_colours=None):
+                       withheld=0, category_colours=None):
     """
     Build the whole A4-landscape planner and return it as PDF bytes.
 
     `day_events` is today's list, `ahead` a list of (date, events) for the
     right-hand panel, `identity` the (name, address) the header and footer show,
     and `hours` the (first, last) hour the timeline covers.
+
+    Attendees are never printed. Who is in a meeting is in the invitation, it
+    crowds out the subject and location that a printed planner is actually for,
+    and it puts other people's names on a sheet that gets left on a desk. They
+    are still READ, because whether anyone outside our own domain is invited is
+    what colours an uncategorised block.
     """
     category_colours = category_colours or {}
     page_w, page_h = 297.0, 210.0
@@ -2768,11 +2777,8 @@ def render_day_planner(day, day_events, ahead, identity, hours,
     timed = [event for event in day_events if not event["all_day"]]
     all_day = [event for event in day_events if event["all_day"]]
 
-    # Buckets first: the legend can only show colours that are on the page.
     for event in day_events:
-        label, colour_key = _event_bucket(event, category_colours)
-        event["bucket"] = label
-        event["colour"] = colour_key
+        _label, event["colour"] = _event_bucket(event, category_colours)
 
     # ---- header ----------------------------------------------------------
     eyebrow = "DAILY AGENDA" + (" · " + name if name else "")
@@ -2790,46 +2796,12 @@ def render_day_planner(day, day_events, ahead, identity, hours,
     if not timed and not all_day:
         stats = "Nothing scheduled"
 
-    cursor = page_w - pad_r
-    cursor -= canvas.text(cursor, pad_t + 8.0, stats, 7.5, bold=True,
-                          colour=_FAINT, align="right")
-    cursor -= 4.0
-
-    # Legend. With Outlook's own categories driving the colours there can be
-    # more of them than the header has room for, so rank by how much of the day
-    # each one accounts for, keep what fits, and put the survivors back in the
-    # order the legend always uses so it does not reshuffle day to day.
-    counts = {}
-    for event in day_events:
-        key = (event["bucket"], event["colour"])
-        counts[key] = counts.get(key, 0) + 1
-    legend = sorted(sorted(counts, key=lambda key: (-counts[key], _bucket_rank(key)))
-                    [:PLANNER_MAX_LEGEND], key=_bucket_rank)
-    if any(event["busy"] in (OL_BUSY_FREE, OL_BUSY_TENTATIVE) for event in day_events):
-        legend.append(("Tentative", None))
-
-    def chip_width(text):
-        return 2.6 + 2.0 + canvas.text_width(text, 7.5, bold=True) + 6.0
-
-    room = cursor - (pad_l + date_w + 8.0)
-    while legend and sum(chip_width(entry[0]) for entry in legend) > room:
-        legend.pop()  # the least of the day goes first, never the most of it
-
-    if legend:
-        canvas.line(cursor, pad_t + 3.4, cursor, pad_t + 9.2, _RULE, 0.6)
-        cursor -= 4.0
-    for label, colour_key in reversed(legend):
-        cursor -= canvas.text(cursor, pad_t + 8.0, label, 7.5, bold=True,
-                              colour="#374151", align="right")
-        cursor -= 2.0
-        if colour_key is None:  # the hollow swatch
-            canvas.rect(cursor - 2.6, pad_t + 5.7, 2.6, 2.6, fill="#FFFFFF",
-                        stroke=_INK, line_pt=0.9, radius=0.9)
-        else:
-            swatch = planner_palette(colour_key)
-            canvas.rect(cursor - 2.6, pad_t + 5.7, 2.6, 2.6, fill=swatch["fill"],
-                        stroke=swatch["border"], line_pt=0.6, radius=0.9)
-        cursor -= 2.6 + 6.0
+    # No colour legend across the top. The blocks carry the colour, a printed
+    # page is looked at rather than decoded, and the space reads better given
+    # back to the date.
+    canvas.text(page_w - pad_r, pad_t + 8.0, stats, 7.5, bold=True,
+                colour=_FAINT, align="right", max_width=page_w - pad_l - pad_r
+                - date_w - 8.0)
 
     header_rule = pad_t + 12.8
     canvas.line(pad_l, header_rule, page_w - pad_r, header_rule, _INK, 1.2)
@@ -2911,7 +2883,7 @@ def render_day_planner(day, day_events, ahead, identity, hours,
         for box in _place_blocks(timed, day, start_min, end_min,
                                  grid_top, grid_bottom, lane_x, lane_w):
             box["style"] = _block_style(box["event"], box["event"]["colour"])
-            _draw_block(canvas, box, show_people)
+            _draw_block(canvas, box)
     elif not all_day:
         canvas.text(lane_x + lane_w / 2.0, (grid_top + grid_bottom) / 2.0,
                     "Nothing in the diary", 10.0, bold=True, colour=_GRID,
@@ -2937,11 +2909,11 @@ def render_day_planner(day, day_events, ahead, identity, hours,
                 colour=_FAINT, tracking=0.8, align="right")
 
     rows_top = body_top + 6.4
-    time_col = 19.0
+    time_col = 16.0
     date_col = 17.0
     date_block_mm = 12.4   # the DOW / number / month stack down the left
     row_gap_mm = 2.8
-    base_line_mm = 4.3
+    base_line_mm = 3.6
 
     # Rows are sized to what is in them and then scaled to fill the panel, so a
     # quiet Wednesday does not take up as much of the page as a full Thursday.
@@ -2968,13 +2940,13 @@ def render_day_planner(day, day_events, ahead, identity, hours,
         # short list looks deliberate spaced out, and absurd spaced to the floor.
         line_h = base_line_mm
         if ahead_events:
-            line_h = max(base_line_mm, min(6.4, (row_h - row_gap_mm - 2.6)
+            line_h = max(base_line_mm, min(5.4, (row_h - row_gap_mm - 2.6)
                                            / max(1, len(ahead_events))))
         capacity = max(1, int((row_h - row_gap_mm - 2.2) / line_h))
         baseline = top + 2.6
 
         if not ahead_events:
-            canvas.text(list_x, baseline, "Nothing scheduled", 9.0, colour=_FAINT)
+            canvas.text(list_x, baseline, "Nothing scheduled", 7.0, colour=_FAINT)
         else:
             shown = ahead_events[:capacity]
             if len(ahead_events) > capacity:
@@ -2983,16 +2955,18 @@ def render_day_planner(day, day_events, ahead, identity, hours,
                 when = ("all day" if event["all_day"]
                         else "{0}–{1}".format(_fmt_time(event["start"]),
                                               _fmt_time(event["end"])))
-                canvas.text(list_x, baseline, when, 8.0, bold=True, colour=_MUTED,
+                # The time stays bold: it is the column the eye runs down.
+                # The subject is set regular, which also buys back the width
+                # bold was costing it.
+                canvas.text(list_x, baseline, when, 6.5, bold=True, colour=_MUTED,
                             max_width=time_col - 1.0)
-                canvas.text(list_x + time_col + 2.0, baseline, event["subject"], 9.0,
-                            bold=True, colour=_INK,
-                            max_width=list_w - time_col - 2.0)
+                canvas.text(list_x + time_col + 2.0, baseline, event["subject"], 7.0,
+                            colour=_INK, max_width=list_w - time_col - 2.0)
                 baseline += line_h
             if len(ahead_events) > len(shown):
                 canvas.text(list_x + time_col + 2.0, baseline,
                             "+{0} more".format(len(ahead_events) - len(shown)),
-                            8.0, bold=True, colour=_FAINT)
+                            6.5, bold=True, colour=_FAINT)
 
         if index < len(ahead) - 1:
             rule_y = top + row_h - row_gap_mm / 2.0
@@ -3142,7 +3116,7 @@ def _planner_hours(events, day):
     return first, last
 
 
-def _collect_planner_events(start_date, end_date, with_people):
+def _collect_planner_events(start_date, end_date):
     """
     Read the calendar between two dates into plain dicts, one per occurrence.
 
@@ -3169,9 +3143,11 @@ def _collect_planner_events(start_date, end_date, with_people):
             log("Withheld a calendar item from the planner (blacklist match: {0}).".format(reason))
             continue
         day = item_start.date()
+        # Only the printed day needs its recipients read: that is the only
+        # panel whose colour depends on who is invited, and reading them is a
+        # COM round trip per meeting.
         event = _appointment_to_event(
-            item, item_start, identity,
-            want_people=(with_people and day == start_date))
+            item, item_start, identity, want_people=(day == start_date))
         if event is None:
             continue
         by_date.setdefault(day, []).append(event)
@@ -3228,13 +3204,12 @@ def tool_print_calendar(args):
     except (TypeError, ValueError):
         wanted = CALENDAR_LOOKAHEAD_DAYS
     wanted = max(1, min(PLANNER_MAX_LOOKAHEAD, wanted))
-    show_people = bool(args.get("show_attendees", True))
     skip_empty = bool(args.get("skip_empty_days", True))
 
     horizon = day + datetime.timedelta(
         days=PLANNER_SCAN_HORIZON_DAYS if skip_empty else wanted)
     try:
-        by_date, withheld = _collect_planner_events(day, horizon, show_people)
+        by_date, withheld = _collect_planner_events(day, horizon)
     except RuntimeError as exc:
         return "Error: {0}.".format(exc)
 
@@ -3251,8 +3226,7 @@ def tool_print_calendar(args):
     try:
         pdf = render_day_planner(
             day, day_events, ahead, current_user_identity(get_namespace()),
-            hours, show_people=show_people, withheld=withheld,
-            category_colours=category_colours)
+            hours, withheld=withheld, category_colours=category_colours)
     except Exception as exc:
         log("Planner render failed:\n{0}".format(traceback.format_exc()))
         return "Error: the planner could not be laid out ({0}).".format(exc)
@@ -3447,14 +3421,6 @@ TOOLS = [
                         "in favour of the next day that has something, so a Friday "
                         "planner shows the week ahead instead of two blank weekend "
                         "panels. Set false for strictly consecutive days."
-                    ),
-                },
-                "show_attendees": {
-                    "type": "boolean",
-                    "description": (
-                        "Default true: print attendee names inside the day's larger "
-                        "meeting blocks. Set false for a planner that can be left on "
-                        "a desk."
                     ),
                 },
                 "filename": {

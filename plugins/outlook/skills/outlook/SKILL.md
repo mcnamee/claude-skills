@@ -48,7 +48,6 @@ right. Tell the user the path, and that it prints single-sided and folds in half
 | "Print today's calendar" | `date: "today"` |
 | "Tomorrow's planner" | `date: "tomorrow"` |
 | "A planner for Friday" | `date: "+N"` if you can count the days, else `YYYY-MM-DD` |
-| "Just the day, no-one else's names on it" | `show_attendees: false` |
 | "Show me the next week down the side" | `lookahead_days: 6` |
 
 - **One day per sheet.** There is no week or month layout; for a range, print
@@ -58,6 +57,8 @@ right. Tell the user the path, and that it prints single-sided and folds in half
   wasted round trip.
 - **Re-printing the same day overwrites that day's file.** That is deliberate,
   so say "updated" rather than warning about a clash.
+- **Attendee names are never on the page** and there is no argument to put them
+  there. If the user asks for them, say so rather than promising a flag.
 - Block colour comes from the endpoint's Outlook **categories** — the colour
   Outlook already holds against each one, printed bolder than Outlook shows it —
   falling back to External / Internal / Personal, which the legend on the page
