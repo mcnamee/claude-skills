@@ -1,7 +1,7 @@
 {
   "name": "outlook",
   "displayName": "Outlook (mail + calendar)",
-  "version": "6.2.0",
+  "version": "6.3.0",
   "description": "Read-only access to local classic Outlook mail and calendar via COM, plus a printable PDF day planner for any day. Saves an email to the knowledge base when you ask for it. Windows only; requires pywin32.",
   "author": {
     "name": "mcnamee"

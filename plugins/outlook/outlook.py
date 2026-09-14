@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-outlook.py (v6.2.0)
+outlook.py (v6.3.0)
 ======================
 
 A single-file MCP (Model Context Protocol) server giving an LLM read-only
@@ -39,6 +39,9 @@ TOOLS EXPOSED (all read-only on the mailbox itself)
                                match, the reply includes a [debug] section showing
                                the last 5 calendar items scanned (start date +
                                in-range flag) so a filtering fault stays visible.
+                               Recurring series are gathered two ways and merged
+                               (see RECURRING SERIES below), so a series does not
+                               go missing when one method cannot see it.
 - outlook_print_calendar     : a PRINTABLE PDF day planner for one day - see below
 - outlook_list_sent_emails   : messages you SENT, in a date range (e.g. "what did I do last week")
 - outlook_search_recent      : all mail across Inbox/Archive/Sent in a date range (configurable)
@@ -70,6 +73,41 @@ EVERY email read, set OUTLOOK_KB_AUTOSAVE=true.
 Worth a deliberate decision either way: saving turns correspondence into plain
 text files that are then embedded and quotable in answers. See
 eva\knowledge\email\README.md.
+
+RECURRING SERIES  (why a meeting can be in Outlook but not in the results)
+--------------------------------------------------------------------------
+Recurring appointments are not stored as individual meetings: the folder holds
+one master per series, and the occurrences have to be worked out. This server
+does it TWICE and merges the results, because either method alone loses
+meetings.
+
+1. Outlook's own expansion. Sorting the Items collection by [Start] and setting
+   IncludeRecurrences makes Outlook hand back individual occurrences. Outlook
+   holds each series' timezone and daylight-saving rules, so it places an
+   occurrence correctly. This is the primary source.
+
+2. Probing each master's RecurrencePattern with GetOccurrence, day by day. This
+   only finds an occurrence whose exact start time was guessed in advance, so it
+   is a backstop rather than the primary.
+
+Method 2 was on its own until v6.3.0, and it guessed that time from the MASTER's
+Start - which is the FIRST occurrence of the series, often years old. Any series
+whose occurrences no longer start at that same wall-clock time was invisible:
+nothing errored, the meetings simply were not there. That covers a series set up
+under a daylight-saving offset that has since drifted, and one stored in an
+overseas organiser's timezone. It is why a long-standing weekly meeting could be
+missing while a new one showed up fine. Method 2 now probes the pattern's own
+StartTime as well as the master's, and method 1 catches the rest.
+
+Neither method uses a formatted date string, so this does not reintroduce the
+Restrict() fault where regional settings silently empty the results.
+
+To see what the two methods make of your own calendar:
+
+    python outlook.py --check
+
+prints, per recurring series, what each one found for today, and names any
+series one can see and the other cannot.
 
 Printable day planner (outlook_print_calendar)
 ----------------------------------------------
@@ -158,7 +196,8 @@ just below this docstring. Edit them there; nothing else needs changing.
                    punctuation (e.g. "[SEC=PROTECTED]") that word mode misses.
    Matching is always case-insensitive.
 
-3. Tunable caps (MAX_BODY_CHARS / CALENDAR_HARD_CAP / SEARCH_SCAN_CAP)
+3. Tunable caps (MAX_BODY_CHARS / CALENDAR_HARD_CAP / SEARCH_SCAN_CAP /
+   RECURRENCE_SCAN_CAP)
    Safety/size limits. Lower MAX_BODY_CHARS if your local model has a small
    context window. The other two are guard rails you can usually leave as-is.
 
@@ -294,8 +333,8 @@ USAGE / TESTING
 
       python outlook.py --check
 
-  Connects to Outlook and prints mailbox diagnostics, folder paths and
-  blacklist status to stderr, then exits.
+  Connects to Outlook and prints mailbox diagnostics, folder paths, blacklist
+  status and the recurring-series report described above to stderr, then exits.
 
 IMPORTANT (stdio-on-Windows pitfalls)
 -------------------------------------
@@ -307,7 +346,7 @@ IMPORTANT (stdio-on-Windows pitfalls)
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "6.2.0"
+__version__ = "6.3.0"
 
 import os
 import re
@@ -343,6 +382,7 @@ REQUIRE_BLACKLIST = False
 # --- 3. Tunable caps.
 MAX_BODY_CHARS = 20000      # truncate very long email bodies for the LLM
 CALENDAR_HARD_CAP = 1000    # ceiling on calendar events collected (anti-runaway)
+RECURRENCE_SCAN_CAP = 30000  # ceiling on the expanded-occurrence walk (see below)
 SEARCH_SCAN_CAP = 500       # ceiling on raw search hits scanned
 
 # --- 4. Folders included in the combined outlook_search_recent tool. Matched by
@@ -1444,37 +1484,72 @@ def tool_search_recent(args):
     return header + "\n" + "\n".join(lines) + note
 
 
-def _expand_recurring_occurrences(item, start_dt, end_dt):
+def _series_times(item, pattern):
+    """
+    The candidate times of day a series' occurrences can start at.
+
+    RecurrencePattern.StartTime is the authority: it is the pattern's own time
+    of day. The master's Start is only its FIRST occurrence, which for a series
+    set up years ago can sit at a different wall-clock time from today's - a
+    daylight-saving offset that has since drifted, or a series stored in the
+    organiser's timezone rather than ours. Both are tried, because probing a
+    time nothing starts at costs one failed call and can never invent an
+    occurrence that is not really there.
+    """
+    times = []
+    for getter in (lambda: pattern.StartTime, lambda: item.Start):
+        try:
+            value = _com_to_naive(getter())
+        except Exception:
+            value = None
+        if value is not None and value.time() not in times:
+            times.append(value.time())
+    return times or [datetime.time(0, 0)]
+
+
+def _expand_recurring_occurrences(item, start_dt, end_dt, report=None):
     """All occurrences of a recurring appointment starting in [start_dt, end_dt].
 
-    Probes the series' RecurrencePattern day by day at the series' usual start
-    time (GetOccurrence raises for days with no/deleted occurrence, which is
-    normal and simply skipped), then adds rescheduled occurrences from the
-    pattern's Exceptions, since those no longer sit at the usual time. Pure
-    COM object access - no locale-sensitive date strings anywhere.
+    Probes the series' RecurrencePattern day by day at each time the series
+    could start (GetOccurrence raises for days with no/deleted occurrence, which
+    is normal and simply skipped), then adds rescheduled occurrences from the
+    pattern's Exceptions, since those no longer sit at the usual time. Pure COM
+    object access - no locale-sensitive date strings anywhere.
+
+    This can only find an occurrence whose start time it guessed in advance, so
+    it is the BACKSTOP, not the primary: scan_calendar also asks Outlook to
+    expand the series itself and takes the union. `report`, when given a dict,
+    collects what happened for the --check diagnostic.
 
     Returns a list of (naive start datetime, AppointmentItem occurrence).
     """
     try:
         pattern = item.GetRecurrencePattern()
-    except Exception:
+    except Exception as exc:
+        if report is not None:
+            report["error"] = "GetRecurrencePattern failed: {0}".format(exc)
         return []
 
-    master_start = _com_to_naive(item.Start)
-    base_time = master_start.time() if master_start else datetime.time(0, 0)
+    times = _series_times(item, pattern)
+    if report is not None:
+        report["probed_times"] = [value.strftime("%H:%M") for value in times]
 
     found = {}  # start datetime -> occurrence (dedups probe vs exception hits)
     day = start_dt.date()
     while day <= end_dt.date():
-        probe = datetime.datetime.combine(day, base_time)
-        try:
-            occ = pattern.GetOccurrence(probe)
-            occ_start = _com_to_naive(occ.Start)
-            if occ_start is not None and start_dt <= occ_start <= end_dt:
-                found[occ_start] = occ
-        except Exception:
-            pass  # no occurrence on this day
+        for base_time in times:
+            probe = datetime.datetime.combine(day, base_time)
+            try:
+                occ = pattern.GetOccurrence(probe)
+                occ_start = _com_to_naive(occ.Start)
+                if occ_start is not None and start_dt <= occ_start <= end_dt:
+                    found[occ_start] = occ
+            except Exception:
+                pass  # no occurrence at this time on this day
         day = day + datetime.timedelta(days=1)
+
+    if report is not None:
+        report["by_probe"] = len(found)
 
     try:
         for exception in pattern.Exceptions:
@@ -1487,10 +1562,92 @@ def _expand_recurring_occurrences(item, start_dt, end_dt):
                     found[occ_start] = occ
             except Exception:
                 continue
-    except Exception:
-        pass
+    except Exception as exc:
+        if report is not None:
+            report["error"] = "Exceptions unreadable: {0}".format(exc)
 
+    if report is not None:
+        report["total"] = len(found)
     return list(found.items())
+
+
+def _expanded_occurrences(start_dt, end_dt, report=None):
+    """
+    Ask OUTLOOK to expand every recurring series across the window.
+
+    Setting IncludeRecurrences on a Start-sorted Items collection makes Outlook
+    hand back individual occurrences rather than series masters. That matters
+    because Outlook holds each series' timezone and daylight-saving rules, so it
+    places an occurrence correctly where a hand-rolled probe has to guess the
+    time of day and silently finds nothing when the guess is wrong. That guess
+    is exactly what goes stale on a long-standing series, or one whose organiser
+    sits in another timezone.
+
+    The collection is unbounded for a series with no end date, so it is walked
+    in Start order and abandoned as soon as it passes the window (an ascending
+    sort means everything after that point is later still). RECURRENCE_SCAN_CAP
+    stops a pathological calendar walking forever; hitting it is reported rather
+    than passed off as an empty day.
+
+    Still NO locale-sensitive date strings: "[Start]" is a property name, not a
+    formatted date, so this does not reintroduce the Restrict() fault that makes
+    filtering depend on regional settings. Returns (naive start, item) pairs.
+    """
+    ns = get_namespace()
+    items = ns.GetDefaultFolder(OL_FOLDER_CALENDAR).Items
+    try:
+        # Order matters: Outlook requires the ascending Start sort to be in
+        # place before it will expand recurrences into the collection.
+        items.Sort("[Start]")
+        items.IncludeRecurrences = True
+    except Exception as exc:
+        if report is not None:
+            report["error"] = "could not enable recurrence expansion: {0}".format(exc)
+        return []
+
+    found = []
+    walked = 0
+    try:
+        item = items.GetFirst()
+    except Exception as exc:
+        if report is not None:
+            report["error"] = "GetFirst failed: {0}".format(exc)
+        return []
+
+    while item is not None and walked < RECURRENCE_SCAN_CAP:
+        walked += 1
+        try:
+            item_start = _com_to_naive(item.Start)
+        except Exception:
+            item_start = None
+
+        if item_start is not None:
+            if item_start > end_dt:
+                break  # sorted ascending: everything from here is later still
+            if item_start >= start_dt:
+                found.append((item_start, item))
+
+        try:
+            item = items.GetNext()
+        except Exception:
+            break
+
+    if report is not None:
+        report["walked"] = walked
+        report["found"] = len(found)
+        if walked >= RECURRENCE_SCAN_CAP:
+            report["error"] = ("hit the {0}-item scan cap before reaching the "
+                               "window".format(RECURRENCE_SCAN_CAP))
+    return found
+
+
+def _occurrence_key(start, item):
+    """Identity of one occurrence, for merging the two expansion passes."""
+    try:
+        entry_id = item.EntryID or ""
+    except Exception:
+        entry_id = ""
+    return (start, entry_id)
 
 
 def scan_calendar(start_dt, end_dt):
@@ -1501,6 +1658,14 @@ def scan_calendar(start_dt, end_dt):
     datetime, appointment COM object) sorted by start; `total` is how many items
     the folder holds; `debug_tail` is a rolling last-5 of
     (index, start, matched?) so an empty result can prove what was scanned.
+
+    Recurring series are gathered TWICE and merged, because either pass alone
+    drops meetings. Outlook's own expansion (_expanded_occurrences) knows each
+    series' timezone and daylight-saving rules; the per-master probe
+    (_expand_recurring_occurrences) has to guess the time of day an occurrence
+    starts at, and finds nothing when the guess is wrong, which is what hides a
+    long-standing series whose offset has drifted since it was set up. Taking
+    the union means a fault in either one costs nothing.
 
     NO Outlook-side filtering happens here. Restrict() formats its date strings
     per the machine's regional settings (US vs AU) and misbehaves with recurring
@@ -1514,7 +1679,27 @@ def scan_calendar(start_dt, end_dt):
     total = int(items.Count)  # raises if the folder cannot be read; caller reports
 
     matches = []      # (naive start datetime, appointment COM object)
+    seen = set()      # occurrence keys already collected, across both passes
     debug_tail = []   # rolling last-5 raw items: (index, start-or-None, matched?)
+
+    def collect(start, item):
+        """Add one occurrence unless the other pass already found it."""
+        key = _occurrence_key(start, item)
+        if key in seen:
+            return False
+        seen.add(key)
+        matches.append((start, item))
+        return True
+
+    # Pass 1: Outlook expands the recurring series itself.
+    expansion = {}
+    for occ_start, occ in _expanded_occurrences(start_dt, end_dt, expansion):
+        collect(occ_start, occ)
+        if len(matches) >= CALENDAR_HARD_CAP:
+            break
+    if expansion.get("error"):
+        log("Outlook's own recurrence expansion did not complete ({0}); "
+            "falling back to probing each series.".format(expansion["error"]))
 
     for i in range(1, total + 1):
         try:
@@ -1537,11 +1722,12 @@ def scan_calendar(start_dt, end_dt):
             # far outside the window - expand the series instead of testing it.
             occurrences = _expand_recurring_occurrences(item, start_dt, end_dt)
             matched = bool(occurrences)
-            matches.extend(occurrences)
+            for occ_start, occ in occurrences:
+                collect(occ_start, occ)
         else:
             matched = item_start is not None and start_dt <= item_start <= end_dt
             if matched:
-                matches.append((item_start, item))
+                collect(item_start, item)
 
         # Rolling tail for the debug section shown when nothing matches.
         # Start date + flag only; subjects are deliberately omitted so the
@@ -3449,6 +3635,95 @@ def run_server():
         log("outlook-mcp server stopped.")
 
 
+def report_recurrence_health(days=1):
+    """
+    Print, per recurring series, what each expansion pass found for today.
+
+    This is the diagnostic for "a meeting is in Outlook but not on the page".
+    A series that Outlook expands but the probe misses names the fault exactly:
+    the probe guessed the wrong time of day, and the line shows both the time it
+    probed and the time the occurrence really starts.
+    """
+    today = datetime.date.today()
+    start_dt = datetime.datetime.combine(today, datetime.time(0, 0))
+    end_dt = datetime.datetime.combine(
+        today + datetime.timedelta(days=max(0, days - 1)),
+        datetime.time(23, 59, 59))
+
+    log("")
+    log("Recurring-series check, {0} to {1}".format(today, end_dt.date()))
+
+    expansion = {}
+    by_outlook = _expanded_occurrences(start_dt, end_dt, expansion)
+    log("  Outlook's own expansion : {0} occurrence(s) after walking {1} item(s)"
+        .format(expansion.get("found", 0), expansion.get("walked", 0)))
+    if expansion.get("error"):
+        log("    PROBLEM: {0}".format(expansion["error"]))
+
+    # Index the Outlook pass by start time so each series can be compared.
+    outlook_starts = {}
+    for occ_start, occ in by_outlook:
+        try:
+            subject = occ.Subject or "(no subject)"
+        except Exception:
+            subject = "(unreadable)"
+        outlook_starts.setdefault(subject, []).append(occ_start)
+
+    ns = get_namespace()
+    items = ns.GetDefaultFolder(OL_FOLDER_CALENDAR).Items
+    total = int(items.Count)
+    masters = 0
+    probed_total = 0
+    missed = []
+
+    for index in range(1, total + 1):
+        try:
+            item = items.Item(index)
+            if not bool(item.IsRecurring):
+                continue
+        except Exception:
+            continue
+        masters += 1
+        report = {}
+        occurrences = _expand_recurring_occurrences(item, start_dt, end_dt, report)
+        probed_total += len(occurrences)
+        try:
+            subject = item.Subject or "(no subject)"
+        except Exception:
+            subject = "(unreadable)"
+
+        # Blacklisted series are named nowhere, check output included.
+        if appointment_block_reason(item):
+            continue
+
+        outlook_hits = outlook_starts.get(subject, [])
+        if outlook_hits and not occurrences:
+            missed.append((subject, report.get("probed_times", []),
+                           [when.strftime("%H:%M") for when in outlook_hits],
+                           report.get("error", "")))
+
+    log("  Recurring series in the folder: {0}".format(masters))
+    log("  Found by probing each series  : {0} occurrence(s)".format(probed_total))
+
+    if missed:
+        log("")
+        log("  {0} series would have been MISSED without Outlook's expansion:"
+            .format(len(missed)))
+        for subject, probed, actual, error in missed[:20]:
+            log("    - {0}".format(subject))
+            log("        probed at {0}, actually starts {1}{2}".format(
+                ", ".join(probed) or "(none)", ", ".join(actual),
+                " [{0}]".format(error) if error else ""))
+        if len(missed) > 20:
+            log("    ... and {0} more".format(len(missed) - 20))
+        log("  Both passes run, so these DO appear on the planner. The gap is")
+        log("  what used to hide them: the time of day each series starts at is")
+        log("  not the time its first occurrence started at.")
+    elif masters:
+        log("  Both passes agree - no series is visible to one and not the other.")
+    log("")
+
+
 def run_check():
     """Connect to Outlook, print diagnostics + blacklist status to stderr, then exit."""
     pythoncom.CoInitialize()
@@ -3485,6 +3760,11 @@ def run_check():
                 else "on request only"))
         else:
             log("KB save folder      : disabled - no email can be saved")
+        try:
+            report_recurrence_health()
+        except Exception:
+            log("Recurring-series check could not run:\n{0}".format(
+                traceback.format_exc()))
         log("CHECK OK - Outlook COM link is working.")
         return 0
     except Exception:

@@ -100,3 +100,11 @@ KB". The file lands in `C:\Eva\knowledge\email` and the tool reports the path.
   finds nothing, its reply includes a `[debug]` section listing the last few
   calendar items scanned (start date + in-range flag) — read it to tell an
   actually-empty window apart from a filtering fault before retrying.
+- **A meeting the user says is in Outlook but is not in the results** is a
+  recurring-series fault, not an empty day. Recurring series are gathered two
+  ways and merged (Outlook's own expansion, plus probing each series), so one
+  method failing no longer hides a meeting. Tell the user to run
+  `python outlook.py --check`, which reports per series what each method found
+  and names any series one can see and the other cannot. Do not re-query with a
+  wider date range hoping it appears, and never tell the user their calendar is
+  empty when they have said otherwise.

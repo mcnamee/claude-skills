@@ -6,7 +6,7 @@ AI entirely — plus a printable PDF day planner for any day.
 
 | | |
 |---|---|
-| **Server** | `outlook.py` v6.2.0 |
+| **Server** | `outlook.py` v6.3.0 |
 | **pip install** | `pywin32` |
 | **Platform** | **Windows only** — requires classic Win32 Outlook (not "New Outlook") installed, running, and logged into a profile |
 | **Writes to disk** | only on request: an email saved as Markdown in `C:\Eva\knowledge\email`, or a day planner PDF in `C:\Eva\documents\pdf` |
@@ -152,6 +152,53 @@ setx OUTLOOK_KB_AUTOSAVE "true"
 
 See [`eva/knowledge/email`](../../eva/knowledge/email).
 
+## Recurring meetings
+
+A recurring series is not stored as individual meetings. The folder holds one
+master, and the occurrences have to be worked out. This plugin does it **twice
+and merges the results**, because either method alone loses meetings:
+
+1. **Outlook's own expansion** — sorting the items by `[Start]` and setting
+   `IncludeRecurrences` makes Outlook hand back individual occurrences. Outlook
+   holds each series' timezone and daylight-saving rules, so it places every
+   occurrence correctly. This is the primary source.
+2. **Probing each master's recurrence pattern**, day by day. This only finds an
+   occurrence whose exact start time was guessed in advance, so it is a backstop.
+
+**Before v6.3.0 only method 2 ran**, and it took that start time from the
+master's own `Start` — which is the series' **first** occurrence, often years
+old. Any series whose occurrences no longer begin at that same wall-clock time
+was invisible: nothing errored, the meetings simply were not there. That covers
+a series set up under a daylight-saving offset that has since drifted, and one
+stored in an overseas organiser's timezone, which is why a long-standing weekly
+meeting could go missing while a new one showed up fine.
+
+Neither method formats a date string, so this does not reintroduce the
+`Restrict()` fault where regional settings silently empty the results.
+
+### Checking your own calendar
+
+```powershell
+& $env:EVA_PYTHON outlook.py --check
+```
+
+reports, per recurring series, what each method found for today, and names any
+series one can see and the other cannot:
+
+```
+Recurring-series check, 2026-09-14 to 2026-09-14
+  Outlook's own expansion : 12 occurrence(s) after walking 4180 item(s)
+  Recurring series in the folder: 34
+  Found by probing each series  : 9 occurrence(s)
+
+  3 series would have been MISSED without Outlook's expansion:
+    - Weekly Leadership
+        probed at 10:00, actually starts 11:00
+```
+
+If a meeting is in Outlook and still not in the results, that report is the
+thing to send: it distinguishes an empty day from an expansion fault.
+
 ## Configuration
 
 **Four environment variables configure every plugin in this suite.** Set them
@@ -227,7 +274,7 @@ flags are actions:
 
 | Flag | Purpose |
 |---|---|
-| `--check` | Connect to Outlook, print diagnostics + blacklist status to stderr, then exit (no server) |
+| `--check` | Connect to Outlook, print diagnostics, folder paths, blacklist status and the [recurring-series report](#checking-your-own-calendar) to stderr, then exit (no server) |
 | `--version` | Print version and exit (works even without `pywin32` installed) |
 
 ## The content blacklist
@@ -246,6 +293,7 @@ top of `outlook.py` directly (there are no CLI flags/env vars for these):
 | `BLACKLIST_TERMS` | Built-in list of classification/compliance terms that cause an item to be withheld from the AI entirely |
 | `BLACKLIST_MATCH_MODE` | `"word"` (default, whole-term match) or `"substring"` (for terms containing punctuation) |
 | `MAX_BODY_CHARS` / `CALENDAR_HARD_CAP` / `SEARCH_SCAN_CAP` | Safety caps on body length / items scanned |
+| `RECURRENCE_SCAN_CAP` | Ceiling on the expanded-occurrence walk. A series with no end date makes the collection unbounded, so the walk stops here and says so rather than reporting an empty day |
 | `CALENDAR_DAY_START_HOUR` / `CALENDAR_DAY_END_HOUR` | Working day the printed planner's timeline starts from — `OUTLOOK_CALENDAR_HOURS` overrides both |
 | `CALENDAR_LOOKAHEAD_DAYS` | How many following days the planner's right-hand panel lists by default (4); a per-call `lookahead_days` still takes priority |
 | `CALENDAR_CATEGORY_COLOURS` | Category → colour overrides in the file itself, merged with (and beaten by) `OUTLOOK_CALENDAR_COLOURS`. Both sit on top of the colours read from Outlook |
