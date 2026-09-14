@@ -1,14 +1,19 @@
 ---
 name: outlook
-description: Read Outlook mail and calendar via the outlook MCP server (read-only COM automation, Windows), and print a day's calendar as a PDF day planner. Use when the user asks about their emails, wants mail searched or summarised, asks what's on their calendar, asks for a printable/printed calendar, day planner or agenda for today or tomorrow, or asks for an email to be saved into the knowledge base.
+description: Read Outlook mail and calendar via the outlook MCP server (COM automation, Windows; cannot send anything), and print a day's calendar as a PDF day planner. Use when the user asks about their emails, wants mail searched or summarised, asks what's on their calendar, asks for a printable/printed calendar, day planner or agenda for today or tomorrow, or asks for an email to be saved into the knowledge base. For scheduling a meeting with someone, use the meeting-scheduler skill instead.
 ---
 
 # Outlook (via the `outlook` MCP server)
 
-Requires the `outlook.py` MCP server (read-only; Windows + classic
-Outlook running and logged in). If its tools are not available, tell the
-user to wire it in first (see the repo README) and to verify with
-`python outlook.py --check`.
+Requires the `outlook.py` MCP server (Windows + classic Outlook running
+and logged in). If its tools are not available, tell the user to wire it in
+first (see the repo README) and to verify with `python outlook.py --check`.
+
+**Scheduling a meeting is a different skill.** "Find a time with Josh", "book
+a room", "set up 30 minutes next week" → use **`meeting-scheduler`**, which
+covers `outlook_find_people`, `outlook_suggest_meeting_times` and
+`outlook_draft_meeting`. Everything below is mail, calendar reading and
+printing.
 
 ## Tools
 
@@ -22,6 +27,9 @@ user to wire it in first (see the repo README) and to verify with
 | `outlook_get_calendar` | Calendar events in a date range (recurring expanded) |
 | `outlook_print_calendar` | A **printable** PDF day planner for ONE day |
 | `outlook_list_folders` | Real folder names across all stores |
+| `outlook_find_people` | Fuzzy-find a person or room in the directory — see `meeting-scheduler` |
+| `outlook_suggest_meeting_times` | When everyone is free — see `meeting-scheduler` |
+| `outlook_draft_meeting` | Save an **unsent** meeting draft — see `meeting-scheduler` |
 
 ## Workflow
 
@@ -88,9 +96,11 @@ KB". The file lands in `C:\Eva\knowledge\email` and the tool reports the path.
 
 ## Notes
 
-- Read-only on the mailbox: it cannot send, reply, delete or move mail, or
-  accept a meeting — never promise to. The two things it writes are a saved
-  email and a printed planner, both only when asked.
+- **It cannot send anything** — not mail, not a reply, not a meeting
+  invitation — and cannot accept, delete or move anything. Never promise to.
+  It writes three things, each only when asked: a saved email, a printed
+  planner, and an **unsent** meeting draft (`outlook_draft_meeting`, which
+  the user then sends themselves).
 - A compliance blacklist may withhold messages/folders entirely; blocked
   items appear only as a withheld count — including on a printed planner,
   where a blocked meeting is left off the page entirely and counted in the

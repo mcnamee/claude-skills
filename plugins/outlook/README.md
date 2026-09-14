@@ -1,14 +1,17 @@
 # Outlook (mail + calendar)
 
-Read-only access to your local classic Outlook mail and calendar over COM, with
-a content blacklist that withholds classified/compliance-marked items from the
-AI entirely — plus a printable PDF day planner for any day.
+Access to your local classic Outlook mail and calendar over COM, with a content
+blacklist that withholds classified/compliance-marked items from the AI entirely
+— plus meeting scheduling against the enterprise directory, and a printable PDF
+day planner for any day.
 
 | | |
 |---|---|
-| **Server** | `outlook.py` v7.0.0 |
+| **Server** | `outlook.py` v8.0.0 |
 | **pip install** | `pywin32` |
 | **Platform** | **Windows only** — requires classic Win32 Outlook (not "New Outlook") installed, running, and logged into a profile |
+| **Sends** | **never.** Not an email, not a reply, not a meeting invitation. It cannot accept, move or delete anything either |
+| **Writes to the mailbox** | one thing: an **unsent** meeting draft in your calendar, which you review and send yourself (`OUTLOOK_ALLOW_DRAFTS=false` removes even that) |
 | **Writes to disk** | only on request: an email saved as Markdown in `C:\Eva\knowledge\email`, or a day planner PDF in `C:\Eva\documents\pdf` |
 
 ## Install
@@ -28,6 +31,99 @@ variables in [Configuration](#configuration).
 | Blacklist file | `OUTLOOK_BLACKLIST_FILE` | Path to a file of extra content-blacklist terms |
 | Printed day hours | `OUTLOOK_CALENDAR_HOURS` | Working day the printed planner's timeline starts from, e.g. `7-19` (default `8-18`) |
 | Calendar category colours | `OUTLOOK_CALENDAR_COLOURS` | Usually leave blank — the planner already uses your Outlook category colours. Only overrules one, e.g. `Leadership=purple` |
+| Meeting booking hours | `OUTLOOK_MEETING_HOURS` | Hours a meeting may be *suggested* in, e.g. `8-18` (default `9-17`) |
+| Allow meeting drafts | `OUTLOOK_ALLOW_DRAFTS` | `false` removes `outlook_draft_meeting`, leaving the mailbox read-only |
+| Directory scan cap | `OUTLOOK_GAL_SCAN_CAP` | Entries one fuzzy name search may read (default `20000`) |
+
+## Scheduling a meeting
+
+> *"Find a suitable time with Josh Smith in Room R5-3-84."*
+
+Three tools, meant to be used in that order. The `meeting-scheduler` skill
+drives them; this is what they actually do.
+
+| Tool | What it does |
+|---|---|
+| `outlook_find_people` | Fuzzy-finds a person or room across the Global Address List, the All Rooms list and your Contacts |
+| `outlook_suggest_meeting_times` | Reads everyone's published free/busy (including yours and the room's) and offers the slots that fit |
+| `outlook_draft_meeting` | Saves the meeting into your calendar **unsent** and opens it for you to send |
+
+### Finding people the way you'd say it
+
+You say "Josh Smith". The GAL says "Smith, Joshua P". The room you call
+R5-3-84 is filed as "Room R5-3-84 (12 seats)". Matching is token-based and
+order-independent, with `difflib` behind it for typos, so all three land — and
+so does `josh smtih`.
+
+It searches cheapest-first: Outlook's own ambiguous-name resolution (an
+unmistakable name costs no scan at all), then Contacts, then the address
+lists. Only the display *name* is read for each directory entry — that is one
+COM round trip each, and an enterprise GAL is large — with the expensive
+lookups reserved for the handful that score well enough to show.
+
+Pass `kind: "room"` for a room. It searches the room lists first and is both
+faster and far more accurate. A room is told apart from a person by
+`PR_DISPLAY_TYPE_EX`, because `AddressEntry.DisplayType` has no room in its
+enumeration at all; where a cached offline address book withholds that
+property, membership of an "All Rooms"-style list decides it, and failing
+that the name is read for it.
+
+Each match reports an **`invite_as`** address. That is what the other two
+tools take — they will not accept a name.
+
+On a very large GAL the scan stops at `OUTLOOK_GAL_SCAN_CAP` entries and says
+so. It runs in the directory's own order rather than by relevance, so a
+shorter search doesn't move where it stopped — give the full name or the email
+address (resolved directly, no scan) or raise the cap.
+
+### Finding a time
+
+Free/busy comes from `Recipient.FreeBusy`, the same published data Outlook's
+own Scheduling Assistant uses. Three judgements are worth knowing about:
+
+- **A tentative *room* is taken; a tentative *person* is not.** A tentatively
+  held room is already someone's claim on the space. A tentative person is
+  worth asking, and an enterprise calendar is full of them — so that slot is
+  offered, with a note.
+- **An optional attendee never blocks a slot**, but a slot they can't make is
+  labelled with their name, and slots they can make rank higher.
+- **Unpublished free/busy is not "free".** External attendees and mailboxes
+  that don't publish come back empty, and the reply names those people rather
+  than quietly scheduling over them.
+
+Suggestions are spread across days before they're printed. At the default
+quarter-hour granularity the five best slots would otherwise be the same
+afternoon shifted 15 minutes at a time — five options on paper and one in
+practice.
+
+Exchange publishes **30 days** of free/busy and no more, so a longer window is
+clamped to it and the reply says where it stopped. `OUTLOOK_MEETING_HOURS`
+sets the bookable window (default 09:00–17:00); it is deliberately separate
+from `OUTLOOK_CALENDAR_HOURS`, because what you want to *see* on a printed day
+and when it's acceptable to *book* you are not the same thing.
+
+### The draft
+
+`outlook_draft_meeting` creates the meeting, attaches the attendees and the
+room, **saves** it and opens it on screen. `Send()` is never called anywhere in
+the file, so nobody is notified until you press Send yourself.
+
+- **If any attendee won't resolve, nothing at all is saved.** A
+  half-addressed draft looks finished and gets sent without the person it was
+  for.
+- Rooms go in `rooms`, not `location` — that books them as a resource *and*
+  fills in the Location. `location` alone is just text and reserves nothing.
+- `start` is strictly `YYYY-MM-DD HH:MM`, 24-hour. `16/09/2026` is refused on
+  purpose: a meeting written at the wrong time is worse than a rejected
+  argument, and locale-dependent date parsing is the same fault that made
+  `Restrict()` unusable elsewhere in this server.
+- The content blacklist applies in this direction too — a subject or body
+  carrying a protective marking is refused rather than written into Outlook.
+
+Set `OUTLOOK_ALLOW_DRAFTS=false` and the tool is not offered at all (not
+listed, not dispatched), leaving the server read-only on the mailbox. Removing
+it beats refusing it later: nothing can promise you a draft it was never
+offered.
 
 ## The printable day planner
 
@@ -206,6 +302,15 @@ Recurring-series check, 2026-09-14 to 2026-09-14
 If a meeting is in Outlook and still not in the results, that report is the
 thing to send: it distinguishes an empty day from an expansion fault.
 
+## Skills
+
+This plugin ships two, and installing it installs both:
+
+| Skill | For |
+|---|---|
+| `/outlook:outlook` | Mail, reading the calendar, printing a day planner, saving an email to the knowledge base |
+| `/outlook:meeting-scheduler` | Arranging a meeting: finding the person and the room, finding a time, saving the draft |
+
 ## Configuration
 
 **Four environment variables configure every plugin in this suite.** Set them
@@ -268,6 +373,9 @@ only when an endpoint's layout really differs.
 | `OUTLOOK_SEARCH_FOLDERS` | Comma-separated folder names used as the **default** set for `outlook_search_recent`, overriding the `SEARCH_ALL_FOLDERS` value in the file (e.g. `"Inbox,Sent Items,Archive"`). A per-call `folders` argument still takes priority |
 | `OUTLOOK_BLACKLIST_FILE` | Path to a file of extra content-blacklist terms (one per line, `#` for comments), added to the built-in list |
 | `OUTLOOK_REQUIRE_BLACKLIST=1` | Fail closed: refuse to start unless the content blacklist has at least one active term, so a missing or empty terms file cannot silently disable the compliance filter. Also settable via the `REQUIRE_BLACKLIST` constant in the file |
+| `OUTLOOK_MEETING_HOURS` | The hours a meeting may be **suggested** in, e.g. `8-18` (default `9-17`). Separate from `OUTLOOK_CALENDAR_HOURS` above on purpose — see [Finding a time](#finding-a-time) |
+| `OUTLOOK_GAL_SCAN_CAP` | How many address-list entries one fuzzy name search may read before giving up (default `20000`). Raise it on a very large GAL if people go missing; a search that stops early says so in its reply |
+| `OUTLOOK_ALLOW_DRAFTS=false` | Remove `outlook_draft_meeting` altogether, leaving the server read-only on the mailbox |
 
 **Blank does not mean off.** A blank value means "not configured", so the shared
 root still applies. To forbid saving outright, set `OUTLOOK_KB_DIR=off` (`none`,
@@ -281,7 +389,7 @@ flags are actions:
 
 | Flag | Purpose |
 |---|---|
-| `--check` | Connect to Outlook, print diagnostics, folder paths, blacklist status and the [recurring-series report](#checking-your-own-calendar) to stderr, then exit (no server) |
+| `--check` | Connect to Outlook, print diagnostics, folder paths, blacklist status, the address lists and free/busy the scheduling tools can see, and the [recurring-series report](#checking-your-own-calendar), to stderr, then exit (no server) |
 | `--version` | Print version and exit (works even without `pywin32` installed) |
 
 ## The content blacklist
@@ -314,6 +422,11 @@ saved as Markdown inside the knowledge-base folder, or a day planner written as
 a PDF inside the documents folder. It writes nowhere else, and it reads no local
 folder at all (the optional blacklist file is read once at startup).
 
+In the **mailbox**, the one write is `outlook_draft_meeting`, which saves an
+unsent meeting into your calendar. Nothing can send, reply, accept, move or
+delete — `Send()` is never called anywhere in the file, and
+`OUTLOOK_ALLOW_DRAFTS=false` removes the draft tool as well.
+
 ## Usage examples
 
 1. "Show me my 10 most recent unread emails." → `outlook_list_recent_emails`
@@ -327,6 +440,11 @@ folder at all (the optional blacklist file is read once at startup).
 9. "What are my actual Outlook folder names, so I can point the search at the right archive?" → `outlook_list_folders`
 10. "Give me today's calendar to print." → `outlook_print_calendar` — an A4 landscape day planner in `C:\Eva\documents\pdf`
 11. "Print tomorrow's planner with the whole week down the side." → `outlook_print_calendar` with `date: "tomorrow"`, `lookahead_days: 6`
+12. "Who's Josh Smith in the directory?" → `outlook_find_people` — returns the `invite_as` address the scheduling tools need
+13. "Is there a room called R5-3-84?" → `outlook_find_people` with `kind: "room"`
+14. "Find a suitable time with Josh Smith in Room R5-3-84." → `outlook_find_people` twice, then `outlook_suggest_meeting_times`
+15. "When are Josh and Sam both free for an hour next week?" → `outlook_suggest_meeting_times` with `duration_minutes: 60`, `start_date: "+7"`
+16. "Book the Tuesday 10am one." → `outlook_draft_meeting` — saved to your calendar **unsent**, opened for you to review and send
 
 The save folder sits inside the same knowledge root the `knowledge-base` server
 indexes - which is what `EVA_KNOWLEDGE_DIR` being one shared setting buys you -

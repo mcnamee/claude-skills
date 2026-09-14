@@ -77,7 +77,8 @@
         "PYTHONUTF8": "1",
         "OUTLOOK_SEARCH_FOLDERS": "Inbox,Sent Items,Archive",
         "OUTLOOK_CALENDAR_HOURS": "8-18",
-        "OUTLOOK_CALENDAR_COLOURS": "Leadership=purple,Client=green"
+        "OUTLOOK_CALENDAR_COLOURS": "Leadership=purple,Client=green",
+        "OUTLOOK_MEETING_HOURS": "9-17"
       }
     },
     "confluence": {

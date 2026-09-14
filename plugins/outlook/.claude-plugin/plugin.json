@@ -1,8 +1,8 @@
 {
   "name": "outlook",
   "displayName": "Outlook (mail + calendar)",
-  "version": "7.0.0",
-  "description": "Read-only access to local classic Outlook mail and calendar via COM, plus a printable PDF day planner for any day. Saves an email to the knowledge base when you ask for it. Windows only; requires pywin32.",
+  "version": "8.0.0",
+  "description": "Read local classic Outlook mail and calendar via COM, schedule meetings (fuzzy directory search, free/busy, and an unsent meeting draft you send yourself), and print a day as a PDF planner. It can never send anything. Windows only; requires pywin32.",
   "author": {
     "name": "mcnamee"
   },
@@ -12,6 +12,8 @@
     "outlook",
     "email",
     "calendar",
+    "meeting",
+    "scheduling",
     "windows"
   ],
   "userConfig": {
@@ -34,6 +36,21 @@
       "type": "string",
       "title": "Calendar category colours",
       "description": "Optional, and usually unnecessary: the planner already reads the colour Outlook holds against each category and prints it at full strength. Set this only to overrule one, e.g. 'Leadership=purple,Client=green'. Names: red, orange, peach, yellow, amber, green, teal, olive, blue, purple, maroon, rose, steel, silver, slate, black, grey, each also with a 'dark-' prefix. Uncategorised events fall back to External / Internal / Personal."
+    },
+    "meeting_hours": {
+      "type": "string",
+      "title": "Meeting booking hours",
+      "description": "Optional. The hours a meeting may be SUGGESTED in, e.g. '8-18'. Defaults to 9-17. Separate from the printed day hours above: what you want to see on a planner and when it is acceptable to book you are not the same window."
+    },
+    "allow_drafts": {
+      "type": "string",
+      "title": "Allow meeting drafts",
+      "description": "Optional. Set to 'false' to remove outlook_draft_meeting, leaving the server read-only on the mailbox. Left blank, drafting is on: it saves an UNSENT meeting into your calendar for you to review and send. Nothing in this server can ever send anything."
+    },
+    "gal_scan_cap": {
+      "type": "string",
+      "title": "Directory scan cap",
+      "description": "Optional. How many address-list entries one fuzzy name search may read before giving up (default 20000). Raise it on a very large Global Address List if people are not being found; a search that stops early says so."
     }
   },
   "mcpServers": {
@@ -48,7 +65,10 @@
         "OUTLOOK_SEARCH_FOLDERS": "${user_config.search_folders}",
         "OUTLOOK_BLACKLIST_FILE": "${user_config.blacklist_file}",
         "OUTLOOK_CALENDAR_HOURS": "${user_config.calendar_hours}",
-        "OUTLOOK_CALENDAR_COLOURS": "${user_config.calendar_colours}"
+        "OUTLOOK_CALENDAR_COLOURS": "${user_config.calendar_colours}",
+        "OUTLOOK_MEETING_HOURS": "${user_config.meeting_hours}",
+        "OUTLOOK_ALLOW_DRAFTS": "${user_config.allow_drafts}",
+        "OUTLOOK_GAL_SCAN_CAP": "${user_config.gal_scan_cap}"
       }
     }
   }

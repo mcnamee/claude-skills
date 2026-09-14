@@ -45,12 +45,14 @@
     {
       "name": "outlook",
       "source": "./plugins/outlook",
-      "description": "Read-only access to local classic Outlook mail and calendar via COM, plus a printable PDF day planner that keeps your own Outlook category colours. Windows only; requires pywin32.",
-      "version": "7.0.0",
+      "description": "Read local classic Outlook mail and calendar via COM, schedule a meeting (fuzzy directory search, free/busy, and an unsent draft you send yourself), and print a day as a PDF planner in your own category colours. Windows only; requires pywin32.",
+      "version": "8.0.0",
       "keywords": [
         "outlook",
         "email",
         "calendar",
+        "meeting",
+        "scheduling",
         "planner",
         "windows"
       ]

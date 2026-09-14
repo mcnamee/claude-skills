@@ -1,14 +1,23 @@
 #!/usr/bin/env python3
 """
-outlook.py (v7.0.0)
+outlook.py (v8.0.0)
 ======================
 
-A single-file MCP (Model Context Protocol) server giving an LLM read-only
+A single-file MCP (Model Context Protocol) server giving an LLM near-read-only
 access to a locally installed *classic* Microsoft Outlook client (mail +
-calendar) on Windows, via COM automation. Read-only means the mailbox: nothing
-here can send, reply, accept, move or delete. What it does write is local and
-only on request - an email kept as Markdown for the knowledge base, and a
-printable PDF day planner.
+calendar) on Windows, via COM automation, plus enough of Outlook's scheduling
+machinery to get a meeting into the diary: fuzzy directory search, free/busy,
+and an UNSENT meeting draft.
+
+NOTHING HERE CAN SEND. Not an email, not a reply, not a meeting invitation.
+Nor can it accept, move or delete anything in the mailbox. As of v8.0.0 there
+is exactly ONE write to the mailbox - outlook_draft_meeting saves a meeting
+into the Calendar with its invitations unsent, the state Outlook labels
+"invitations have not been sent for this meeting", for the user to open, edit
+and send themselves. Set OUTLOOK_ALLOW_DRAFTS=false and even that is gone, at
+which point the mailbox is strictly read-only again. The other two things it
+writes are local files and only on request: an email kept as Markdown for the
+knowledge base, and a printable PDF day planner.
 
 Designed for an airgapped Windows endpoint where Outlook is installed, running,
 and logged into an on-premises Exchange profile. This script makes NO network
@@ -47,6 +56,13 @@ TOOLS EXPOSED (all read-only on the mailbox itself)
 - outlook_search_recent      : all mail across Inbox/Archive/Sent in a date range (configurable)
 - outlook_list_folders       : list every mail folder across all stores (to configure the above)
 
+TOOLS FOR SCHEDULING A MEETING  (new in v8.0.0 - see MEETING SCHEDULING below)
+------------------------------------------------------------------------------
+- outlook_find_people           : fuzzy-find a person or room in the directory
+- outlook_suggest_meeting_times : times everyone (and the room) is free
+- outlook_draft_meeting         : save an UNSENT meeting into the calendar
+                                  (the ONLY tool here that writes to the mailbox)
+
 Markdown export for a RAG knowledge base (ON REQUEST)
 -----------------------------------------------------
 Reading an email does NOT save it. outlook_get_email takes an optional
@@ -73,6 +89,79 @@ EVERY email read, set OUTLOOK_KB_AUTOSAVE=true.
 Worth a deliberate decision either way: saving turns correspondence into plain
 text files that are then embedded and quotable in answers. See
 eva\knowledge\email\README.md.
+
+MEETING SCHEDULING
+------------------
+Three tools that together answer "find a suitable time with Josh Smith in
+Room R5-3-84, then save it so I can send it". They are meant to be used in
+that order, and the middle one will not take a name - only an address.
+
+1. outlook_find_people - fuzzy directory search
+   ...........................................
+   An enterprise directory is unusable without one: the user says "Josh
+   Smith", the GAL says "Smith, Joshua P", and the room they call R5-3-84 is
+   filed as "Room R5-3-84 (12 seats)". Matching is token-based and
+   order-independent, with difflib behind it for typos, so all three land.
+
+   Searched, cheapest first:
+     a. Outlook's own ambiguous-name resolution. An unmistakable name is
+        answered instantly and NOTHING is scanned. Pass deep=true to scan
+        anyway when the user says it found the wrong person.
+     b. The Contacts folders.
+     c. The address lists - Global Address List, All Rooms, and any others.
+        Only the display NAME is read for each entry, because that is one COM
+        round trip per entry; the expensive reads (SMTP address, job title,
+        room-or-person) happen only for the few that score well enough to be
+        shown. The scan stops at OUTLOOK_GAL_SCAN_CAP entries and says so.
+
+   A room is told from a person by PR_DISPLAY_TYPE_EX (DT_ROOM / DT_EQUIPMENT)
+   - AddressEntry.DisplayType has no room in its enumeration at all. Where a
+   cached offline address book withholds that property, an entry found in an
+   "All Rooms"-style list is a room, and failing that the name is read for it.
+
+   Each match reports an 'invite_as' value. That is what the other two tools
+   take.
+
+2. outlook_suggest_meeting_times - when is everyone actually free
+   ..............................................................
+   Reads Recipient.FreeBusy for every attendee and room - the same published
+   free/busy Outlook's own Scheduling Assistant uses - and walks the window in
+   slot_minutes steps looking for a gap that fits. The user's own calendar is
+   included by default.
+
+   Three judgements worth knowing about:
+
+   - TENTATIVE blocks a ROOM but not a PERSON. A tentatively-held room is
+     already somebody's claim on the space; a tentative person is worth
+     asking, and an enterprise calendar is full of them. A person's tentative
+     time is offered with a note saying so.
+   - AN OPTIONAL ATTENDEE NEVER BLOCKS a slot, but a slot they cannot make is
+     labelled with their name, and slots they CAN make rank higher.
+   - UNPUBLISHED FREE/BUSY IS NOT FREE. An external attendee, a mailbox that
+     does not publish, or an unreachable Availability service all come back
+     empty, and the reply names those people rather than quietly scheduling
+     over them.
+
+   Suggestions are spread out before they are printed: at the default
+   quarter-hour granularity the five best slots are otherwise the same
+   afternoon shifted 15 minutes at a time, which is five options on paper and
+   one in practice. Overlapping slots and a third slot on the same day are
+   skipped in favour of a different day.
+
+   Exchange publishes 30 days of free/busy and no more, so a longer window is
+   clamped to it and the reply says where it stopped.
+
+3. outlook_draft_meeting - save it, do not send it
+   ................................................
+   Creates an AppointmentItem with MeetingStatus = olMeeting, attaches the
+   attendees (required / optional / resource), Saves it, and opens it on the
+   user's screen. Save() only - Send() is never called anywhere in this file
+   and must not be added.
+
+   If ANY attendee will not resolve, nothing at all is saved: a half-addressed
+   draft looks finished and gets sent without the person it was for. The
+   content blacklist applies in this direction too - a subject or body
+   carrying a protective marking is refused rather than written into Outlook.
 
 RECURRING SERIES  (why a meeting can be in Outlook but not in the results)
 --------------------------------------------------------------------------
@@ -310,6 +399,19 @@ Server-specific settings, all optional and all environment variables:
                                 "Inbox,Sent Items,Archive".
     OUTLOOK_BLACKLIST_FILE      path to a file of extra blacklist terms.
     OUTLOOK_REQUIRE_BLACKLIST=1 refuse to start with an empty blacklist.
+    OUTLOOK_MEETING_HOURS       the hours a meeting may be SUGGESTED in, e.g.
+                                "8-18" (default "9-17"). Deliberately separate
+                                from OUTLOOK_CALENDAR_HOURS: what you want to
+                                SEE on a printed day and when it is acceptable
+                                to BOOK somebody are not the same window.
+    OUTLOOK_GAL_SCAN_CAP        how many directory entries one fuzzy name
+                                search may read before giving up (default
+                                20000). Raise it on a very large GAL if people
+                                go missing; a search that stops early says so.
+    OUTLOOK_ALLOW_DRAFTS=false  remove outlook_draft_meeting altogether. The
+                                server is then read-only on the mailbox again
+                                and the tool is not offered at all, so nothing
+                                can promise the user a draft.
 
 There are NO configuration command-line flags: everything above is an
 environment variable, so two settings can never disagree. The only flags this
@@ -354,13 +456,14 @@ IMPORTANT (stdio-on-Windows pitfalls)
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "7.0.0"
+__version__ = "8.0.0"
 
 import os
 import re
 import sys
 import zlib
 import json
+import difflib
 import hashlib
 import argparse
 import datetime
@@ -464,6 +567,29 @@ CALENDAR_CATEGORY_COLOURS = {
 #        nobody chose returns irrelevant answers later. Set to True here, or
 #        set OUTLOOK_KB_AUTOSAVE=true, to save every email read.
 KB_AUTOSAVE = False
+
+# --- 6b. Meeting scheduling (outlook_find_people, outlook_suggest_meeting_times
+#         and outlook_draft_meeting).
+# The hours a meeting may be SUGGESTED in. Deliberately separate from the
+# printed planner's CALENDAR_DAY_START_HOUR/END_HOUR above: the planner's
+# window is what you want to SEE (start it at 6 and a dawn flight is on the
+# page), while this one is when it is acceptable to BOOK somebody. Override
+# with OUTLOOK_MEETING_HOURS, e.g. "8-18".
+MEETING_START_HOUR = 9
+MEETING_END_HOUR = 17
+
+# Ceiling on directory entries read during one fuzzy name search. An
+# enterprise Global Address List can hold six figures of entries and each one
+# costs a COM round trip, so the scan is bounded; a search that stops early
+# says so in its reply. Override with OUTLOOK_GAL_SCAN_CAP.
+GAL_SCAN_CAP = 20000
+
+# Whether outlook_draft_meeting exists at all. It is the only tool in this
+# server that writes to the MAILBOX - an unsent meeting saved into the
+# Calendar, which the user then opens and sends themselves. Set it False (or
+# OUTLOOK_ALLOW_DRAFTS=false) and the tool is not offered, leaving the server
+# read-only on the mailbox. Nothing here can ever SEND.
+ALLOW_DRAFTS = True
 
 # --- 7. DISABLE_KEYWORDS. Values that mean "explicitly turned off" for a
 #        folder setting. An MCP client can only pass strings, and a BLANK
@@ -597,6 +723,7 @@ if "--version" in sys.argv:
 # ---------------------------------------------------------------------------
 try:
     import pythoncom
+    import pywintypes
     import win32com.client
 except ImportError:
     log("FATAL: pywin32 is not installed. Run:  pip install pywin32")
@@ -632,6 +759,14 @@ _CATEGORY_COLOURS = {}
 # SEARCH_ALL_FOLDERS; may be replaced by OUTLOOK_SEARCH_FOLDERS. A per-call
 # "folders" argument still overrides this.
 _SEARCH_FOLDERS = list(SEARCH_ALL_FOLDERS)
+
+# Effective meeting-scheduling settings. Initialised from the configuration
+# block above; main() may replace them from OUTLOOK_MEETING_HOURS,
+# OUTLOOK_GAL_SCAN_CAP and OUTLOOK_ALLOW_DRAFTS.
+_MEETING_START_HOUR = MEETING_START_HOUR
+_MEETING_END_HOUR = MEETING_END_HOUR
+_GAL_SCAN_CAP = GAL_SCAN_CAP
+_ALLOW_DRAFTS = ALLOW_DRAFTS
 
 
 # ---------------------------------------------------------------------------
@@ -817,6 +952,19 @@ def sender_smtp(item):
         except Exception:
             pass
     return addr
+
+
+def _int_arg(args, name, default):
+    """
+    Read an integer tool argument, tolerating a missing or null value.
+
+    An MCP client happily sends "duration_minutes": null for a field the model
+    left out, and int(None) would surface as an unhelpful "Outlook tool error".
+    """
+    value = args.get(name)
+    if value is None or value == "":
+        return default
+    return int(value)
 
 
 def parse_date(value, fallback):
@@ -3297,6 +3445,1202 @@ def tool_print_calendar(args):
 
 
 # ---------------------------------------------------------------------------
+# Meeting scheduling - part 1: finding people and rooms in the directory
+# ---------------------------------------------------------------------------
+#
+# Everything below serves one job: "find a suitable time with Josh Smith in
+# Room R5-3-84, then save it as a draft I can send". That needs three things
+# Outlook can do but MAPI makes awkward - resolve a half-remembered name
+# against an enterprise directory, read everyone's free/busy, and save a
+# meeting WITHOUT sending it.
+
+OL_FOLDER_CONTACTS = 10
+OL_CLASS_CONTACT = 40       # olContact
+OL_APPOINTMENT_ITEM = 1     # CreateItem(olAppointmentItem)
+OL_MEETING = 1              # AppointmentItem.MeetingStatus = olMeeting
+
+# Recipient.Type on an AppointmentItem.
+OL_RECIP_REQUIRED = 1
+OL_RECIP_OPTIONAL = 2
+OL_RECIP_RESOURCE = 3
+
+# AppointmentItem.BusyStatus, by the word a user would say.
+BUSY_STATUS_NAMES = {
+    "free": 0,
+    "tentative": 1,
+    "busy": 2,
+    "oof": 3,
+    "out of office": 3,
+    "outofoffice": 3,
+    "elsewhere": 4,
+    "working elsewhere": 4,
+}
+
+# PR_SMTP_ADDRESS (Unicode) - the real mailbox address behind a directory
+# entry, whose AddressEntry.Address is an X.500 legacyExchangeDN instead.
+PROP_SMTP_ADDRESS = "http://schemas.microsoft.com/mapi/proptag/0x39FE001F"
+
+# PR_DISPLAY_TYPE_EX - the only property that tells a ROOM apart from a
+# person. AddressEntry.DisplayType has no room in its enumeration at all, so
+# without this a boardroom looks exactly like a colleague.
+PROP_DISPLAY_TYPE_EX = "http://schemas.microsoft.com/mapi/proptag/0x39050003"
+DT_MAILUSER = 0
+DT_DISTLIST = 1
+DT_PRIVATE_DISTLIST = 5
+DT_REMOTE_MAILUSER = 6
+DT_ROOM = 7
+DT_EQUIPMENT = 8
+DT_SEC_DISTLIST = 9
+
+# Address lists whose name contains one of these hold rooms and equipment.
+# Exchange creates "All Rooms"; the rest cover the names an admin may have
+# used instead.
+ROOM_LIST_HINTS = ("room", "resource", "equipment", "facilit")
+
+# A directory entry whose name reads like a room, used only when
+# PR_DISPLAY_TYPE_EX cannot be read (a cached-mode OAB sometimes omits it).
+ROOM_NAME_HINTS = ("room", "rm ", "boardroom", "meeting", "training",
+                   "conference", "conf ", "suite", "theatre", "theater")
+
+# A directory match has to reach this to be shown at all. Low enough for a
+# typo, high enough that "Josh Smith" does not return every Smith.
+MIN_NAME_SCORE = 0.62
+
+# Contact folders are small, but a mounted PST can hold a silly number.
+CONTACT_SCAN_CAP = 5000
+
+
+def _com_datetime_variants(value):
+    """
+    Yield the forms a COM date argument may need, most likely first.
+
+    pywin32 converts a naive datetime.datetime on most builds; where it does
+    not, a pywintypes.Time does. Callers try each in turn because there is no
+    safe string alternative - a formatted date string is read per the
+    machine's regional settings, which is exactly the fault that made
+    Restrict() unusable elsewhere in this file.
+    """
+    yield value
+    try:
+        yield pywintypes.Time(value)
+    except Exception:
+        pass
+
+
+def _set_com_datetime(obj, attr, value):
+    """Set a COM date property, trying each accepted date form."""
+    last = None
+    for candidate in _com_datetime_variants(value):
+        try:
+            setattr(obj, attr, candidate)
+            return
+        except Exception as exc:
+            last = exc
+    raise RuntimeError("Outlook would not accept {0}={1} ({2}).".format(
+        attr, value, last))
+
+
+def _prop(obj, schema, default=None):
+    """Read a MAPI property through the PropertyAccessor, or return default."""
+    try:
+        return obj.PropertyAccessor.GetProperty(schema)
+    except Exception:
+        return default
+
+
+# ---------------------------------------------------------------------------
+# Fuzzy name matching (standard library only - difflib plus token scoring)
+# ---------------------------------------------------------------------------
+
+def _norm_text(text):
+    """Lower-case, replace punctuation with spaces, collapse whitespace."""
+    lowered = (text or "").lower()
+    return " ".join(re.split(r"[^a-z0-9]+", lowered)).strip()
+
+
+def _tokens(text):
+    """The comparable words of a name: 'Smith, Joshua' -> ['smith', 'joshua']."""
+    return [part for part in _norm_text(text).split(" ") if part]
+
+
+def _token_score(query_token, candidate_token):
+    """How well one typed word matches one word of a directory entry, 0.0-1.0."""
+    if query_token == candidate_token:
+        return 1.0
+    if candidate_token.startswith(query_token):
+        return 0.92                      # "josh" -> "joshua", "r5" -> "r5"
+    if query_token.startswith(candidate_token):
+        return 0.82                      # "joshua" typed, "josh" in the GAL
+    if query_token in candidate_token:
+        return 0.70
+    ratio = difflib.SequenceMatcher(None, query_token, candidate_token).ratio()
+    return ratio * 0.8 if ratio >= 0.8 else 0.0   # typos: "smtih" -> "smith"
+
+
+def name_score(query_tokens, candidate):
+    """
+    Score a directory entry against the words the user typed, 0.0-1.0.
+
+    Every typed word has to find a home in the candidate, and the score is the
+    mean of each word's best match - so word ORDER does not matter ("Josh
+    Smith" scores full marks against "Smith, Joshua") while a wrong surname
+    still drags the score down ("Josh Taylor" does not match "Josh Smith").
+    A whole-string similarity is taken as a floor so a run-together code like
+    "r5-3-84" still lands on "Room R5-3-84 (12 seats)".
+    """
+    candidate_tokens = _tokens(candidate)
+    if not candidate_tokens or not query_tokens:
+        return 0.0
+    per_token = [max(_token_score(q, c) for c in candidate_tokens)
+                 for q in query_tokens]
+    score = sum(per_token) / len(per_token)
+    if min(per_token) >= 0.7:
+        # Every word matched something: lift it clear of partial matches.
+        score = min(1.0, score + 0.05)
+    whole = difflib.SequenceMatcher(
+        None, " ".join(query_tokens), " ".join(candidate_tokens)).ratio()
+    return max(score, whole)
+
+
+# ---------------------------------------------------------------------------
+# Reading the directory
+# ---------------------------------------------------------------------------
+
+def _entry_display_type(entry):
+    """
+    PR_DISPLAY_TYPE_EX for an address entry, masked to its type value.
+
+    The high bits are capability flags (ACL-capable and so on), so only the
+    low word is the type: 7 is a room and 8 a piece of equipment. Returns None
+    when the property cannot be read, which a cached offline address book does
+    sometimes do - callers fall back to the address list the entry came from.
+    """
+    raw = _prop(entry, PROP_DISPLAY_TYPE_EX)
+    try:
+        return int(raw) & 0x0000FFFF
+    except (TypeError, ValueError):
+        return None
+
+
+def _entry_smtp(entry):
+    """Primary SMTP address of an address entry, or '' - never raises."""
+    for getter in ("GetExchangeUser", "GetExchangeDistributionList"):
+        try:
+            obj = getattr(entry, getter)()
+        except Exception:
+            continue
+        if obj is None:
+            continue
+        try:
+            if obj.PrimarySmtpAddress:
+                return obj.PrimarySmtpAddress
+        except Exception:
+            pass
+    smtp = _prop(entry, PROP_SMTP_ADDRESS) or ""
+    if smtp:
+        return str(smtp)
+    try:
+        raw = entry.Address or ""
+    except Exception:
+        return ""
+    # An Exchange entry's Address is the X.500 legacyExchangeDN. It resolves
+    # for an invitation but is meaningless to show a user, so hide it here and
+    # let the display name carry the identification.
+    return "" if raw.upper().startswith("/O=") else raw
+
+
+def _entry_details(entry):
+    """Job title / department / office for an address entry, as a dict."""
+    detail = {}
+    try:
+        user = entry.GetExchangeUser()
+    except Exception:
+        user = None
+    if user is None:
+        return detail
+    for key, attribute in (("title", "JobTitle"),
+                           ("department", "Department"),
+                           ("office", "OfficeLocation"),
+                           ("company", "CompanyName"),
+                           ("phone", "BusinessTelephoneNumber")):
+        try:
+            value = getattr(user, attribute)
+        except Exception:
+            continue
+        if value:
+            detail[key] = str(value).strip()
+    return detail
+
+
+def _looks_like_room(name):
+    """Name heuristic, used only when PR_DISPLAY_TYPE_EX is unreadable."""
+    lowered = " {0} ".format((name or "").lower())
+    return any(hint in lowered for hint in ROOM_NAME_HINTS)
+
+
+def _address_lists():
+    """Every address list in the profile as (name, AddressList) pairs."""
+    found = []
+    try:
+        lists = get_namespace().AddressLists
+        for index in range(1, int(lists.Count) + 1):
+            try:
+                address_list = lists.Item(index)
+                found.append(((address_list.Name or ""), address_list))
+            except Exception:
+                continue
+    except Exception as exc:
+        log("Could not read the profile's address lists: {0}".format(exc))
+    return found
+
+
+def _ordered_address_lists(kind):
+    """
+    Address lists in the order worth scanning for this kind of search.
+
+    Looking for a room, the room lists come first and everything in them is a
+    room by definition, so no per-entry property read is needed. Looking for a
+    person, the room lists are skipped entirely: they are pure noise and they
+    cost a full scan each.
+    """
+    room_lists, other_lists = [], []
+    for name, address_list in _address_lists():
+        lowered = name.lower()
+        if any(hint in lowered for hint in ROOM_LIST_HINTS):
+            room_lists.append((name, address_list, True))
+        else:
+            other_lists.append((name, address_list, False))
+
+    # The Global Address List is where a person is found, so scan it first.
+    other_lists.sort(key=lambda row: 0 if "global address list" in row[0].lower() else 1)
+    if kind == "room":
+        return room_lists + other_lists
+    if kind == "person":
+        return other_lists
+    return other_lists + room_lists
+
+
+def _match_record(name, smtp, kind, source, score, detail=None):
+    """One search hit, in the shape the tool output and the caller both use."""
+    return {
+        "name": (name or "").strip(),
+        "smtp": (smtp or "").strip(),
+        "kind": kind,
+        "source": source,
+        "score": score,
+        "detail": detail or {},
+        # What to hand outlook_suggest_meeting_times / outlook_draft_meeting.
+        # An SMTP address is unambiguous; a display name is what is left when
+        # the directory will not give one up, and Outlook resolves it by name.
+        "invite_as": (smtp or name or "").strip(),
+    }
+
+
+def _dedupe_key(record):
+    """Two hits are the same person if they share an address, else a name."""
+    return (record["smtp"] or record["name"]).lower()
+
+
+def _scan_contacts(query_tokens, kind, results, scanned):
+    """
+    Search the default Contacts folder and its immediate sub-folders.
+
+    Not every store's contacts - just the user's own, which is where a name
+    the directory does not hold (an external counterpart, a supplier) lives.
+    They are small, so this costs nothing next to an address-list scan.
+    """
+    ns = get_namespace()
+    folders = []
+    try:
+        root = ns.GetDefaultFolder(OL_FOLDER_CONTACTS)
+        folders.append(root)
+        for index in range(1, int(root.Folders.Count) + 1):
+            try:
+                folders.append(root.Folders.Item(index))
+            except Exception:
+                continue
+    except Exception as exc:
+        log("No Contacts folder could be read: {0}".format(exc))
+        return scanned
+
+    for folder in folders:
+        try:
+            items = folder.Items
+            count = int(items.Count)
+        except Exception:
+            continue
+        for index in range(1, count + 1):
+            if scanned >= CONTACT_SCAN_CAP:
+                return scanned
+            scanned += 1
+            try:
+                item = items.Item(index)
+                if item.Class != OL_CLASS_CONTACT:
+                    continue
+                name = (item.FullName or item.FileAs or "").strip()
+                if not name:
+                    continue
+                company = (item.CompanyName or "").strip()
+                try:
+                    email = (item.Email1Address or "").strip()
+                except Exception:
+                    email = ""
+            except Exception:
+                continue
+
+            # Match against the name, the company, and the address, so
+            # "someone at Contoso" and a part-remembered address both work.
+            score = max(name_score(query_tokens, name),
+                        name_score(query_tokens, "{0} {1}".format(name, company)),
+                        name_score(query_tokens, email))
+            if score < MIN_NAME_SCORE:
+                continue
+            is_room = _looks_like_room(name)
+            if kind == "room" and not is_room:
+                continue
+            if kind == "person" and is_room:
+                continue
+            detail = {}
+            if company:
+                detail["company"] = company
+            try:
+                if item.JobTitle:
+                    detail["title"] = item.JobTitle.strip()
+            except Exception:
+                pass
+            results.append(_match_record(
+                name, email, "room" if is_room else "person",
+                "Contacts ({0})".format(folder.Name), score, detail))
+    return scanned
+
+
+def _scan_address_lists(query_tokens, kind, results, cap):
+    """
+    Search the profile's address lists, newest-match-wins, bounded by `cap`.
+
+    Only the display NAME is read for every entry - that is one COM round trip
+    each and an enterprise GAL has a lot of entries. The expensive reads (SMTP
+    address, job title, room-or-person) happen only for the handful that score
+    well enough to be shown.
+
+    Returns (entries_scanned, hit_cap).
+    """
+    scanned = 0
+    for list_name, address_list, is_room_list in _ordered_address_lists(kind):
+        try:
+            entries = address_list.AddressEntries
+            total = int(entries.Count)
+        except Exception:
+            continue
+        for index in range(1, total + 1):
+            if scanned >= cap:
+                return scanned, True
+            scanned += 1
+            try:
+                entry = entries.Item(index)
+                name = (entry.Name or "").strip()
+            except Exception:
+                continue
+            if not name:
+                continue
+            score = name_score(query_tokens, name)
+            if score < MIN_NAME_SCORE:
+                continue
+
+            # Only now is it worth paying for the detail properties.
+            display_type = _entry_display_type(entry)
+            if display_type in (DT_DISTLIST, DT_PRIVATE_DISTLIST, DT_SEC_DISTLIST):
+                entry_kind = "group"
+            elif display_type in (DT_ROOM, DT_EQUIPMENT):
+                entry_kind = "room"
+            elif is_room_list:
+                entry_kind = "room"          # everything in "All Rooms" is one
+            elif display_type is None and _looks_like_room(name):
+                entry_kind = "room"          # OAB withheld the property
+            else:
+                entry_kind = "person"
+
+            if kind == "room" and entry_kind != "room":
+                continue
+            if kind == "person" and entry_kind == "room":
+                continue
+
+            results.append(_match_record(
+                name, _entry_smtp(entry), entry_kind, list_name, score,
+                _entry_details(entry)))
+    return scanned, False
+
+
+def _resolve_exactly(query, kind):
+    """
+    Ask Outlook to resolve the name the way its own Check Names does.
+
+    Exchange ambiguous-name resolution is instant and knows the directory far
+    better than any scan, so an unmistakable name costs no scan at all. It
+    fails (rather than choosing) when the name is ambiguous, which is the
+    signal to fall back to the fuzzy scan.
+    """
+    try:
+        recipient = get_namespace().CreateRecipient(query)
+        recipient.Resolve()
+        if not recipient.Resolved:
+            return None
+        entry = recipient.AddressEntry
+        name = (entry.Name or query).strip()
+    except Exception:
+        return None
+
+    display_type = _entry_display_type(entry)
+    if display_type in (DT_DISTLIST, DT_PRIVATE_DISTLIST, DT_SEC_DISTLIST):
+        entry_kind = "group"
+    elif display_type in (DT_ROOM, DT_EQUIPMENT) or _looks_like_room(name):
+        entry_kind = "room"
+    else:
+        entry_kind = "person"
+    if kind != "any" and entry_kind != kind:
+        return None
+    return _match_record(name, _entry_smtp(entry), entry_kind,
+                         "resolved directly by Outlook", 1.0,
+                         _entry_details(entry))
+
+
+def find_directory_matches(query, kind="any", count=8, deep=False):
+    """
+    Fuzzy-find people and rooms. Returns (matches, notes).
+
+    Order of work, fastest first:
+      1. Outlook's own ambiguous-name resolution. An exact, unambiguous name
+         is answered immediately and nothing is scanned.
+      2. The Contacts folders - small, and where the user's own people are.
+      3. The address lists (Global Address List, All Rooms, anything else),
+         bounded by GAL_SCAN_CAP entries.
+    """
+    query = (query or "").strip()
+    notes = []
+    if not query:
+        return [], ["No search text was given."]
+    query_tokens = _tokens(query)
+    if not query_tokens:
+        return [], ["'{0}' has no searchable words in it.".format(query)]
+
+    exact = _resolve_exactly(query, kind)
+    if exact is not None and not deep:
+        notes.append("Outlook resolved '{0}' directly, so the directory was "
+                     "not scanned. Ask again with deep=true to list "
+                     "alternatives.".format(query))
+        return [exact], notes
+
+    results = []
+    if exact is not None:
+        results.append(exact)
+
+    contacts_scanned = _scan_contacts(query_tokens, kind, results, 0)
+    listed, hit_cap = _scan_address_lists(query_tokens, kind, results,
+                                          _GAL_SCAN_CAP)
+    if hit_cap:
+        notes.append(
+            "Stopped after {0} entries (OUTLOOK_GAL_SCAN_CAP) without reaching "
+            "the end of the directory. The scan runs in the directory's own "
+            "order, so shortening the search does NOT move where it stopped: "
+            "if the person is missing, give their full name or email address "
+            "(Outlook then resolves it directly, without scanning), or raise "
+            "OUTLOOK_GAL_SCAN_CAP.".format(_GAL_SCAN_CAP))
+    log("Directory search '{0}': {1} contact(s) and {2} address-list entr(ies) "
+        "scanned, {3} match(es).".format(query, contacts_scanned, listed,
+                                         len(results)))
+
+    # Keep the best-scoring copy of each person, then rank.
+    best = {}
+    for record in results:
+        key = _dedupe_key(record)
+        if key not in best or record["score"] > best[key]["score"]:
+            best[key] = record
+    ranked = sorted(best.values(),
+                    key=lambda row: (-row["score"], row["name"].lower()))
+    return ranked[:max(1, count)], notes
+
+
+def tool_find_people(args):
+    query = (args.get("query") or "").strip()
+    if not query:
+        return "Error: 'query' is required - the name, room or address to look for."
+    kind = (args.get("kind") or "any").strip().lower()
+    if kind not in ("any", "person", "room"):
+        return "Error: 'kind' must be 'any', 'person' or 'room'."
+    count = max(1, min(int(args.get("count", 8)), 25))
+    deep = bool(args.get("deep", False))
+
+    matches, notes = find_directory_matches(query, kind, count, deep)
+    if not matches:
+        lines = ["No {0} in Outlook's directory matches '{1}'.".format(
+            {"any": "person or room", "person": "person", "room": "room"}[kind],
+            query)]
+        lines.extend(notes)
+        lines.append("Try fewer words, a surname on its own, or part of the "
+                     "email address. Rooms are often named by code "
+                     "(\"R5-3-84\") rather than in words.")
+        return "\n".join(lines)
+
+    lines = ["{0} match(es) for '{1}':".format(len(matches), query), ""]
+    for position, record in enumerate(matches, start=1):
+        lines.append("{0}. {1}  [{2}]  match {3:.2f}".format(
+            position, record["name"] or "(unnamed)", record["kind"],
+            record["score"]))
+        if record["smtp"]:
+            lines.append("     address   : {0}".format(record["smtp"]))
+        detail = record["detail"]
+        job = ", ".join(part for part in (detail.get("title"),
+                                          detail.get("department")) if part)
+        if job:
+            lines.append("     role      : {0}".format(job))
+        for key, label in (("company", "company   "), ("office", "office    "),
+                           ("phone", "phone     ")):
+            if detail.get(key):
+                lines.append("     {0}: {1}".format(label, detail[key]))
+        lines.append("     found in  : {0}".format(record["source"]))
+        lines.append("     invite_as : {0}".format(record["invite_as"]))
+    if notes:
+        lines.append("")
+        lines.extend(notes)
+    lines.append("")
+    lines.append("Pass the invite_as value to outlook_suggest_meeting_times "
+                 "(attendees / rooms) and then to outlook_draft_meeting. "
+                 "Confirm the person with the user before inviting anyone.")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Meeting scheduling - part 2: free/busy and suggesting a time
+# ---------------------------------------------------------------------------
+
+# Recipient.FreeBusy always answers for 30 days from midnight of the date it
+# is given. Nothing can widen that, so a search window is clamped to it.
+FREEBUSY_DAYS = 30
+
+# Minutes per character in the free/busy string. 15 lets a suggestion land on
+# a quarter hour; Exchange rounds up to whatever it actually stores.
+FREEBUSY_MIN_PER_CHAR = 15
+
+# The detail digits CompleteFormat=True returns, and what each means for a
+# suggested slot.
+FB_FREE = "0"
+FB_TENTATIVE = "1"
+FB_BUSY = "2"
+FB_OOF = "3"
+FB_ELSEWHERE = "4"
+
+FB_LABELS = {
+    FB_FREE: "free",
+    FB_TENTATIVE: "tentative",
+    FB_BUSY: "busy",
+    FB_OOF: "out of office",
+    FB_ELSEWHERE: "working elsewhere",
+}
+
+# Digits that make a slot unusable. Tentative is deliberately NOT here for a
+# person - a pencilled-in hold is worth offering with a note, and an
+# enterprise calendar is full of them. For a ROOM it IS blocking: a tentative
+# room booking is somebody else's hold on the same space.
+HARD_BUSY = (FB_BUSY, FB_OOF)
+
+# Working elsewhere is not a clash: they are working, just not at their desk.
+SOFT_FLAGS = (FB_TENTATIVE, FB_ELSEWHERE)
+
+MEETING_DEFAULT_MINUTES = 30
+MEETING_DEFAULT_DAYS = 10       # how far ahead a search looks by default
+MEETING_SLOT_MINUTES = 15       # granularity of the candidate start times
+MEETING_MAX_SUGGESTIONS = 5
+
+
+def _free_busy(recipient, start_date, min_per_char=FREEBUSY_MIN_PER_CHAR):
+    """
+    A recipient's free/busy string, or None when Exchange has none to give.
+
+    CompleteFormat=True asks for the detail digits (free / tentative / busy /
+    out of office / working elsewhere) rather than a plain busy flag, which is
+    what lets a suggestion say somebody is only pencilled in.
+
+    None means UNKNOWN, never "free". An external attendee, a mailbox that
+    does not publish, or an Availability service that cannot be reached all
+    land here, and the caller has to say so rather than quietly offering a
+    time nobody has checked.
+    """
+    origin = datetime.datetime.combine(start_date, datetime.time(0, 0))
+    last = None
+    for when in _com_datetime_variants(origin):
+        try:
+            value = recipient.FreeBusy(when, min_per_char, True)
+        except Exception as exc:
+            last = exc
+            continue
+        return str(value) if value else None
+    log("Free/busy unavailable for '{0}': {1}".format(
+        getattr(recipient, "Name", "?"), last))
+    return None
+
+
+def _fb_state(free_busy, origin, when, min_per_char=FREEBUSY_MIN_PER_CHAR):
+    """The free/busy digit covering one moment, or None if it is not covered."""
+    if not free_busy:
+        return None
+    index = int((when - origin).total_seconds() // 60) // min_per_char
+    if index < 0 or index >= len(free_busy):
+        return None
+    return free_busy[index]
+
+
+def _slot_states(participant, origin, start, end):
+    """Every distinct free/busy digit a participant shows across one slot."""
+    states = set()
+    cursor = start
+    while cursor < end:
+        states.add(_fb_state(participant["free_busy"], origin, cursor))
+        cursor += datetime.timedelta(minutes=FREEBUSY_MIN_PER_CHAR)
+    # The final minute matters too: a slot ending at 10:30 must not be judged
+    # on 10:15 alone when the block from 10:15 is busy from 10:29.
+    states.add(_fb_state(participant["free_busy"], origin,
+                         end - datetime.timedelta(minutes=1)))
+    return states
+
+
+def _blocking_state(participant, states):
+    """
+    The digit that rules a participant out of a slot, or None.
+
+    A room is held to a stricter rule than a person: anything other than free
+    blocks it, because a tentative room is already somebody's hold on the
+    space, while a tentative person is worth asking.
+    """
+    if participant["kind"] == "room":
+        for state in states:
+            if state is not None and state != FB_FREE:
+                return state
+        return None
+    for state in states:
+        if state in HARD_BUSY:
+            return state
+    return None
+
+
+def _build_participants(specs, role, kind):
+    """
+    Resolve a list of names/addresses into participants with free/busy loaded.
+
+    A spec that will not resolve is an error the caller must see, not one to
+    skip: quietly dropping an attendee is how a meeting gets scheduled without
+    the person it was for.
+    """
+    participants, unresolved = [], []
+    ns = get_namespace()
+    for spec in specs:
+        spec = (spec or "").strip()
+        if not spec:
+            continue
+        try:
+            recipient = ns.CreateRecipient(spec)
+            recipient.Resolve()
+            resolved = bool(recipient.Resolved)
+        except Exception as exc:
+            log("Could not resolve '{0}': {1}".format(spec, exc))
+            resolved = False
+        if not resolved:
+            unresolved.append(spec)
+            continue
+        try:
+            name = (recipient.Name or spec).strip()
+        except Exception:
+            name = spec
+        participants.append({
+            "spec": spec,
+            "name": name,
+            "kind": kind,
+            "role": role,
+            "recipient": recipient,
+            "free_busy": None,
+        })
+    return participants, unresolved
+
+
+def _load_free_busy(participants, start_date, warnings):
+    """Fill in each participant's free/busy, noting anyone Exchange cannot answer for."""
+    blind = []
+    for participant in participants:
+        participant["free_busy"] = _free_busy(participant["recipient"], start_date)
+        if participant["free_busy"] is None:
+            blind.append(participant["name"])
+    if blind:
+        warnings.append(
+            "No free/busy published for: {0}. Their diary was NOT checked, "
+            "so any suggestion here may still clash for them - say so when "
+            "you offer the times.".format(", ".join(blind)))
+
+
+def _spread_options(candidates, limit, max_per_day=2):
+    """
+    Reduce ranked slots to options a person can actually choose between.
+
+    Candidates come at the slot granularity, so the five best are usually the
+    same afternoon shifted a quarter of an hour at a time - five options on
+    paper and one in practice. Take the best, then skip anything overlapping a
+    slot already taken or making a third on the same day, so the list reads as
+    real alternatives. A second pass without the per-day cap fills the list
+    when only one day has anything free in it.
+    """
+    chosen, per_day = [], {}
+    for cap in (max_per_day, None):
+        for slot in candidates:
+            if len(chosen) >= limit:
+                return chosen
+            day = slot["start"].date()
+            if cap is not None and per_day.get(day, 0) >= cap:
+                continue
+            if any(slot["start"] < taken["end"] and taken["start"] < slot["end"]
+                   for taken in chosen):
+                continue
+            chosen.append(slot)
+            per_day[day] = per_day.get(day, 0) + 1
+    return chosen
+
+
+def _describe_span(start, end):
+    """'Tue 16 Sep 2026, 10:00-10:30'."""
+    return "{0} {1:02d} {2} {3}, {4:%H:%M}-{5:%H:%M}".format(
+        _WEEKDAY_SHORT[start.weekday()].title(), start.day,
+        _MONTH_SHORT[start.month - 1].title(), start.year, start, end)
+
+
+def tool_suggest_meeting_times(args):
+    required_specs = args.get("attendees") or []
+    optional_specs = args.get("optional_attendees") or []
+    room_specs = args.get("rooms") or []
+    if isinstance(required_specs, str):
+        required_specs = [required_specs]
+    if isinstance(optional_specs, str):
+        optional_specs = [optional_specs]
+    if isinstance(room_specs, str):
+        room_specs = [room_specs]
+    if not (required_specs or optional_specs or room_specs):
+        return ("Error: give at least one of 'attendees', 'optional_attendees' "
+                "or 'rooms'. Use outlook_find_people first to turn a name like "
+                "'Josh Smith' into an address.")
+
+    duration = _int_arg(args, "duration_minutes", MEETING_DEFAULT_MINUTES)
+    if duration < 5 or duration > 24 * 60:
+        return "Error: 'duration_minutes' must be between 5 and 1440."
+    slot_minutes = _int_arg(args, "slot_minutes", MEETING_SLOT_MINUTES)
+    if slot_minutes < 5 or slot_minutes > 120:
+        return "Error: 'slot_minutes' must be between 5 and 120."
+    max_suggestions = max(1, min(_int_arg(args, "max_suggestions",
+                                          MEETING_MAX_SUGGESTIONS), 20))
+    include_weekends = bool(args.get("include_weekends", False))
+    include_self = bool(args.get("include_self", True))
+
+    today = datetime.date.today()
+    try:
+        start_date = parse_planner_date(args.get("start_date"), today)
+    except ValueError:
+        return ("Error: 'start_date' must be YYYY-MM-DD, 'today', 'tomorrow', "
+                "or a day offset like '+2'.")
+    days = _int_arg(args, "days", MEETING_DEFAULT_DAYS)
+    if days < 1:
+        return "Error: 'days' must be 1 or more."
+    capped_days = min(days, FREEBUSY_DAYS)
+
+    earliest = _int_arg(args, "earliest_hour", _MEETING_START_HOUR)
+    latest = _int_arg(args, "latest_hour", _MEETING_END_HOUR)
+    if not 0 <= earliest < latest <= 24:
+        return ("Error: 'earliest_hour' and 'latest_hour' must be hours 0-24 "
+                "with the earliest first.")
+
+    warnings = []
+    required, missing_required = _build_participants(
+        required_specs, "required", "person")
+    optional, missing_optional = _build_participants(
+        optional_specs, "optional", "person")
+    rooms, missing_rooms = _build_participants(
+        room_specs, "resource", "room")
+    unresolved = missing_required + missing_optional + missing_rooms
+    if unresolved:
+        return ("Error: Outlook could not resolve these against the directory: "
+                "{0}.\nRun outlook_find_people on each one and pass the "
+                "'invite_as' value it returns. Nothing was checked."
+                .format(", ".join(unresolved)))
+
+    if include_self:
+        try:
+            me = get_namespace().CurrentUser
+            required.insert(0, {
+                "spec": "(you)",
+                "name": "{0} (you)".format(me.Name),
+                "kind": "person",
+                "role": "required",
+                "recipient": me,
+                "free_busy": None,
+            })
+        except Exception as exc:
+            warnings.append("Could not read your own calendar for the check "
+                            "({0}); your time was not considered.".format(exc))
+
+    everyone = required + optional + rooms
+    _load_free_busy(everyone, start_date, warnings)
+
+    origin = datetime.datetime.combine(start_date, datetime.time(0, 0))
+    now = datetime.datetime.now()
+    step = datetime.timedelta(minutes=slot_minutes)
+    length = datetime.timedelta(minutes=duration)
+
+    clear, near_miss = [], []
+    for offset in range(capped_days):
+        day = start_date + datetime.timedelta(days=offset)
+        if not include_weekends and day.weekday() >= 5:
+            continue
+        day_start = datetime.datetime.combine(day, datetime.time(earliest, 0))
+        if latest == 24:
+            day_end = datetime.datetime.combine(
+                day, datetime.time(0, 0)) + datetime.timedelta(days=1)
+        else:
+            day_end = datetime.datetime.combine(day, datetime.time(latest, 0))
+
+        slot_start = day_start
+        while slot_start + length <= day_end:
+            slot_end = slot_start + length
+            if slot_start <= now:
+                slot_start += step
+                continue
+
+            blockers, flags, optional_out, optional_free = [], [], [], 0
+            for participant in everyone:
+                states = _slot_states(participant, origin, slot_start, slot_end)
+                blocked = _blocking_state(participant, states)
+                if blocked is not None:
+                    if participant["role"] == "optional":
+                        # An optional clash never rules a slot out, but the
+                        # user still has to be told who would miss it.
+                        optional_out.append(participant["name"])
+                        continue
+                    blockers.append((participant["name"], FB_LABELS.get(
+                        blocked, blocked)))
+                    continue
+                if participant["role"] == "optional":
+                    optional_free += 1
+                soft = [state for state in SOFT_FLAGS if state in states]
+                if soft:
+                    flags.append("{0} is {1}".format(
+                        participant["name"], FB_LABELS[soft[0]]))
+
+            candidate = {
+                "start": slot_start,
+                "end": slot_end,
+                "flags": flags + ["{0} can't make it (optional)".format(name)
+                                  for name in optional_out],
+                "blockers": blockers,
+                "optional_free": optional_free,
+            }
+            if not blockers:
+                clear.append(candidate)
+            elif len(blockers) == 1:
+                near_miss.append(candidate)
+            slot_start += step
+
+    lines = []
+    window_end = start_date + datetime.timedelta(days=capped_days - 1)
+    lines.append(
+        "Looking for {0} minutes between {1} and {2}, {3:02d}:00-{4:02d}:00{5}."
+        .format(duration, start_date.isoformat(), window_end.isoformat(),
+                earliest, latest,
+                "" if include_weekends else ", weekdays only"))
+    lines.append("Checked: {0}".format(", ".join(
+        "{0} [{1}]".format(person["name"],
+                           "room" if person["kind"] == "room" else person["role"])
+        for person in everyone) or "nobody"))
+    if days > capped_days:
+        lines.append("Outlook only publishes {0} days of free/busy, so the "
+                     "search stopped at {1}.".format(FREEBUSY_DAYS, window_end))
+    lines.append("")
+
+    if clear:
+        # Fewest caveats first, then the most optional people who can make it,
+        # then earliest - which is what "a suitable time" usually means.
+        clear.sort(key=lambda slot: (len(slot["flags"]),
+                                     -slot["optional_free"], slot["start"]))
+        shown = _spread_options(clear, max_suggestions)
+        lines.append("{0} suggestion(s), best first:".format(len(shown)))
+        for position, slot in enumerate(shown, start=1):
+            note = "; ".join(slot["flags"]) if slot["flags"] else "everyone free"
+            lines.append("{0}. {1}   {2}".format(
+                position, _describe_span(slot["start"], slot["end"]), note))
+            lines.append("     start: \"{0:%Y-%m-%d %H:%M}\"  duration_minutes: {1}"
+                         .format(slot["start"], duration))
+        # Count only genuinely different times, not the same slot nudged along
+        # by a quarter of an hour, or the offer of "more" is a lie.
+        spare = len(_spread_options(clear, len(clear))) - len(shown)
+        if spare > 0:
+            lines.append("({0} other non-overlapping option(s) available - ask "
+                         "for more, or for a particular day.)".format(spare))
+    else:
+        lines.append("Nothing is clear for everyone in that window.")
+        if near_miss:
+            near_miss.sort(key=lambda slot: slot["start"])
+            lines.append("")
+            lines.append("Closest, each with ONE person in the way:")
+            for slot in _spread_options(near_miss, max_suggestions):
+                who, why = slot["blockers"][0]
+                lines.append("  {0}   {1} is {2}".format(
+                    _describe_span(slot["start"], slot["end"]), who, why))
+            lines.append("")
+            lines.append("Widen the hours, move the person in the way to "
+                         "optional_attendees, or search further ahead.")
+        else:
+            lines.append("Try a longer window ('days'), wider hours, or a "
+                         "shorter meeting.")
+
+    if warnings:
+        lines.append("")
+        lines.extend("Note: {0}".format(warning) for warning in warnings)
+    lines.append("")
+    if clear:
+        lines.append("Free/busy is what Exchange publishes - the same source "
+                     "as Outlook's Scheduling Assistant. Put these to the user, "
+                     "and once they pick one call outlook_draft_meeting with "
+                     "the start and duration shown.")
+    else:
+        lines.append("Free/busy is what Exchange publishes - the same source "
+                     "as Outlook's Scheduling Assistant. Do not invent a time: "
+                     "ask the user which constraint to relax.")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Meeting scheduling - part 3: saving an UNSENT meeting draft
+# ---------------------------------------------------------------------------
+#
+# This is the ONE thing in this server that writes to the mailbox, and it is
+# deliberately the smallest write that is useful: a meeting saved into the
+# Calendar with its invitations NOT sent - the state Outlook labels
+# "Invitations have not been sent for this meeting". The user opens it, edits
+# whatever they like, and presses Send themselves.
+#
+# Send() is never called anywhere in this file, and must not be added. Set
+# OUTLOOK_ALLOW_DRAFTS=false to remove the tool altogether, after which the
+# server is read-only on the mailbox again.
+
+MEETING_MAX_BODY_CHARS = 20000
+
+
+def parse_meeting_start(value):
+    """
+    Parse the 'start' argument into a naive datetime.
+
+    Accepts 'YYYY-MM-DD HH:MM' (what outlook_suggest_meeting_times prints),
+    'YYYY-MM-DDTHH:MM', and the same with seconds. Deliberately strict: a
+    meeting written at the wrong time is worse than a rejected argument, and
+    there is no locale-dependent parsing here for the same reason Restrict()
+    is avoided elsewhere in this file.
+    """
+    text = (value or "").strip().replace("T", " ")
+    for pattern in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+        try:
+            return datetime.datetime.strptime(text, pattern)
+        except ValueError:
+            continue
+    raise ValueError(
+        "'start' must be 'YYYY-MM-DD HH:MM' (24-hour), e.g. "
+        "'2026-09-16 10:00'. Got: {0!r}".format(value))
+
+
+def _add_meeting_recipients(appointment, specs, recipient_type, label, failures):
+    """Attach one class of recipient, recording anything that will not resolve."""
+    added = []
+    for spec in specs:
+        spec = (spec or "").strip()
+        if not spec:
+            continue
+        try:
+            recipient = appointment.Recipients.Add(spec)
+            recipient.Type = recipient_type
+            recipient.Resolve()
+            if not recipient.Resolved:
+                failures.append("{0} ({1})".format(spec, label))
+                continue
+            added.append((recipient.Name or spec, spec))
+        except Exception as exc:
+            log("Could not add {0} '{1}': {2}".format(label, spec, exc))
+            failures.append("{0} ({1})".format(spec, label))
+    return added
+
+
+def tool_draft_meeting(args):
+    if not _ALLOW_DRAFTS:
+        return ("Meeting drafting is switched off on this endpoint "
+                "(OUTLOOK_ALLOW_DRAFTS=false), so nothing can be written to "
+                "the calendar. Tell the user the suggested time and let them "
+                "create the meeting in Outlook themselves.")
+
+    subject = (args.get("subject") or "").strip()
+    if not subject:
+        return "Error: 'subject' is required."
+
+    try:
+        start = parse_meeting_start(args.get("start"))
+    except ValueError as exc:
+        return "Error: {0}".format(exc)
+
+    duration = _int_arg(args, "duration_minutes", MEETING_DEFAULT_MINUTES)
+    end_text = (args.get("end") or "").strip()
+    if end_text:
+        try:
+            end = parse_meeting_start(end_text)
+        except ValueError as exc:
+            return "Error: {0}".format(exc)
+        duration = int((end - start).total_seconds() // 60)
+    if duration < 5 or duration > 24 * 60:
+        return ("Error: the meeting must be between 5 minutes and 24 hours "
+                "long (got {0} minutes).".format(duration))
+    end = start + datetime.timedelta(minutes=duration)
+
+    required_specs = args.get("attendees") or []
+    optional_specs = args.get("optional_attendees") or []
+    room_specs = args.get("rooms") or []
+    for name, value in (("attendees", required_specs),
+                        ("optional_attendees", optional_specs),
+                        ("rooms", room_specs)):
+        if isinstance(value, str):
+            value = [value]
+        if name == "attendees":
+            required_specs = value
+        elif name == "optional_attendees":
+            optional_specs = value
+        else:
+            room_specs = value
+    if not (required_specs or optional_specs or room_specs):
+        return ("Error: a meeting needs somebody in it - give 'attendees', "
+                "'optional_attendees' or 'rooms'. Use outlook_find_people to "
+                "turn a name into an address first.")
+
+    body = (args.get("body") or "").strip()
+    if len(body) > MEETING_MAX_BODY_CHARS:
+        return "Error: 'body' is longer than {0} characters.".format(
+            MEETING_MAX_BODY_CHARS)
+
+    # The content blacklist applies in BOTH directions. A subject or body
+    # carrying a protective marking must not be routed through the AI on its
+    # way into Outlook any more than on its way out.
+    marking = blacklisted_match("{0}\n{1}".format(subject, body))
+    if marking:
+        log("Refused to draft a meeting (blacklist match: {0}).".format(marking))
+        return ("Refused: the subject or body of this meeting contains "
+                "content the local content policy withholds from the AI. "
+                "Create this meeting in Outlook directly.")
+
+    busy_word = (args.get("busy_status") or "busy").strip().lower()
+    if busy_word not in BUSY_STATUS_NAMES:
+        return "Error: 'busy_status' must be one of: {0}.".format(
+            ", ".join(sorted(set(BUSY_STATUS_NAMES))))
+    reminder = _int_arg(args, "reminder_minutes", 15)
+    if reminder < 0 or reminder > 40320:
+        return "Error: 'reminder_minutes' must be 0 (no reminder) to 40320."
+
+    categories = args.get("categories") or []
+    if isinstance(categories, str):
+        categories = [categories]
+
+    ns = get_namespace()
+    appointment = ns.Application.CreateItem(OL_APPOINTMENT_ITEM)
+    # MeetingStatus has to be set BEFORE the recipients go on, or Outlook
+    # keeps the item as a private appointment and silently drops them.
+    appointment.MeetingStatus = OL_MEETING
+    appointment.Subject = subject
+    _set_com_datetime(appointment, "Start", start)
+    appointment.Duration = duration
+    appointment.BusyStatus = BUSY_STATUS_NAMES[busy_word]
+    if body:
+        appointment.Body = body
+    if reminder:
+        appointment.ReminderSet = True
+        appointment.ReminderMinutesBeforeStart = reminder
+    else:
+        appointment.ReminderSet = False
+    if categories:
+        appointment.Categories = "; ".join(str(one).strip()
+                                           for one in categories if str(one).strip())
+
+    failures = []
+    added_required = _add_meeting_recipients(
+        appointment, required_specs, OL_RECIP_REQUIRED, "required", failures)
+    added_optional = _add_meeting_recipients(
+        appointment, optional_specs, OL_RECIP_OPTIONAL, "optional", failures)
+    added_rooms = _add_meeting_recipients(
+        appointment, room_specs, OL_RECIP_RESOURCE, "room", failures)
+
+    if failures:
+        # Never save a meeting that is missing somebody. A half-addressed
+        # draft looks finished and gets sent without the person it was for.
+        try:
+            appointment.Delete()
+        except Exception:
+            pass
+        return ("Error: Outlook could not resolve {0}. NOTHING was saved.\n"
+                "Run outlook_find_people on each one and pass the 'invite_as' "
+                "value it returns.".format(", ".join(failures)))
+
+    location = (args.get("location") or "").strip()
+    if not location and added_rooms:
+        location = "; ".join(name for name, _ in added_rooms)
+    if location:
+        appointment.Location = location
+
+    appointment.Save()   # Save, never Send. See the note at the top of part 3.
+
+    try:
+        entry_id = appointment.EntryID
+    except Exception:
+        entry_id = "(unavailable)"
+
+    opened = False
+    if bool(args.get("open_in_outlook", True)):
+        try:
+            appointment.Display(False)   # modeless: returns straight away
+            opened = True
+        except Exception as exc:
+            log("Could not open the draft in Outlook: {0}".format(exc))
+
+    lines = ["Meeting DRAFT saved to your calendar - NOT sent.", ""]
+    lines.append("  Subject  : {0}".format(subject))
+    lines.append("  When     : {0} {1} {2} {3}, {4:%H:%M}-{5:%H:%M} "
+                 "({6} minutes)".format(
+                     _WEEKDAY_NAMES[start.weekday()], start.day,
+                     _MONTH_NAMES[start.month - 1], start.year,
+                     start, end, duration))
+    if location:
+        lines.append("  Location : {0}".format(location))
+    for label, people in (("Required", added_required),
+                          ("Optional", added_optional),
+                          ("Room    ", added_rooms)):
+        if people:
+            lines.append("  {0} : {1}".format(label, ", ".join(
+                "{0} <{1}>".format(name, spec) if "@" in spec else name
+                for name, spec in people)))
+    lines.append("  Reminder : {0}".format(
+        "{0} minutes before".format(reminder) if reminder else "none"))
+    lines.append("  Shows as : {0}".format(busy_word))
+    lines.append("  EntryID  : {0}".format(entry_id))
+    if start < datetime.datetime.now():
+        lines.append("")
+        lines.append("  NOTE: that start time is in the past.")
+    lines.append("")
+    if opened:
+        lines.append("It is open in Outlook now. Edit anything you want, then "
+                     "press Send to invite everyone.")
+    else:
+        lines.append("Open it from your calendar on {0}, edit anything you "
+                     "want, then press Send to invite everyone.".format(
+                         start.date().isoformat()))
+    lines.append("No invitation has gone out: this server cannot send, and "
+                 "nobody has been notified.")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # MCP tool registry
 # ---------------------------------------------------------------------------
 
@@ -3484,6 +4828,184 @@ TOOLS = [
         },
     },
     {
+        "name": "outlook_find_people",
+        "description": (
+            "Fuzzy-find a person or a meeting room in Outlook's directory - the "
+            "Global Address List, the All Rooms list, and the user's own Contacts. "
+            "Use it FIRST whenever the user names somebody or somewhere in words "
+            "('Josh Smith', 'Room R5-3-84', 'someone in Payroll'), because the "
+            "scheduling tools need a real address, not a name. Matching tolerates "
+            "word order, nicknames and typos: 'Josh Smith' finds 'Smith, Joshua'. "
+            "Each match reports an 'invite_as' value - pass THAT to "
+            "outlook_suggest_meeting_times and outlook_draft_meeting. Always "
+            "confirm which match the user meant before inviting anyone."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": (
+                        "The name, room name/code, or part of an email address to "
+                        "look for, e.g. 'Josh Smith', 'R5-3-84', 'j.smith@'."
+                    ),
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": ["any", "person", "room"],
+                    "description": (
+                        "Narrow the search: 'person' skips the room lists, 'room' "
+                        "searches them first. Default 'any'. Use 'room' when the "
+                        "user says room, space, boardroom or gives a room code - it "
+                        "is both faster and far more accurate."
+                    ),
+                },
+                "count": {"type": "integer", "description": "Maximum matches to return, best first (default 8, max 25)."},
+                "deep": {
+                    "type": "boolean",
+                    "description": (
+                        "Default false. When a name resolves unambiguously, Outlook "
+                        "answers it directly and no directory scan happens at all. "
+                        "Set true to scan the whole directory anyway and list "
+                        "alternatives - use it when the user says the match was the "
+                        "wrong person."
+                    ),
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "outlook_suggest_meeting_times",
+        "description": (
+            "Suggest times when everybody - and the room - is actually free, from "
+            "the free/busy Exchange publishes (the same source as Outlook's "
+            "Scheduling Assistant). Use it for 'find a time with X', 'when can we "
+            "meet', 'book an hour with the team next week'. Attendees and rooms "
+            "must be addresses, so run outlook_find_people first on any name given "
+            "in words. The user's own calendar is included automatically. Returns "
+            "ranked slots with an exact start time to hand to outlook_draft_meeting; "
+            "when nothing is clear it names who is in the way. Anyone whose "
+            "free/busy is unpublished is reported, never assumed free."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "attendees": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Required attendees, as the 'invite_as' addresses from "
+                        "outlook_find_people. A clash for any of these rules the "
+                        "slot out."
+                    ),
+                },
+                "optional_attendees": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Optional attendees. Their clashes never rule a slot out; "
+                        "slots where they can also make it are ranked higher."
+                    ),
+                },
+                "rooms": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Meeting rooms or equipment to book. Held to a stricter "
+                        "test than people: a tentatively-held room counts as taken."
+                    ),
+                },
+                "duration_minutes": {"type": "integer", "description": "Meeting length in minutes (default 30, 5-1440)."},
+                "start_date": {
+                    "type": "string",
+                    "description": (
+                        "First day to consider: 'today' (the default), 'tomorrow', "
+                        "an offset like '+7', or YYYY-MM-DD. Prefer the words - the "
+                        "server uses the endpoint's own clock."
+                    ),
+                },
+                "days": {"type": "integer", "description": "How many days from start_date to search (default 10; Exchange publishes at most 30)."},
+                "earliest_hour": {"type": "integer", "description": "Earliest hour a meeting may start, 0-24 (default 9, or OUTLOOK_MEETING_HOURS)."},
+                "latest_hour": {"type": "integer", "description": "Hour by which a meeting must have finished, 0-24 (default 17, or OUTLOOK_MEETING_HOURS)."},
+                "include_weekends": {"type": "boolean", "description": "Include Saturday and Sunday (default false)."},
+                "include_self": {"type": "boolean", "description": "Check the user's own calendar too (default true). Leave it on unless booking a meeting they are not in."},
+                "slot_minutes": {"type": "integer", "description": "Granularity of the candidate start times, 5-120 (default 15)."},
+                "max_suggestions": {"type": "integer", "description": "How many slots to list, 1-20 (default 5)."},
+            },
+        },
+    },
+    {
+        "name": "outlook_draft_meeting",
+        "description": (
+            "Save a meeting invitation into the user's calendar WITHOUT sending it - "
+            "Outlook's 'invitations have not been sent' state - and open it for them "
+            "to review, edit and send. This is the ONLY tool here that writes to the "
+            "mailbox, and it cannot send: nobody is notified until the user presses "
+            "Send themselves. Use it once they have chosen a time, with the exact "
+            "start and duration from outlook_suggest_meeting_times and the "
+            "'invite_as' addresses from outlook_find_people. If any attendee will "
+            "not resolve, nothing at all is saved. Never invent attendees, a time, "
+            "or a subject: confirm all three with the user first."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "subject": {"type": "string", "description": "Meeting subject line."},
+                "start": {
+                    "type": "string",
+                    "description": (
+                        "Start time as 'YYYY-MM-DD HH:MM' in 24-hour local time, "
+                        "exactly as outlook_suggest_meeting_times prints it."
+                    ),
+                },
+                "duration_minutes": {"type": "integer", "description": "Length in minutes (default 30, 5-1440). Ignored if 'end' is given."},
+                "end": {"type": "string", "description": "Optional end time, 'YYYY-MM-DD HH:MM'. Overrides duration_minutes."},
+                "attendees": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Required attendees, as 'invite_as' addresses from outlook_find_people.",
+                },
+                "optional_attendees": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional attendees, as 'invite_as' addresses.",
+                },
+                "rooms": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Rooms/equipment to request, as 'invite_as' addresses. They "
+                        "are added as resources and become the Location unless "
+                        "'location' says otherwise."
+                    ),
+                },
+                "location": {"type": "string", "description": "Free-text location. Defaults to the room names when rooms are booked."},
+                "body": {"type": "string", "description": "Meeting body / agenda. Keep it to what the user asked for."},
+                "reminder_minutes": {"type": "integer", "description": "Reminder lead time in minutes (default 15; 0 for no reminder)."},
+                "busy_status": {
+                    "type": "string",
+                    "enum": ["free", "tentative", "busy", "oof", "elsewhere"],
+                    "description": "How the time shows on the calendar (default 'busy').",
+                },
+                "categories": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Outlook categories to apply, e.g. ['Leadership'].",
+                },
+                "open_in_outlook": {
+                    "type": "boolean",
+                    "description": (
+                        "Default true: pop the draft open on the user's screen so "
+                        "they can edit and send it. Set false to leave it saved in "
+                        "the calendar without stealing focus."
+                    ),
+                },
+            },
+            "required": ["subject", "start"],
+        },
+    },
+    {
         "name": "outlook_list_folders",
         "description": (
             "List every mail folder across all Outlook stores (main mailbox, online "
@@ -3509,7 +5031,22 @@ TOOL_DISPATCH = {
     "outlook_list_sent_emails": tool_list_sent_emails,
     "outlook_search_recent": tool_search_recent,
     "outlook_list_folders": tool_list_folders,
+    "outlook_find_people": tool_find_people,
+    "outlook_suggest_meeting_times": tool_suggest_meeting_times,
+    "outlook_draft_meeting": tool_draft_meeting,
 }
+
+# outlook_draft_meeting is the one tool that writes to the mailbox, so it is
+# removed outright - from the tool list as well as the dispatch table - when
+# drafting is switched off. Hiding it is better than refusing it later: a
+# model cannot promise the user a draft it was never offered.
+def apply_draft_setting():
+    """Drop the meeting-draft tool when OUTLOOK_ALLOW_DRAFTS turns it off."""
+    global TOOLS
+    if _ALLOW_DRAFTS:
+        return
+    TOOLS = [tool for tool in TOOLS if tool["name"] != "outlook_draft_meeting"]
+    TOOL_DISPATCH.pop("outlook_draft_meeting", None)
 
 
 # ---------------------------------------------------------------------------
@@ -3599,6 +5136,62 @@ def run_server():
     finally:
         pythoncom.CoUninitialize()
         log("outlook-mcp server stopped.")
+
+
+def report_directory_health():
+    """
+    Print what the scheduling tools have to work with on this endpoint.
+
+    Three things decide whether "find a time with Josh in R5-3-84" can work,
+    and all three fail quietly rather than loudly: the profile may expose no
+    Global Address List, it may have no All Rooms list (so rooms are found
+    only by name), and Exchange may publish no free/busy (so every suggestion
+    would be a guess). This names each one.
+    """
+    log("")
+    log("Directory and free/busy check")
+    log("-----------------------------")
+
+    room_lists, other_lists = [], []
+    for name, _ in _address_lists():
+        if any(hint in name.lower() for hint in ROOM_LIST_HINTS):
+            room_lists.append(name)
+        else:
+            other_lists.append(name)
+    if other_lists:
+        log("Address lists       : {0}".format(", ".join(other_lists)))
+    else:
+        log("Address lists       : NONE - outlook_find_people can only search "
+            "Contacts, so a colleague will not be found by name.")
+    if room_lists:
+        log("Room lists          : {0}".format(", ".join(room_lists)))
+    else:
+        log("Room lists          : none found. Rooms are still findable in the "
+            "GAL, but only by how their name reads.")
+
+    log("Meeting hours       : {0:02d}:00-{1:02d}:00".format(
+        _MEETING_START_HOUR, _MEETING_END_HOUR))
+    log("Directory scan cap  : {0} entries".format(_GAL_SCAN_CAP))
+    log("Meeting drafting    : {0}".format(
+        "ON - can save an UNSENT meeting to the calendar (never send one)"
+        if _ALLOW_DRAFTS else "OFF - read-only on the mailbox"))
+
+    try:
+        me = get_namespace().CurrentUser
+        free_busy = _free_busy(me, datetime.date.today())
+    except Exception as exc:
+        log("Own free/busy       : could not be read ({0})".format(exc))
+        return
+    if not free_busy:
+        log("Own free/busy       : EMPTY. Exchange published nothing, so "
+            "outlook_suggest_meeting_times cannot see anyone's diary and will "
+            "say so rather than guess.")
+        return
+    today_chars = (24 * 60) // FREEBUSY_MIN_PER_CHAR
+    booked = sum(1 for ch in free_busy[:today_chars] if ch != FB_FREE)
+    log("Own free/busy       : {0} chars at {1} min each; {2} busy today"
+        .format(len(free_busy), FREEBUSY_MIN_PER_CHAR,
+                "{0:.1f} hour(s)".format(booked * FREEBUSY_MIN_PER_CHAR / 60.0)))
 
 
 def report_recurrence_health(days=1):
@@ -3727,6 +5320,12 @@ def run_check():
         else:
             log("KB save folder      : disabled - no email can be saved")
         try:
+            report_directory_health()
+        except Exception:
+            log("Directory/free-busy check could not run:\n{0}".format(
+                traceback.format_exc()))
+
+        try:
             report_recurrence_health()
         except Exception:
             log("Recurring-series check could not run:\n{0}".format(
@@ -3743,17 +5342,20 @@ def run_check():
 def main():
     global KB_DIR, KB_AUTOSAVE, PDF_DIR, _CATEGORY_COLOURS
     global CALENDAR_DAY_START_HOUR, CALENDAR_DAY_END_HOUR
+    global _MEETING_START_HOUR, _MEETING_END_HOUR, _GAL_SCAN_CAP, _ALLOW_DRAFTS
 
     parser = argparse.ArgumentParser(
         description=(
-            "Read-only MCP server exposing local Outlook mail and calendar via COM, "
-            "with a content blacklist that withholds classified/marked items. With "
+            "MCP server exposing local Outlook mail and calendar via COM, with a "
+            "content blacklist that withholds classified/marked items. It can "
+            "never send anything; its one write to the mailbox is an UNSENT "
+            "meeting draft (OUTLOOK_ALLOW_DRAFTS=false removes even that). With "
             "no check flag it runs as an stdio MCP server. Configuration is "
             "environment variables only: EVA_KNOWLEDGE_DIR (this server saves "
             "into its 'email' sub-folder), EVA_DOCUMENTS_DIR (it prints the "
             "day planner into the 'pdf' one), OUTLOOK_SEARCH_FOLDERS, "
-            "OUTLOOK_BLACKLIST_FILE - see the CONFIGURATION section of this "
-            "file's docstring."
+            "OUTLOOK_MEETING_HOURS, OUTLOOK_BLACKLIST_FILE - see the "
+            "CONFIGURATION section of this file's docstring."
         )
     )
     parser.add_argument(
@@ -3840,6 +5442,46 @@ def main():
             log("WARNING: OUTLOOK_CALENDAR_HOURS='{0}' is not a range like '7-19'; "
                 "keeping {1:02d}:00-{2:02d}:00.".format(
                     hours_raw, CALENDAR_DAY_START_HOUR, CALENDAR_DAY_END_HOUR))
+
+    # Hours a meeting may be SUGGESTED in - separate from the planner's hours
+    # above, because what you want to see on a printed day and when it is
+    # acceptable to book somebody are not the same window.
+    meeting_hours = env("OUTLOOK_MEETING_HOURS")
+    if meeting_hours:
+        match = re.fullmatch(r"\s*(\d{1,2})\s*[-:to]+\s*(\d{1,2})\s*", meeting_hours)
+        if match and 0 <= int(match.group(1)) < int(match.group(2)) <= 24:
+            _MEETING_START_HOUR = int(match.group(1))
+            _MEETING_END_HOUR = int(match.group(2))
+        else:
+            log("WARNING: OUTLOOK_MEETING_HOURS='{0}' is not a range like '9-17'; "
+                "keeping {1:02d}:00-{2:02d}:00.".format(
+                    meeting_hours, _MEETING_START_HOUR, _MEETING_END_HOUR))
+    log("Meeting suggestions within {0:02d}:00-{1:02d}:00.".format(
+        _MEETING_START_HOUR, _MEETING_END_HOUR))
+
+    # Ceiling on a directory scan. A silly value is worse than the default:
+    # too low silently hides people, so a bad one is rejected, not clamped.
+    scan_cap = env("OUTLOOK_GAL_SCAN_CAP")
+    if scan_cap:
+        try:
+            parsed = int(scan_cap)
+        except ValueError:
+            parsed = 0
+        if parsed >= 100:
+            _GAL_SCAN_CAP = parsed
+        else:
+            log("WARNING: OUTLOOK_GAL_SCAN_CAP='{0}' is not a number of 100 or "
+                "more; keeping {1}.".format(scan_cap, _GAL_SCAN_CAP))
+
+    # The one write to the mailbox this server can make.
+    _ALLOW_DRAFTS = env_flag("OUTLOOK_ALLOW_DRAFTS", ALLOW_DRAFTS)
+    apply_draft_setting()
+    if _ALLOW_DRAFTS:
+        log("Meeting drafting ON: outlook_draft_meeting can SAVE an unsent "
+            "meeting into the calendar. It can never send one.")
+    else:
+        log("Meeting drafting OFF (OUTLOOK_ALLOW_DRAFTS=false): the server is "
+            "read-only on the mailbox and outlook_draft_meeting is not offered.")
 
     # Load any external blacklist terms and compile the filter BEFORE serving.
     extra_terms = []
