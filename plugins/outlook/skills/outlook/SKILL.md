@@ -49,10 +49,12 @@ printing.
 `outlook_print_calendar` writes an A4 landscape PDF into `C:\Eva\documents\pdf`
 and reports the path plus what is on the page. It is a bifold: the day on an
 hour-by-hour timeline down the left half, the following days summarised on the
-right. The page uses the top four fifths of the sheet, so the blank bottom
-fifth folds up behind it and the planner fits a diary. Tell the user the path,
-that it prints single-sided at 100% (it is still a full A4 landscape page),
-and that it folds in half with the bottom fifth turned up.
+right. By default the page uses the top four fifths of the sheet, so the blank
+bottom fifth folds up behind it and the planner fits a diary - but the endpoint
+can set that to anything from half the sheet to all of it, so **take the folding
+line from the tool's reply** rather than assuming a fifth. Tell the user the
+path, that it prints single-sided at 100% (it is still a full A4 landscape
+page), and how the reply says to fold it.
 
 | They say | Call |
 |---|---|
