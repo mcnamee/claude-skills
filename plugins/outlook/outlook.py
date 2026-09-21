@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-outlook.py (v9.0.0)
+outlook.py (v9.1.0)
 ======================
 
 A single-file MCP (Model Context Protocol) server giving an LLM near-read-only
@@ -218,10 +218,12 @@ A4 LANDSCAPE PDF laid out as a bifold spread: the day itself on an hour-by-hour
 timeline down the left half, and the following days summarised on the right.
 Print it single-sided and fold it in half.
 
-The page prints on the TOP FOUR FIFTHS of the sheet (PLANNER_CONTENT_FRACTION):
-the bottom fifth comes out blank, with a hairline to fold it back on, so the
-folded sheet sits in a diary. It is still a full A4 landscape page, so it
-prints on ordinary paper with no scaling - only the ink stops early.
+The page prints on the TOP FOUR FIFTHS of the sheet: the bottom fifth comes out
+blank, with a hairline to fold it back on, so the folded sheet sits in a diary.
+It is still a full A4 landscape page, so it prints on ordinary paper with no
+scaling - only the ink stops early. OUTLOOK_CALENDAR_PAGE_FILL changes how much
+of the sheet is used, as a fraction ("0.8"), a percentage ("80" or "80%"), or
+"off" for the whole sheet with nothing left to fold.
 
 The 'date' argument takes 'today' (the default), 'tomorrow', 'yesterday', a day
 offset like '+2', or YYYY-MM-DD. The words are there on purpose - the server
@@ -339,10 +341,12 @@ just below this docstring. Edit them there; nothing else needs changing.
    context window. The other two are guard rails you can usually leave as-is.
 
 3b. Day-planner defaults (CALENDAR_DAY_START_HOUR / CALENDAR_DAY_END_HOUR /
-    CALENDAR_LOOKAHEAD_DAYS / CALENDAR_CATEGORY_COLOURS)
+    CALENDAR_LOOKAHEAD_DAYS / CALENDAR_CATEGORY_COLOURS /
+    PLANNER_CONTENT_FRACTION, which OUTLOOK_CALENDAR_PAGE_FILL overrides)
    The working day the printed timeline covers, how many following days the
-   right-hand panel lists, and the Outlook category -> colour map. All four have
-   an environment variable so a plugin install never needs the file edited.
+   right-hand panel lists, the Outlook category -> colour map, and how much of
+   the sheet's height the page uses. All of them have an environment variable
+   so a plugin install never needs the file edited.
 
 4. SEARCH_ALL_FOLDERS  (DEFAULT folders the combined outlook_search_recent covers)
    A list of folder NAMES matched across every store in the profile (main
@@ -424,6 +428,15 @@ Server-specific settings, all optional and all environment variables:
     OUTLOOK_CALENDAR_HOURS      the working day the printed timeline starts
                                 from, e.g. "7-19" (default "8-18"). It always
                                 stretches to fit anything outside it.
+    OUTLOOK_CALENDAR_PAGE_FILL  how much of the sheet's HEIGHT the printed
+                                planner uses: a fraction ("0.8", the default),
+                                a percentage ("80" or "80%"), or "off" (or
+                                none/no/false/disabled) for the whole sheet.
+                                Below 1 the rest of the page prints blank with
+                                a fold hairline, so it can be turned up behind
+                                the planner to fit a diary. Accepts 0.5 to 1.0;
+                                anything else is refused with a warning and the
+                                default kept.
     OUTLOOK_CALENDAR_COLOURS    Overrule the colour Outlook already holds
                                 against a category, e.g.
                                 "Leadership=purple,Client=green". Names:
@@ -496,7 +509,7 @@ IMPORTANT (stdio-on-Windows pitfalls)
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "9.0.0"
+__version__ = "9.1.0"
 
 import os
 import re
@@ -586,6 +599,11 @@ CALENDAR_DAY_END_HOUR = 18
 
 #        How many following days the right-hand panel lists (1-6).
 CALENDAR_LOOKAHEAD_DAYS = 4
+
+#        How much of the sheet's HEIGHT the page uses lives with the rest of
+#        the planner's geometry further down, as PLANNER_CONTENT_FRACTION
+#        (0.8 - the bottom fifth prints blank to fold up behind the page).
+#        Override with OUTLOOK_CALENDAR_PAGE_FILL="0.8" / "80" / "off".
 
 #        Outlook CATEGORY -> block colour. Usually EMPTY, because the colour
 #        Outlook already holds against each category is read off the profile
@@ -750,6 +768,42 @@ def parse_category_colours(raw):
             continue
         mapping[category] = colour
     return mapping
+
+
+def parse_page_fill(raw):
+    """
+    OUTLOOK_CALENDAR_PAGE_FILL -> the fraction of the sheet's height to use.
+
+    Accepts a fraction ("0.8"), a percentage ("80" or "80%") and, like every
+    other optional setting in this suite, a DISABLE_KEYWORD - here meaning "no
+    strip to fold up", so the planner takes the whole sheet. A value below
+    PLANNER_MIN_CONTENT_FRACTION or above 1 is refused: a planner squeezed into
+    a third of a page is not a planner, and anything over the sheet is off it.
+
+    Returns the fraction, or None to keep the built-in default (which is also
+    what a bad value gets, after a warning - a typo here must not stop the
+    server printing).
+    """
+    if raw is None:
+        return None
+    text = raw.strip().lower().rstrip("%").strip()
+    if text in DISABLE_KEYWORDS or text == "full":
+        return 1.0
+    try:
+        value = float(text)
+    except ValueError:
+        log("WARNING: OUTLOOK_CALENDAR_PAGE_FILL='{0}' is not a number like "
+            "'0.8' or '80'; keeping {1}.".format(raw, PLANNER_CONTENT_FRACTION))
+        return None
+    if value > 1.0:            # a percentage, written the way people say it
+        value /= 100.0
+    if not PLANNER_MIN_CONTENT_FRACTION <= value <= 1.0:
+        log("WARNING: OUTLOOK_CALENDAR_PAGE_FILL='{0}' is outside {1}-1.0 "
+            "({2:.0f}%-100%); keeping {3}.".format(
+                raw, PLANNER_MIN_CONTENT_FRACTION,
+                PLANNER_MIN_CONTENT_FRACTION * 100, PLANNER_CONTENT_FRACTION))
+        return None
+    return value
 
 
 # --version must work even when pywin32 is not installed (or off Windows),
@@ -2789,12 +2843,19 @@ PLANNER_BLOCK_GAP_MM = 1.6   # white space between two blocks, side by side or s
 # (about 1.8 mm) still fits the thinnest block PLANNER_MIN_TIGHT_MM allows.
 PLANNER_TITLE_PT = 7.0
 
-# How much of the sheet's HEIGHT the planner prints on. At 0.8 the page is laid
-# out in the top four fifths of an A4 landscape sheet and the bottom fifth
-# comes out blank, so it can be folded up behind the rest and the planner fits
-# a diary. The PDF is still a full A4 landscape page - only the ink stops early
-# - so it prints on ordinary paper with no scaling.
+# How much of the sheet's HEIGHT the planner prints on, as a fraction. At 0.8
+# the page is laid out in the top four fifths of an A4 landscape sheet and the
+# bottom fifth comes out blank, so it can be folded up behind the rest and the
+# planner fits a diary. The PDF is still a full A4 landscape page - only the
+# ink stops early - so it prints on ordinary paper with no scaling.
+# OUTLOOK_CALENDAR_PAGE_FILL overrides this: a fraction (0.8), a percentage
+# (80 or 80%), or one of the DISABLE_KEYWORDS for the whole sheet.
 PLANNER_CONTENT_FRACTION = 0.8
+
+# How little of the sheet the planner may be squeezed into. Below this the
+# header, the hour grid and the footer stop fitting, so a smaller value is
+# refused rather than printed as a mess.
+PLANNER_MIN_CONTENT_FRACTION = 0.5
 
 
 def _place_blocks(events, day, start_min, end_min, top, bottom, lane_x, lane_w):
@@ -3595,9 +3656,18 @@ def tool_print_calendar(args):
         lines.append("[{0} event(s) matched the content blacklist. They ARE on "
                      "the printed page - only their subjects are withheld from "
                      "this summary.]".format(withheld))
-    lines.append("It is A4 landscape, printed on the top four fifths of the "
-                 "sheet - print it single-sided, fold it in half for a bifold "
-                 "day planner, and fold the blank bottom fifth up behind it.")
+    # The folding advice follows the configured page fill, so it cannot tell
+    # the user to fold a strip that this endpoint does not leave blank.
+    if PLANNER_CONTENT_FRACTION >= 1.0:
+        lines.append("It is A4 landscape - print it single-sided and fold it "
+                     "in half for a bifold day planner.")
+    else:
+        lines.append(
+            "It is A4 landscape, printed on the top {0:.0f}% of the sheet - "
+            "print it single-sided, fold it in half for a bifold day planner, "
+            "and fold the blank bottom {1:.0f}% up behind it.".format(
+                PLANNER_CONTENT_FRACTION * 100,
+                (1.0 - PLANNER_CONTENT_FRACTION) * 100))
     return "\n".join(lines)
 
 
@@ -4922,8 +4992,8 @@ TOOLS = [
             "'today' (the default), 'tomorrow', 'yesterday', a day offset like '+2', "
             "or YYYY-MM-DD - prefer the words, because the server uses the endpoint's "
             "own clock. The file is written into the documents folder and the tool "
-            "reports the full path plus what is on the page. The sheet prints on its "
-            "top four fifths so the blank bottom fifth folds up behind it. Reading the "
+            "reports the full path plus what is on the page, including how the sheet "
+            "is meant to be folded - repeat that rather than assuming it. Reading the "
             "calendar is still read-only; every event is on the page, and the planner "
             "never reads an event's body - an event whose subject, location or "
             "category matches the content blacklist is printed but left out of this "
@@ -5520,6 +5590,11 @@ def run_check():
             log("Planner PDF folder  : {0}".format(PDF_DIR))
         else:
             log("Planner PDF folder  : disabled - outlook_print_calendar is off")
+        log("Planner page fill   : {0}".format(
+            "the whole sheet" if PLANNER_CONTENT_FRACTION >= 1.0
+            else "top {0:.0f}%, bottom {1:.0f}% blank to fold up".format(
+                PLANNER_CONTENT_FRACTION * 100,
+                (1.0 - PLANNER_CONTENT_FRACTION) * 100)))
         if _CATEGORY_COLOURS:
             log("Planner colours     : {0}".format(", ".join(
                 "{0}={1}".format(key, value)
@@ -5554,6 +5629,7 @@ def run_check():
 def main():
     global KB_DIR, KB_AUTOSAVE, PDF_DIR, _CATEGORY_COLOURS
     global CALENDAR_DAY_START_HOUR, CALENDAR_DAY_END_HOUR
+    global PLANNER_CONTENT_FRACTION
     global _MEETING_START_HOUR, _MEETING_END_HOUR, _GAL_SCAN_CAP, _ALLOW_DRAFTS
 
     parser = argparse.ArgumentParser(
@@ -5654,6 +5730,19 @@ def main():
             log("WARNING: OUTLOOK_CALENDAR_HOURS='{0}' is not a range like '7-19'; "
                 "keeping {1:02d}:00-{2:02d}:00.".format(
                     hours_raw, CALENDAR_DAY_START_HOUR, CALENDAR_DAY_END_HOUR))
+
+    # How much of the sheet's height the planner prints on, e.g.
+    # OUTLOOK_CALENDAR_PAGE_FILL="0.8" for a fifth left blank to fold up.
+    page_fill = parse_page_fill(env("OUTLOOK_CALENDAR_PAGE_FILL"))
+    if page_fill is not None:
+        PLANNER_CONTENT_FRACTION = page_fill
+    if PLANNER_CONTENT_FRACTION >= 1.0:
+        log("Planner uses the whole sheet; nothing is left blank to fold up.")
+    else:
+        log("Planner uses the top {0:.0f}% of the sheet; the bottom {1:.0f}% "
+            "prints blank to fold up.".format(
+                PLANNER_CONTENT_FRACTION * 100,
+                (1.0 - PLANNER_CONTENT_FRACTION) * 100))
 
     # Hours a meeting may be SUGGESTED in - separate from the planner's hours
     # above, because what you want to see on a printed day and when it is

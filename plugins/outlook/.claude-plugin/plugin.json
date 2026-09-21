@@ -1,7 +1,7 @@
 {
   "name": "outlook",
   "displayName": "Outlook (mail + calendar)",
-  "version": "9.0.0",
+  "version": "9.1.0",
   "description": "Read local classic Outlook mail and calendar via COM, schedule meetings (fuzzy directory search, free/busy, and an unsent meeting draft you send yourself), and print a day as a PDF planner. It can never send anything. Windows only; requires pywin32.",
   "author": {
     "name": "mcnamee"
@@ -31,6 +31,11 @@
       "type": "string",
       "title": "Printed day hours",
       "description": "Optional. The working day the printable planner's timeline starts from, e.g. '7-19'. Defaults to 8-18, and always stretches to fit anything scheduled outside it."
+    },
+    "calendar_page_fill": {
+      "type": "string",
+      "title": "Printed page fill",
+      "description": "Optional. How much of the sheet's height the printed planner uses: a fraction like '0.8' (the default), a percentage like '80', or 'off' for the whole sheet. Below 1 the rest of the page prints blank with a fold line, so you can turn it up behind the planner and it fits a diary. Accepts 0.5 to 1.0."
     },
     "calendar_colours": {
       "type": "string",
@@ -65,6 +70,7 @@
         "OUTLOOK_SEARCH_FOLDERS": "${user_config.search_folders}",
         "OUTLOOK_BLACKLIST_FILE": "${user_config.blacklist_file}",
         "OUTLOOK_CALENDAR_HOURS": "${user_config.calendar_hours}",
+        "OUTLOOK_CALENDAR_PAGE_FILL": "${user_config.calendar_page_fill}",
         "OUTLOOK_CALENDAR_COLOURS": "${user_config.calendar_colours}",
         "OUTLOOK_MEETING_HOURS": "${user_config.meeting_hours}",
         "OUTLOOK_ALLOW_DRAFTS": "${user_config.allow_drafts}",

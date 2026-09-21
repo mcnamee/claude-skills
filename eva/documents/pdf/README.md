@@ -33,8 +33,10 @@ Ask for "today's printable calendar" or "tomorrow's planner" and `outlook` write
 `Calendar - <date> <weekday>.pdf` here: A4 landscape, the day on an hour-by-hour
 timeline down one half and the following days down the other. It prints on the
 top four fifths of the sheet, so print it single-sided at 100%, fold it in half,
-and fold the blank bottom fifth up behind it to fit a diary. Re-printing a day
-overwrites that day's sheet rather than piling up copies.
+and fold the blank bottom fifth up behind it to fit a diary (set
+`OUTLOOK_CALENDAR_PAGE_FILL` to change how much is left to fold, or to `off` for
+the whole sheet). Re-printing a day overwrites that day's sheet rather than
+piling up copies.
 
 They are **not worth converting**. A bulk `pdf-to-md` run will pick them up along
 with everything else and fill the index with last week's meetings, so tidy old
