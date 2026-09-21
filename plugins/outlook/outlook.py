@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-outlook.py (v8.1.0)
+outlook.py (v9.0.0)
 ======================
 
 A single-file MCP (Model Context Protocol) server giving an LLM near-read-only
@@ -218,6 +218,11 @@ A4 LANDSCAPE PDF laid out as a bifold spread: the day itself on an hour-by-hour
 timeline down the left half, and the following days summarised on the right.
 Print it single-sided and fold it in half.
 
+The page prints on the TOP FOUR FIFTHS of the sheet (PLANNER_CONTENT_FRACTION):
+the bottom fifth comes out blank, with a hairline to fold it back on, so the
+folded sheet sits in a diary. It is still a full A4 landscape page, so it
+prints on ordinary paper with no scaling - only the ink stops early.
+
 The 'date' argument takes 'today' (the default), 'tomorrow', 'yesterday', a day
 offset like '+2', or YYYY-MM-DD. The words are there on purpose - the server
 resolves them against the ENDPOINT's clock, so a printed planner cannot come out
@@ -251,9 +256,13 @@ What ends up on the page:
   There is no colour legend across the top: a printed page is looked at, not
   decoded, and the header reads better given back to the date.
 - Type on a block goes white or dark automatically, by how bright the fill is,
-  so a yellow category is readable rather than white-on-yellow. It is small on
-  purpose (6pt floor): a planner is read at desk distance, and the subject of a
-  meeting fitting on its block matters more than large type.
+  so a yellow category is readable rather than white-on-yellow. Every subject
+  on the page is set at ONE size (PLANNER_TITLE_PT, 7pt) whatever the block it
+  sits on: the type used to follow the size of the block, which made an
+  hour-long meeting shout and a fifteen-minute one whisper for no reason other
+  than its duration. It is small on purpose - a planner is read at desk
+  distance, and the subject of a meeting fitting on its block matters more than
+  large type.
 - ATTENDEES ARE NEVER PRINTED. Who is in a meeting is in the invitation, it
   crowds out the subject and location the sheet is actually for, and it puts
   other people's names on something left on a desk. They are still read, since
@@ -264,10 +273,25 @@ What ends up on the page:
   Friday planner shows the week ahead rather than two blank weekend panels.
   Pass skip_empty_days=false for strictly consecutive days.
 
-The blacklist applies in full: a withheld event never reaches the page, not even
-as an unlabelled block, and the footer carries the count. The file lands in the
-documents folder below and an existing file of the same name is overwritten, so
-re-printing a day replaces that day's sheet rather than piling up copies.
+THE BLACKLIST AND THE PRINTED PAGE. Every event is printed, blacklisted or
+not. The PDF is drawn here and written to this machine's own disk; a planner
+missing the meetings that matter most is not worth carrying, and the blacklist
+is there to keep marked material away from the AI, not away from the person
+whose diary it is. What makes that safe is that this path NEVER READS AN
+APPOINTMENT'S BODY - the body is the part that carries marked detail, and
+nothing on the page or in the tool's reply comes from it. A block shows the
+subject, the times and the location, and that is all.
+
+The blacklist still decides what the AI is told. It is applied to the fields
+the reply is built from (subject, location, organiser, categories), and an
+event that matches is printed but left out of the reply, which reports the
+count. This differs from outlook_get_calendar, which reads the body and
+withholds a matching event outright - that tool's whole output goes to the
+model, so it has more to protect.
+
+The file lands in the documents folder below and an existing file of the same
+name is overwritten, so re-printing a day replaces that day's sheet rather than
+piling up copies.
 
 ==============================================================================
 CONFIGURATION  -  all editable settings live in the "USER CONFIGURATION" block
@@ -282,6 +306,9 @@ just below this docstring. Edit them there; nothing else needs changing.
                      shown (no subject/sender of a blocked item is ever revealed).
    - get_email     : a blocked message returns a generic refusal, not content.
    - calendar      : blocked events are omitted; a withheld count is shown.
+   - day planner   : every event is PRINTED (the PDF is written locally, and
+                     the planner never reads an appointment's body at all);
+                     a blocked event is left out of the tool's reply instead.
    - folders       : folder NAMES matching the blacklist are withheld from
                      outlook_list_folders and skipped by outlook_search_recent
                      (results are labelled with their folder path, so a marked
@@ -469,7 +496,7 @@ IMPORTANT (stdio-on-Windows pitfalls)
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "8.1.0"
+__version__ = "9.0.0"
 
 import os
 import re
@@ -904,6 +931,46 @@ def appointment_block_reason(item):
         parts.append(item.Body or "")
     except Exception:
         return "<unreadable body>"
+
+    for getter in (lambda: item.Location,
+                   lambda: item.Organizer,
+                   lambda: item.Categories):
+        try:
+            value = getter()
+            if value:
+                parts.append(str(value))
+        except Exception:
+            pass
+
+    return blacklisted_match("\n".join(parts))
+
+
+def appointment_visible_block_reason(item):
+    """
+    As appointment_block_reason, but over ONLY the fields that leave this server.
+
+    The printed planner never reads an appointment's Body. The body is the part
+    that carries protectively-marked detail, and nothing on the page or in the
+    tool's reply is drawn from it - a block shows the subject, the times and the
+    location, and that is all. What can reach the AI is therefore the subject,
+    location, organiser and categories, so those are what this clears.
+
+    An event blocked here is still PRINTED: the page is written locally, on the
+    user's own paper, and a diary with holes in it is not worth printing. It is
+    left out of the text handed back to the model, which is the only part of
+    this tool the AI ever sees.
+
+    Fail-safe: a subject that cannot be read cannot be cleared, so it counts as
+    blocked.
+    """
+    if _BLACKLIST_RE is None:
+        return None
+
+    parts = []
+    try:
+        parts.append(item.Subject or "")
+    except Exception:
+        return "<unreadable subject>"
 
     for getter in (lambda: item.Location,
                    lambda: item.Organizer,
@@ -2714,6 +2781,21 @@ PLANNER_MIN_BLOCK_MM = 6.4   # a short meeting is grown to this if there is room
 PLANNER_MIN_TIGHT_MM = 3.4   # ...and never squeezed below this, so a line still fits
 PLANNER_BLOCK_GAP_MM = 1.6   # white space between two blocks, side by side or stacked
 
+# ONE size for every event subject on the page, whatever the block it sits on.
+# The size a subject is set at used to follow the size of its block, which made
+# an hour-long meeting shout and a fifteen-minute one whisper for no reason
+# other than its duration; a printed page reads better when the type is even.
+# 7pt is the smaller of the sizes it used to pick from, and its cap height
+# (about 1.8 mm) still fits the thinnest block PLANNER_MIN_TIGHT_MM allows.
+PLANNER_TITLE_PT = 7.0
+
+# How much of the sheet's HEIGHT the planner prints on. At 0.8 the page is laid
+# out in the top four fifths of an A4 landscape sheet and the bottom fifth
+# comes out blank, so it can be folded up behind the rest and the planner fits
+# a diary. The PDF is still a full A4 landscape page - only the ink stops early
+# - so it prints on ordinary paper with no scaling.
+PLANNER_CONTENT_FRACTION = 0.8
+
 
 def _place_blocks(events, day, start_min, end_min, top, bottom, lane_x, lane_w):
     """
@@ -2724,6 +2806,12 @@ def _place_blocks(events, day, start_min, end_min, top, bottom, lane_x, lane_w):
     short meeting is grown to a readable height, but only into space nothing
     else is using: a day of back-to-back half-hour meetings stays one honest
     column of thin blocks instead of zig-zagging across two.
+
+    Growth is worked out LAST, against every other block on the lane rather
+    than only the ones in the same cluster. A 15-minute meeting at 09:45 and
+    the hour at 10:00 are separate clusters - they do not overlap - so a
+    cluster-local ceiling let the grown short block print straight over the
+    real one.
     """
     scale = (bottom - top) / float(max(1, end_min - start_min))
     boxes = []
@@ -2764,21 +2852,32 @@ def _place_blocks(events, day, start_min, end_min, top, bottom, lane_x, lane_w):
 
         width = ((lane_w - PLANNER_BLOCK_GAP_MM * (len(columns) - 1))
                  / len(columns))
-        for column in columns:
-            for position, box in enumerate(column):
-                ceiling = (column[position + 1]["top"]
-                           if position + 1 < len(column) else bottom)
-                room = ceiling - box["top"] - PLANNER_BLOCK_GAP_MM
-                # The gap comes out of the block itself, not just out of the
-                # overflow case, so two back-to-back meetings read as two blocks
-                # with white between them rather than one continuous slab.
-                natural = max(box["natural"] - PLANNER_BLOCK_GAP_MM, 0.0)
-                height = max(natural, PLANNER_MIN_BLOCK_MM)
-                box["height"] = max(PLANNER_MIN_TIGHT_MM, min(height, max(room, 0.0)))
-                box["x"] = lane_x + box["column"] * (width + PLANNER_BLOCK_GAP_MM)
-                box["width"] = width
-                if box["top"] + box["height"] > bottom:
-                    box["top"] = max(top, bottom - box["height"])
+        for box in cluster["boxes"]:
+            box["x"] = lane_x + box["column"] * (width + PLANNER_BLOCK_GAP_MM)
+            box["width"] = width
+
+    # Heights come last, once every block knows where it sits across the lane,
+    # so the ceiling a block may grow up to is the next block ANYWHERE in its
+    # way - same cluster or not.
+    for box in boxes:
+        ceiling = bottom
+        for other in boxes:
+            if other is box or other["top"] <= box["top"] + 0.01:
+                continue
+            # Only a block sharing some of this one's width is in its way; two
+            # columns of the same cluster sit side by side and are not.
+            if (other["x"] < box["x"] + box["width"] - 0.01
+                    and box["x"] < other["x"] + other["width"] - 0.01):
+                ceiling = min(ceiling, other["top"])
+        room = ceiling - box["top"] - PLANNER_BLOCK_GAP_MM
+        # The gap comes out of the block itself, not just out of the overflow
+        # case, so two back-to-back meetings read as two blocks with white
+        # between them rather than one continuous slab.
+        natural = max(box["natural"] - PLANNER_BLOCK_GAP_MM, 0.0)
+        height = max(natural, PLANNER_MIN_BLOCK_MM)
+        box["height"] = max(PLANNER_MIN_TIGHT_MM, min(height, max(room, 0.0)))
+        if box["top"] + box["height"] > bottom:
+            box["top"] = max(top, bottom - box["height"])
     return boxes
 
 
@@ -2818,9 +2917,10 @@ def _draw_block(canvas, box):
     stack. A printed block that has been squeezed says less rather than
     truncating everything on it into nonsense.
 
-    Type is deliberately small. A day planner is read at desk distance, and the
-    subject of a meeting fitting on the block matters more than the type being
-    large enough to read across a room; 6pt is the floor.
+    Type is deliberately small and, for the subject, ALWAYS PLANNER_TITLE_PT -
+    a block does not get bigger type for being a longer meeting. A day planner
+    is read at desk distance, and the subject fitting on the block matters more
+    than the type being large enough to read across a room.
     """
     event = box["event"]
     style = box["style"]
@@ -2839,7 +2939,7 @@ def _draw_block(canvas, box):
 
     # --- too short to stack: one centred line ------------------------------
     if height < 7.4:
-        size = 7.0 if height >= 5.0 else (6.5 if height >= 4.0 else 6.0)
+        size = PLANNER_TITLE_PT
         baseline = y + height / 2.0 + _cap_mm(size) / 2.0
         if inner < 36.0:
             # Short AND sharing the lane: one line is all there is, so spend it
@@ -2869,7 +2969,7 @@ def _draw_block(canvas, box):
 
     # --- narrow, because it is sharing the lane ----------------------------
     if inner < 36.0:
-        title_size = 7.0
+        title_size = PLANNER_TITLE_PT
         baseline = y + pad_y + _cap_mm(title_size)
         # Two lines of subject beat one truncated line plus a time: the block's
         # position on the grid already says when it is, and what the meeting is
@@ -2896,7 +2996,7 @@ def _draw_block(canvas, box):
         return
 
     # --- the full block ----------------------------------------------------
-    title_size = 8.5 if inner >= 56.0 else 7.5
+    title_size = PLANNER_TITLE_PT
     span_w = canvas.text_width(span, 6.5, bold=True)
     baseline = y + pad_y + _cap_mm(title_size)
     canvas.text(x + pad_x, baseline, event["subject"], title_size, bold=True,
@@ -2911,13 +3011,18 @@ def _draw_block(canvas, box):
 
 
 def render_day_planner(day, day_events, ahead, identity, hours,
-                       withheld=0, category_colours=None):
+                       category_colours=None):
     """
     Build the whole A4-landscape planner and return it as PDF bytes.
 
     `day_events` is today's list, `ahead` a list of (date, events) for the
     right-hand panel, `identity` the (name, address) the header and footer show,
     and `hours` the (first, last) hour the timeline covers.
+
+    Every event given is drawn. Nothing is withheld from the page: the PDF is
+    built here and written to the endpoint's own disk, so the content blacklist
+    has nothing to protect at this point - it governs the text the tool hands
+    back to the AI instead.
 
     Attendees are never printed. Who is in a meeting is in the invitation, it
     crowds out the subject and location that a printed planner is actually for,
@@ -2927,6 +3032,9 @@ def render_day_planner(day, day_events, ahead, identity, hours,
     """
     category_colours = category_colours or {}
     page_w, page_h = 297.0, 210.0
+    # Everything is laid out inside content_h, the top slice of the sheet, so
+    # the rest comes off the printer blank and folds up behind the page.
+    content_h = page_h * PLANNER_CONTENT_FRACTION
     pad_l = pad_r = 11.0
     pad_t, pad_b = 10.0, 8.0
     name, address = identity
@@ -2969,7 +3077,7 @@ def render_day_planner(day, day_events, ahead, identity, hours,
 
     # ---- page frame ------------------------------------------------------
     body_top = header_rule + 5.0
-    footer_rule = page_h - pad_b - 4.6
+    footer_rule = content_h - pad_b - 4.6
     body_bottom = footer_rule - 2.5
     centre_x = pad_l + (page_w - pad_l - pad_r) / 2.0
     left_x = pad_l
@@ -3003,13 +3111,16 @@ def render_day_planner(day, day_events, ahead, identity, hours,
         for event in all_day:
             label = event["subject"]
             style = _block_style(event, event["colour"])
-            chip_w = min(left_w, canvas.text_width(label, 8.0, bold=True) + 5.0)
+            chip_w = min(left_w, canvas.text_width(label, PLANNER_TITLE_PT,
+                                                   bold=True) + 5.0)
             if chip_x + chip_w > left_x + left_w and chip_x > left_x:
                 if rows >= 2:
-                    canvas.text(chip_x + 1.0, chip_y + chip_h / 2.0 + _cap_mm(7.5) / 2.0,
+                    canvas.text(chip_x + 1.0,
+                                chip_y + chip_h / 2.0
+                                + _cap_mm(PLANNER_TITLE_PT) / 2.0,
                                 "+{0} more".format(
                                     len(all_day) - all_day.index(event)),
-                                7.5, bold=True, colour=_MUTED)
+                                PLANNER_TITLE_PT, bold=True, colour=_MUTED)
                     break
                 rows += 1
                 chip_x = left_x
@@ -3017,9 +3128,10 @@ def render_day_planner(day, day_events, ahead, identity, hours,
             canvas.rect(chip_x, chip_y, chip_w, chip_h, fill=style["fill"],
                         stroke=style["stroke"], line_pt=style["line_pt"] or 0.6,
                         radius=1.2)
-            canvas.text(chip_x + 2.5, chip_y + chip_h / 2.0 + _cap_mm(8.0) / 2.0,
-                        label, 8.0, bold=True, colour=style["title"],
-                        max_width=chip_w - 5.0)
+            canvas.text(chip_x + 2.5,
+                        chip_y + chip_h / 2.0 + _cap_mm(PLANNER_TITLE_PT) / 2.0,
+                        label, PLANNER_TITLE_PT, bold=True,
+                        colour=style["title"], max_width=chip_w - 5.0)
             chip_x += chip_w + 1.6
         cursor_y = chip_y + chip_h + 2.6
 
@@ -3137,9 +3249,6 @@ def render_day_planner(day, day_events, ahead, identity, hours,
     # ---- footer ----------------------------------------------------------
     canvas.line(pad_l, footer_rule, page_w - pad_r, footer_rule, _RULE, 0.5)
     left_footer = "Outlook Calendar" + (" · " + address if address else "")
-    if withheld:
-        left_footer += " · {0} item{1} withheld by the content policy".format(
-            withheld, "" if withheld == 1 else "s")
     canvas.text(pad_l, footer_rule + 3.4, left_footer, 7.0, bold=True,
                 colour=_FAINT, max_width=170.0)
     printed = datetime.datetime.now()
@@ -3147,6 +3256,14 @@ def render_day_planner(day, day_events, ahead, identity, hours,
                 "Printed {0} at {1}".format(
                     _fmt_day_short(printed.date()), _fmt_time(printed)),
                 7.0, bold=True, colour=_FAINT, align="right")
+
+    # ---- fold guide ------------------------------------------------------
+    # The line the blank bottom of the sheet folds back on. It is a hairline in
+    # the palest grey the page uses: enough to fold against, faint enough that
+    # a sheet nobody folds does not look like it is missing something.
+    if content_h < page_h - 1.0:
+        canvas.line(pad_l, content_h, page_w - pad_r, content_h, _RULE, 0.4,
+                    dash=[1.4, 2.6])
 
     return canvas.to_bytes()
 
@@ -3281,9 +3398,13 @@ def _collect_planner_events(start_date, end_date):
     """
     Read the calendar between two dates into plain dicts, one per occurrence.
 
-    Returns (events by date, withheld count). Blacklisted items are dropped
-    before anything is laid out, so a withheld meeting cannot reach the page
-    even as an unlabelled block.
+    Returns the events by date. EVERY event is laid out on the page,
+    blacklisted or not: the PDF is drawn locally and printed on the user's own
+    paper, and a planner missing the meetings that matter most is not worth
+    carrying. The blacklist still governs what reaches the AI, and it is
+    applied to the fields the reply is built from - the appointment's Body is
+    never read at all on this path, so nothing in it can leak either way. Each
+    event carries "show_to_ai": False means printed, but not named in the reply.
     """
     start_dt = datetime.datetime.combine(start_date, datetime.time(0, 0))
     end_dt = datetime.datetime.combine(end_date, datetime.time(23, 59, 59))
@@ -3296,13 +3417,7 @@ def _collect_planner_events(start_date, end_date):
     identity = current_user_identity(get_namespace())
 
     by_date = {}
-    withheld = 0
     for item_start, item in matches:
-        reason = appointment_block_reason(item)
-        if reason:
-            withheld += 1
-            log("Withheld a calendar item from the planner (blacklist match: {0}).".format(reason))
-            continue
         day = item_start.date()
         # Only the printed day needs its recipients read: that is the only
         # panel whose colour depends on who is invited, and reading them is a
@@ -3311,11 +3426,19 @@ def _collect_planner_events(start_date, end_date):
             item, item_start, identity, want_people=(day == start_date))
         if event is None:
             continue
+        # The blacklist decides what the AI is told about, not what is printed.
+        # Only the fields the reply is built from are tested, because they are
+        # the only ones that leave the endpoint.
+        reason = appointment_visible_block_reason(item)
+        event["show_to_ai"] = reason is None
+        if reason:
+            log("Printed a calendar item but withheld it from the reply "
+                "(blacklist match: {0}).".format(reason))
         by_date.setdefault(day, []).append(event)
 
     for events in by_date.values():
         events.sort(key=lambda event: (not event["all_day"], event["start"]))
-    return by_date, withheld
+    return by_date
 
 
 def _planner_ahead_days(by_date, day, wanted, skip_empty):
@@ -3370,13 +3493,21 @@ def tool_print_calendar(args):
     horizon = day + datetime.timedelta(
         days=PLANNER_SCAN_HORIZON_DAYS if skip_empty else wanted)
     try:
-        by_date, withheld = _collect_planner_events(day, horizon)
+        by_date = _collect_planner_events(day, horizon)
     except RuntimeError as exc:
         return "Error: {0}.".format(exc)
 
     day_events = by_date.get(day, [])
     ahead = _planner_ahead_days(by_date, day, wanted, skip_empty)
     hours = _planner_hours(day_events, day)
+
+    # Count the blacklist matches that are actually ON THE SHEET: the scan
+    # reaches further ahead than the right-hand panel shows, so the collection
+    # holds days the page never gets to.
+    withheld = sum(1 for event in
+                   day_events + [item for _other, events in ahead
+                                 for item in events]
+                   if not event.get("show_to_ai", True))
 
     # Outlook's own category colours first, then the endpoint's explicit map on
     # top: OUTLOOK_CALENDAR_COLOURS is there to overrule a category whose
@@ -3387,7 +3518,7 @@ def tool_print_calendar(args):
     try:
         pdf = render_day_planner(
             day, day_events, ahead, current_user_identity(get_namespace()),
-            hours, withheld=withheld, category_colours=category_colours)
+            hours, category_colours=category_colours)
     except Exception as exc:
         log("Planner render failed:\n{0}".format(traceback.format_exc()))
         return "Error: the planner could not be laid out ({0}).".format(exc)
@@ -3435,7 +3566,15 @@ def tool_print_calendar(args):
             _fmt_day_long(day), len(timed), _fmt_duration(booked),
             len(day_events) - len(timed), hours[0], hours[1]),
     ]
+    listed = 0
     for event in day_events:
+        # Everything above is a count, and counts were always reported. The
+        # per-event lines are the only place a subject is spelled out, so a
+        # blacklisted one stops here - it is on the printed page, not in this
+        # reply.
+        if not event.get("show_to_ai", True):
+            continue
+        listed += 1
         when = ("all day" if event["all_day"]
                 else "{0}-{1}".format(_fmt_time(event["start"]),
                                       _fmt_time(event["end"])))
@@ -3444,16 +3583,21 @@ def tool_print_calendar(args):
             " ({0})".format(event["location"]) if event["location"] else ""))
     if not day_events:
         lines.append("  (nothing in the diary - the page prints empty)")
+    elif not listed:
+        lines.append("  (every event that day is withheld from this summary by "
+                     "the content blacklist - all of them are on the page)")
 
     lines.append("")
     lines.append("Following days on the page: " + (", ".join(
         "{0} ({1} item(s))".format(_fmt_day_short(other), len(events))
         for other, events in ahead) or "none"))
     if withheld:
-        lines.append("[{0} event(s) withheld by the content blacklist and left "
-                     "off the page.]".format(withheld))
-    lines.append("It is A4 landscape - print it single-sided and fold it in "
-                 "half for a bifold day planner.")
+        lines.append("[{0} event(s) matched the content blacklist. They ARE on "
+                     "the printed page - only their subjects are withheld from "
+                     "this summary.]".format(withheld))
+    lines.append("It is A4 landscape, printed on the top four fifths of the "
+                 "sheet - print it single-sided, fold it in half for a bifold "
+                 "day planner, and fold the blank bottom fifth up behind it.")
     return "\n".join(lines)
 
 
@@ -4778,9 +4922,12 @@ TOOLS = [
             "'today' (the default), 'tomorrow', 'yesterday', a day offset like '+2', "
             "or YYYY-MM-DD - prefer the words, because the server uses the endpoint's "
             "own clock. The file is written into the documents folder and the tool "
-            "reports the full path plus what is on the page. Reading the calendar is "
-            "still read-only; events withheld by the content policy are left off the "
-            "page and counted in the footer."
+            "reports the full path plus what is on the page. The sheet prints on its "
+            "top four fifths so the blank bottom fifth folds up behind it. Reading the "
+            "calendar is still read-only; every event is on the page, and the planner "
+            "never reads an event's body - an event whose subject, location or "
+            "category matches the content blacklist is printed but left out of this "
+            "tool's reply, which reports how many."
         ),
         "inputSchema": {
             "type": "object",
