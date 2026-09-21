@@ -49,7 +49,10 @@ printing.
 `outlook_print_calendar` writes an A4 landscape PDF into `C:\Eva\documents\pdf`
 and reports the path plus what is on the page. It is a bifold: the day on an
 hour-by-hour timeline down the left half, the following days summarised on the
-right. Tell the user the path, and that it prints single-sided and folds in half.
+right. The page uses the top four fifths of the sheet, so the blank bottom
+fifth folds up behind it and the planner fits a diary. Tell the user the path,
+that it prints single-sided at 100% (it is still a full A4 landscape page),
+and that it folds in half with the bottom fifth turned up.
 
 | They say | Call |
 |---|---|
@@ -61,8 +64,8 @@ right. Tell the user the path, and that it prints single-sided and folds in half
 - **One day per sheet.** There is no week or month layout; for a range, print
   each day or use `outlook_get_calendar` and answer in chat instead.
 - **Do not re-read the calendar first.** The tool reads it itself and its reply
-  lists everything on the page, so a preceding `outlook_get_calendar` is a
-  wasted round trip.
+  lists what is on the page, so a preceding `outlook_get_calendar` is a wasted
+  round trip - and a worse one here, since that tool withholds more (below).
 - **Re-printing the same day overwrites that day's file.** That is deliberate,
   so say "updated" rather than warning about a clash.
 - **Attendee names are never on the page** and there is no argument to put them
@@ -102,10 +105,14 @@ KB". The file lands in `C:\Eva\knowledge\email` and the tool reports the path.
   planner, and an **unsent** meeting draft (`outlook_draft_meeting`, which
   the user then sends themselves).
 - A compliance blacklist may withhold messages/folders entirely; blocked
-  items appear only as a withheld count — including on a printed planner,
-  where a blocked meeting is left off the page entirely and counted in the
-  footer. Do not speculate about their content, and never try to work around
-  the filter.
+  items appear only as a withheld count. Do not speculate about their content,
+  and never try to work around the filter.
+- **The printed planner is the exception.** It never reads an appointment's
+  body, so every event goes on the page - the PDF is written locally, on the
+  user's own paper. A blocked event is left out of the tool's REPLY only, and
+  the reply says how many. So the sheet can hold more meetings than the reply
+  lists: say the page is complete, never that a meeting is missing from it,
+  and do not ask the user what a withheld meeting was.
 - Calendar date filtering is done in Python (locale-independent), so
   regional date settings cannot empty the results. If `outlook_get_calendar`
   finds nothing, its reply includes a `[debug]` section listing the last few

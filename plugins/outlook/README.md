@@ -7,7 +7,7 @@ day planner for any day.
 
 | | |
 |---|---|
-| **Server** | `outlook.py` v8.1.0 |
+| **Server** | `outlook.py` v9.0.0 |
 | **pip install** | `pywin32` |
 | **Platform** | **Windows only** — requires classic Win32 Outlook (not "New Outlook") installed, running, and logged into a profile |
 | **Sends** | **never.** Not an email, not a reply, not a meeting invitation. It cannot accept, move or delete anything either |
@@ -146,6 +146,11 @@ PDF** into `C:\Eva\documents\pdf`. Print it single-sided and fold it in half:
 the day itself runs down the left panel on an hour-by-hour timeline, the
 following days are summarised on the right.
 
+The sheet prints on its **top four fifths**. The bottom fifth comes out blank
+with a hairline to fold against, so you can fold it up behind the page and the
+planner fits a diary. It is still a full A4 landscape page - print it at 100%,
+no scaling.
+
 | You say | What you get |
 |---|---|
 | "Print today's calendar" | `Calendar - 2026-09-14 Monday.pdf` for today, with the next four days that have something on them |
@@ -172,8 +177,11 @@ because the model's idea of today was stale.
   crowds out the subject and location the sheet is for, and it puts other
   people's names on something left on a desk. They are still read, since an
   outside-domain attendee is what colours an uncategorised block.
-- **Type is small on purpose** (6pt floor). A planner is read at desk distance,
-  and a subject that fits on its block beats large type with an ellipsis.
+- **One type size for every subject** (7pt), whatever block it sits on. The
+  size used to follow the size of the block, which made an hour-long meeting
+  shout and a fifteen-minute one whisper for no reason other than its duration.
+  It is small on purpose: a planner is read at desk distance, and a subject
+  that fits on its block beats large type with an ellipsis.
 - **Colour comes from your own Outlook categories, with nothing to configure.**
   Outlook already stores a colour against each category; the planner reads it
   off the profile and prints it at full strength. See
@@ -187,8 +195,16 @@ because the model's idea of today was stale.
 - **Empty days are skipped** in the right-hand panel, so a Friday sheet shows
   the week ahead instead of two blank weekend panels. Ask for the literal next
   four days and it passes `skip_empty_days: false`.
-- **Blacklisted events never reach the page** — not even as an unlabelled
-  block. The footer carries the count.
+- **Every event is printed, blacklisted or not.** The PDF is drawn on this
+  machine and printed on your own paper, and a planner missing the meetings
+  that matter most is not worth carrying. What makes that safe is that the
+  planner **never reads an appointment's body** — the part that carries marked
+  detail — so nothing on the page or in the reply comes from it. The blacklist
+  still decides what the AI is told: it is matched against the subject,
+  location, organiser and categories, and an event that matches is printed but
+  left out of the tool's reply, which reports how many. `outlook_get_calendar`
+  is stricter, and unchanged: it reads the body and withholds a matching event
+  outright, because its whole output goes to the model.
 
 Re-printing a day overwrites that day's file rather than piling up copies.
 
@@ -413,6 +429,16 @@ store/path matches a blacklisted term are withheld from `outlook_list_folders`
 and skipped by `outlook_search_recent` (results are labelled with their folder
 path, so a marked folder name never appears in output).
 
+**The printed planner is the one exception, and it is a narrower one than it
+looks.** `outlook_print_calendar` never reads an appointment's body at all, so
+the part of an event that carries marked detail cannot reach the model by any
+route — the page and the reply are built from the subject, times, location and
+categories only. Because nothing sensitive can leak, every event is printed on
+your own paper; the blacklist is matched against those visible fields instead,
+and an event that matches is left out of the tool's **reply** while still
+appearing on the page. `outlook_get_calendar` is unchanged: it reads the body
+and withholds a matching event outright.
+
 Everything else is configured by editing the `USER CONFIGURATION` block at the
 top of `outlook.py` directly (there are no CLI flags/env vars for these):
 
@@ -426,6 +452,8 @@ top of `outlook.py` directly (there are no CLI flags/env vars for these):
 | `CALENDAR_LOOKAHEAD_DAYS` | How many following days the planner's right-hand panel lists by default (4); a per-call `lookahead_days` still takes priority |
 | `CALENDAR_CATEGORY_COLOURS` | Category → colour overrides in the file itself, merged with (and beaten by) `OUTLOOK_CALENDAR_COLOURS`. Both sit on top of the colours read from Outlook |
 | `PLANNER_COLOURS` / `OL_CATEGORY_COLOURS` | The bold palette, and which Outlook category colour maps to which name |
+| `PLANNER_TITLE_PT` | The one type size every event subject on the page is set at (7pt) |
+| `PLANNER_CONTENT_FRACTION` | How much of the sheet's height the planner prints on (`0.8` — the top four fifths, leaving the bottom fifth blank to fold up) |
 | `SEARCH_ALL_FOLDERS` | Folder names (matched across every store) that `outlook_search_recent` searches by default — `["Inbox", "Sent Items", "Archive"]`; use `outlook_list_folders` to see real folder names first. This is only the built-in default: override it with `OUTLOOK_SEARCH_FOLDERS`, or per call by passing a `folders` argument |
 
 ## File access
