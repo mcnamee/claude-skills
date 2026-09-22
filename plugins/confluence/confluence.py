@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-confluence.py (v4.0.0) - A single-file MCP (Model Context Protocol) server
+confluence.py (v5.0.0) - A single-file MCP (Model Context Protocol) server
 for querying ONE OR TWO Confluence Data Center instances (tested against the
 9.x v1 REST API) using only the Python 3 standard library.
 
@@ -14,6 +14,28 @@ Tools exposed (read-only / query):
   - confluence_get_page         : fetch one page by numeric ID (with body text)
   - confluence_get_page_by_title: fetch one page by exact title + space key
   - confluence_list_pages_under : list pages beneath a parent page
+
+MACROS
+------
+Most of what makes a Confluence page useful is in a macro, and a macro comes in
+one of two kinds:
+
+  IN THE PAGE SOURCE - an info/note/warning panel, an expand, a code block, an
+    inline task list, a status lozenge. Confluence stores the content itself, so
+    it can be read from the page source.
+  GENERATED WHEN THE PAGE IS DISPLAYED - a task report, a page properties
+    report, a children list, a page tree, Jira issues, an excerpt include. The
+    page source holds ONLY the macro's settings; Confluence produces the content
+    (the table of tasks, the list of pages) each time someone opens the page.
+
+This server reads both. Page bodies come back as Markdown, with panels as block
+quotes, expand macros shown open, code macros as fenced blocks, tables as
+tables, and inline tasks as '- [ ]' / '- [x]' checkboxes. For the generated
+kind it asks CONFLUENCE to render the page and reads the result, which is the
+only way that content can be obtained - see CONFLUENCE_BODY_FORMAT below.
+
+So "list the tasks on page X" now works whether the page carries inline task
+checkboxes or a Task Report macro pointed at a person.
 
 TWO CONFLUENCE SERVERS
 ----------------------
@@ -92,6 +114,28 @@ read it out of a process listing.
                           CONFLUENCE_CA_CERT
 
   Shared by both servers:
+  CONFLUENCE_BODY_FORMAT
+                        which version of a page body to read (default "auto"):
+                          auto        page source for an ordinary page, and the
+                                      RENDERED page whenever the page uses a
+                                      macro whose content Confluence generates
+                                      at display time. This is the setting that
+                                      makes task reports, page properties
+                                      reports, children lists and Jira tables
+                                      readable, while ordinary pages keep the
+                                      cleaner source text.
+                          view        always the rendered page
+                          export_view the render Confluence uses for PDF/Word
+                                      export. Try this if a macro is STILL
+                                      empty under "view" - a page tree, and
+                                      some third-party macros, only render
+                                      statically on export
+                          storage     the raw page source only, with no macro
+                                      output (how this server behaved before
+                                      v5.0.0)
+                        Each page tool also takes a per-call 'body_format'
+                        argument, so a page can be re-read rendered without
+                        changing this setting.
   CONFLUENCE_TIMEOUT    request timeout in seconds (default: 30)
   CONFLUENCE_MAX_BODY   truncate page bodies to N chars (0 = unlimited,
                         default 0). This limit applies only to the text
@@ -146,6 +190,11 @@ the fastest way to prove a two-server setup before wiring it in:
 
     & "C:\path\to\python.exe" confluence.py --check
 
+If a page reads as empty where you expected a table of tasks or rows, the
+'Body:' line in the tool's output says which representation was used, and a
+page read from the source names each macro whose content was not fetched. Read
+it again with body_format="view", then body_format="export_view".
+
 A quick two-server smoke test from PowerShell, without touching the plugin
 config (every setting, tokens included, goes in the environment):
 
@@ -160,7 +209,7 @@ config (every setting, tokens included, goes in the environment):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "4.0.0"
+__version__ = "5.0.0"
 
 import argparse
 import base64
@@ -191,6 +240,23 @@ SERVER_VERSION = __version__
 SUBFOLDER = "confluence"                 # this server's knowledge sub-folder
 EVA_KNOWLEDGE_DIR = r"C:\Eva\knowledge"  # fallback for the suite-wide root
 KB_DIR = r"C:\Eva\knowledge\confluence"
+
+# Which representation of a page body to read. Confluence keeps the page SOURCE
+# in "storage" and the RENDERED page in "view"/"export_view"; a macro that
+# generates its content at display time (task report, page properties report,
+# children list, Jira issues) has NO content in the source, so a reader that
+# only looks at storage reports those pages as empty.
+#   auto        - storage for a page that carries all its own content, a
+#                 rendered body for a page that uses a generated macro. Default.
+#   view        - always the rendered page (what the browser shows)
+#   export_view - the render Confluence uses for PDF/Word export; try this when
+#                 a macro still comes back empty under "view" (the page tree and
+#                 some third-party macros only render statically on export)
+#   storage     - the raw page source only; no macro output at all
+# Override with CONFLUENCE_BODY_FORMAT, or per call with the body_format
+# argument on the two page tools.
+BODY_FORMAT = "auto"
+BODY_FORMATS = ("auto", "view", "export_view", "storage")
 
 # Whether reading a page saves it WITHOUT being asked. False means a page is
 # saved only when the caller passes save_to_kb=true, which is the point: a
@@ -226,15 +292,153 @@ def log(*args):
 
 
 # ---------------------------------------------------------------------------
+# Confluence macros
+# ---------------------------------------------------------------------------
+# Confluence stores a macro as <ac:structured-macro ac:name="..."> with its
+# settings as <ac:parameter> children. TWO KINDS of macro live in that markup,
+# and they need opposite treatment:
+#
+#   STATIC  - the macro's content IS in the page source, inside
+#             <ac:rich-text-body> or <ac:plain-text-body> (an info panel, a
+#             code block, an expand). Reading the storage format is enough.
+#   DYNAMIC - the macro's content is GENERATED by Confluence when the page is
+#             displayed (a task report, a page-properties report, a children
+#             list, a Jira issue table). The storage format holds the macro's
+#             SETTINGS ONLY, so a reader that only looks at storage sees an
+#             empty macro and reports the page as having no tasks/rows/issues.
+#
+# The fix for the dynamic kind is to ask Confluence for a RENDERED body
+# (body.view or body.export_view) instead of body.storage - see BODY_FORMAT.
+# The set below is the allowlist of macros known to carry their content in the
+# page source; ANY other macro is assumed dynamic, so a third-party macro this
+# file has never heard of still triggers a rendered fetch rather than silently
+# reading as empty.
+STATIC_MACROS = frozenset((
+    "code", "noformat", "panel", "info", "note", "tip", "warning", "expand",
+    "excerpt", "multiexcerpt", "details", "section", "column", "align",
+    "anchor", "status", "toc",
+    "toc-zone", "highlight", "quote", "html-bullet", "div", "span",
+    "localtabgroup", "localtab", "tabs-page", "tabsetup", "deck", "card",
+    "bookmark", "cheese", "color", "font", "note-macro", "hidden-comment",
+))
+
+# Macros whose rendered output is worth naming in a placeholder when only the
+# storage format is available, mapped to a human phrase. Anything not listed
+# falls back to the macro's own name.
+DYNAMIC_MACRO_LABELS = {
+    "tasks-report-macro": "task report",
+    "tasks-report": "task report",
+    "detailssummary": "page properties report",
+    "details": "page properties",
+    "children": "child-page list",
+    "pagetree": "page tree",
+    "contentbylabel": "content-by-label list",
+    "recently-updated": "recently updated list",
+    "include": "included page",
+    "excerpt-include": "included excerpt",
+    "multiexcerpt-include": "included multi-excerpt",
+    "jira": "Jira issues",
+    "jiraissues": "Jira issues",
+    "jirachart": "Jira chart",
+    "blog-posts": "blog post list",
+    "livesearch": "search box",
+    "attachments": "attachment list",
+    "gallery": "image gallery",
+    "chart": "chart",
+    "roadmap": "roadmap planner",
+    "calendar": "team calendar",
+    "drawio": "draw.io diagram",
+    "gliffy": "Gliffy diagram",
+    "viewpdf": "embedded PDF",
+    "viewxls": "embedded spreadsheet",
+    "widget": "embedded widget",
+    "profile": "user profile",
+    "contributors": "contributor list",
+    "spacedetails": "space details",
+    "create-from-template": "create-page button",
+}
+
+# Matches a macro invocation in storage-format XHTML, capturing its name. Used
+# only to decide whether a page needs a rendered body; the real parsing is done
+# by the HTML parser below.
+_MACRO_NAME_RE = re.compile(
+    r"<ac:(?:structured-)?macro\b[^>]*?\bac:name\s*=\s*[\"']([^\"']+)[\"']",
+    re.IGNORECASE,
+)
+
+
+def storage_macro_names(raw):
+    """Return the set of macro names used in a storage-format body."""
+    if not raw:
+        return set()
+    return {m.lower() for m in _MACRO_NAME_RE.findall(raw)}
+
+
+def has_dynamic_macro(raw):
+    """
+    True if a storage-format body uses a macro whose content Confluence
+    generates at display time, so reading storage alone would lose it.
+
+    Unknown macros count as dynamic on purpose: guessing "static" for a macro
+    we have never seen would silently drop its content, while guessing
+    "dynamic" only costs a rendered fetch we were going to be able to use.
+    """
+    return any(name not in STATIC_MACROS for name in storage_macro_names(raw))
+
+
+def normalise_body_format(value, default=None):
+    """
+    Coerce a body-format setting to one of BODY_FORMATS, or the default.
+
+    Accepts the hyphenated spellings a user is likely to type ("export-view").
+    Returns the default for anything unrecognised so a typo cannot stop the
+    server; the caller warns where a warning is useful.
+    """
+    if value is None:
+        return default
+    want = str(value).strip().lower().replace("-", "_")
+    if not want:
+        return default
+    if want in ("rendered", "display"):
+        want = "view"
+    if want in ("export", "exportview"):
+        want = "export_view"
+    if want in ("source", "raw"):
+        want = "storage"
+    return want if want in BODY_FORMATS else default
+
+
+def _blockquote(text):
+    """Prefix every line of text with '> ' so it reads as a Markdown quote."""
+    lines = text.strip().split("\n")
+    return "\n".join(("> " + ln) if ln.strip() else ">" for ln in lines)
+
+
+def _format_params(params, skip=()):
+    """Render a macro's parameters as 'key=value, key=value' for a placeholder."""
+    bits = []
+    for key, val in params.items():
+        if key in skip or not val:
+            continue
+        flat = " ".join(str(val).split())
+        if len(flat) > 120:
+            flat = flat[:117] + "..."
+        bits.append("{}={}".format(key or "(unnamed)", flat))
+    return ", ".join(bits)
+
+
+# ---------------------------------------------------------------------------
 # HTML -> plain text
 # ---------------------------------------------------------------------------
 class _TextExtractor(html.parser.HTMLParser):
     """
     Minimal HTML/XHTML to plain-text converter.
 
-    Confluence "storage format" bodies are XHTML with extra <ac:...> macro
-    tags. We don't try to interpret macros; we just keep the readable text and
-    insert line breaks around block-level elements so the result is legible.
+    This is the defensive fallback for html_to_markdown; the Markdown extractor
+    below is what normally runs. It keeps the readable text and inserts line
+    breaks around block-level elements. Macro PARAMETERS are skipped - they are
+    settings, not content, and letting them through produced runs of glued-together
+    values like 'DEVjsmithtrue' in the middle of a page.
     convert_charrefs=True (the default) means entities like &amp; are decoded
     for us and arrive via handle_data.
     """
@@ -242,9 +446,9 @@ class _TextExtractor(html.parser.HTMLParser):
     _BLOCK_TAGS = {
         "p", "br", "div", "li", "tr", "h1", "h2", "h3", "h4", "h5", "h6",
         "table", "ul", "ol", "blockquote", "pre", "section", "header",
-        "footer", "article",
+        "footer", "article", "ac:task", "ac:task-list", "ac:structured-macro",
     }
-    _SKIP_TAGS = {"script", "style"}
+    _SKIP_TAGS = {"script", "style", "ac:parameter", "ac:task-id"}
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
@@ -266,6 +470,16 @@ class _TextExtractor(html.parser.HTMLParser):
     def handle_data(self, data):
         if self._skip_depth == 0:
             self._parts.append(data)
+
+    def unknown_decl(self, data):
+        # CDATA sections (code-macro bodies, link labels) arrive here.
+        if self._skip_depth:
+            return
+        if data.startswith("CDATA["):
+            inner = data[6:]
+            if inner.endswith("]"):
+                inner = inner[:-1]
+            self._parts.append(inner)
 
     def get_text(self):
         text = "".join(self._parts)
@@ -301,22 +515,55 @@ def html_to_text(raw):
 
 class _MarkdownExtractor(html.parser.HTMLParser):
     """
-    Convert Confluence storage-format XHTML into reasonable Markdown.
+    Convert Confluence XHTML into reasonable Markdown.
 
-    This is a best-effort converter aimed at RAG ingestion, not a pixel-perfect
-    renderer. It handles the common structural elements (headings, paragraphs,
-    lists, bold/italic, links, inline code, code blocks, block quotes, rules and
-    tables). Confluence macros (<ac:...>) are not interpreted, but their inner
-    text - including code-macro CDATA bodies - is preserved. Text is not
-    Markdown-escaped, so the occasional literal '*' may look like emphasis; that
-    is a deliberate trade-off to keep the captured text faithful for search.
+    It runs over BOTH shapes of body this server fetches: the storage format
+    (the page source, with <ac:...> macro markup) and a rendered body
+    (body.view / body.export_view, which is ordinary HTML because Confluence has
+    already run the macros). It is a best-effort converter aimed at reading and
+    RAG ingestion, not a pixel-perfect renderer.
+
+    Structural HTML is handled directly (headings, paragraphs, lists,
+    bold/italic, links, inline code, code blocks, block quotes, rules, tables).
+    On top of that it understands the Confluence-specific markup that a generic
+    HTML reader turns into mush:
+
+      - <ac:structured-macro> is rendered per macro: code macros become fenced
+        blocks, info/note/warning/panel become block quotes, expand shows its
+        (otherwise collapsed) contents, status becomes an inline label. A macro
+        whose content Confluence generates at display time leaves a placeholder
+        naming the macro and its settings, so the reader knows content is
+        MISSING rather than absent.
+      - <ac:parameter> is captured as a macro setting instead of being emitted
+        as loose text.
+      - <ac:task-list>/<ac:task> become '- [ ] ' / '- [x] ' checkboxes. This is
+        how Confluence stores inline tasks, so "list the tasks on page X" works
+        off the page source alone.
+      - <ac:link>/<ri:page>/<ri:user>/<ri:attachment> become readable links and
+        @mentions, and <ac:image> names its attachment.
+      - In a RENDERED body, a task list arrives as <li class="inline-task-list
+        checked">; the class is read so the checkbox state survives there too.
+
+    Text is not Markdown-escaped, so the occasional literal '*' may look like
+    emphasis; that is a deliberate trade-off to keep the captured text faithful
+    for search.
     """
 
     _SKIP_TAGS = {"script", "style"}
+    # Macro wrappers whose children should render normally: they exist to hold
+    # content, and add nothing themselves.
+    _PASSTHROUGH_TAGS = {
+        "ac:rich-text-body", "ac:layout", "ac:layout-section", "ac:layout-cell",
+        "ac:inline-comment-marker", "ac:adf-node", "ac:adf-content",
+    }
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.parts = []
+        # Output is written to the sink on top of this stack. Pushing a sink is
+        # how a table cell, a macro body or a macro parameter is captured and
+        # re-emitted in a different shape once its closing tag arrives.
+        self._sinks = [self.parts]
         self._skip_depth = 0
         self._in_pre = 0
         self._list_stack = []      # 'ul' / 'ol' per nesting level
@@ -326,21 +573,180 @@ class _MarkdownExtractor(html.parser.HTMLParser):
         self._table_depth = 0
         self._rows = None          # list of cell-lists for the current table
         self._row = None           # current row (list of cell strings)
-        self._cell = None          # buffer for the current cell, or None
+        self._cell_open = False    # True while a <td>/<th> sink is pushed
+        # Confluence macro state
+        self._macros = []          # stack of open macro dicts
+        self._param_names = []     # ac:name per currently-open <ac:parameter>
+        self._plain_body = []      # tag name per open <ac:plain-text-*-body>
+        self._tasks = []           # stack of open <ac:task> dicts
+        self._links = []           # target/anchor per open <ac:link>
 
+    # -- output sinks -------------------------------------------------------
     def _emit(self, s):
-        # Route text either into the current table cell or the main output.
-        if self._cell is not None:
-            self._cell.append(s)
-        else:
-            self.parts.append(s)
+        self._sinks[-1].append(s)
 
+    def _push_sink(self):
+        self._sinks.append([])
+
+    def _pop_sink(self):
+        # Never pop the base sink: a malformed document must not lose the page.
+        if len(self._sinks) == 1:
+            return ""
+        return "".join(self._sinks.pop())
+
+    # -- macro helpers ------------------------------------------------------
+    def _macro_param(self, name, default=""):
+        return self._macros[-1]["params"].get(name, default) if self._macros else default
+
+    def _render_macro(self, macro):
+        """Turn one finished <ac:structured-macro> into Markdown."""
+        name = (macro["name"] or "").lower()
+        params = macro["params"]
+        body = macro["body"].strip()
+        plain = macro["plain"]
+        title = (params.get("title") or params.get("name") or "").strip()
+
+        if name in ("code", "noformat"):
+            lang = (params.get("language") or "").strip()
+            if lang.lower() in ("none", "text"):
+                lang = ""
+            source = plain if plain is not None else body
+            head = "\n\n**{}**\n".format(title) if title else "\n\n"
+            return "{}```{}\n{}\n```\n\n".format(head, lang, (source or "").strip("\n"))
+
+        if name in ("info", "note", "tip", "warning", "panel", "warn"):
+            label = {"warn": "Warning"}.get(name, name.capitalize())
+            heading = "**{}:** {}".format(label, title) if title else "**{}**".format(label)
+            inner = body if body else "(empty)"
+            return "\n\n" + _blockquote(heading + "\n\n" + inner) + "\n\n"
+
+        if name == "expand":
+            heading = title or "Click here to expand"
+            # Expand macros hide real content behind a toggle; show it.
+            return "\n\n**{}**\n\n{}\n\n".format(heading, body)
+
+        if name == "status":
+            text = title or (params.get("colour") or params.get("color") or "status")
+            return "**[{}]**".format(text.strip().upper())
+
+        if name in ("toc", "toc-zone", "anchor", "bookmark"):
+            return "\n" + body + "\n" if body else ""
+
+        if name in ("excerpt", "section", "column", "align", "div", "span",
+                    "highlight", "quote", "color", "font"):
+            # Layout-only wrappers: keep the content, drop the wrapper.
+            return "\n\n" + body + "\n\n" if body else ""
+
+        if body:
+            # A macro we have no special rendering for, but which carries its
+            # content in the page source: keep the content, name the macro.
+            return "\n\n*[{} macro]*\n\n{}\n\n".format(name, body)
+        if plain:
+            return "\n\n*[{} macro]*\n\n{}\n\n".format(name, plain.strip())
+
+        # No content in the source at all: this is a macro Confluence renders at
+        # display time. Say so explicitly, with its settings, so the reader knows
+        # the content exists but was not fetched - and how to fetch it.
+        label = DYNAMIC_MACRO_LABELS.get(name, "{} macro".format(name))
+        settings = _format_params(params)
+        return (
+            "\n\n[Confluence {label} (macro \"{name}\"{settings}). Its content is "
+            "generated by Confluence when the page is displayed and is NOT in the "
+            "page source, so it is not shown here. Read this page again with "
+            "body_format=\"view\" to get the rendered result.]\n\n"
+        ).format(
+            label=label, name=name,
+            settings=", " + settings if settings else "",
+        )
+
+    def _resource(self, text):
+        """
+        Handle an <ri:...> resource reference. Inside an <ac:link> it names the
+        link's TARGET (kept aside so the link body can be used as the label);
+        anywhere else it is simply the text to show.
+        """
+        if not text:
+            return
+        if self._links and not self._links[-1]["target"]:
+            self._links[-1]["target"] = text
+        else:
+            self._emit(text)
+
+    def _render_task(self, task):
+        """Turn one finished <ac:task> into a Markdown checkbox line."""
+        status = (task["status"] or "").strip().lower()
+        box = "x" if status in ("complete", "completed", "done", "checked") else " "
+        text = " ".join(task["body"].split())
+        return "\n- [{}] {}".format(box, text)
+
+    # -- parser callbacks ---------------------------------------------------
     def handle_starttag(self, tag, attrs):
         if tag in self._SKIP_TAGS:
             self._skip_depth += 1
             return
         if self._skip_depth:
             return
+        attrd = {k.lower(): (v or "") for k, v in attrs}
+
+        # --- Confluence-specific markup ---
+        if tag in ("ac:structured-macro", "ac:macro"):
+            self._macros.append({
+                "name": attrd.get("ac:name", ""),
+                "params": {},
+                "body": "",
+                "plain": None,
+            })
+            self._push_sink()
+            return
+        if tag == "ac:parameter":
+            self._param_names.append(attrd.get("ac:name", ""))
+            self._push_sink()
+            return
+        if tag in ("ac:plain-text-body", "ac:plain-text-link-body"):
+            self._plain_body.append(tag)
+            self._push_sink()
+            return
+        if tag == "ac:task-list":
+            self._emit("\n\n")
+            return
+        if tag == "ac:task":
+            self._tasks.append({"status": "", "body": ""})
+            self._push_sink()
+            return
+        if tag in ("ac:task-id", "ac:task-uuid", "ac:task-status", "ac:task-body"):
+            self._push_sink()
+            return
+        if tag in self._PASSTHROUGH_TAGS:
+            return
+        if tag == "ac:link":
+            # The link TARGET arrives as a child element (<ri:page>, <ri:user>,
+            # <ri:attachment>) while the LABEL is the element's body, so both are
+            # collected and combined when the closing tag arrives.
+            self._links.append({"target": "", "anchor": attrd.get("ac:anchor", "")})
+            self._push_sink()
+            return
+        if tag == "ac:image":
+            self._push_sink()
+            return
+        if tag == "ri:page":
+            self._resource(attrd.get("ri:content-title", ""))
+            return
+        if tag in ("ri:user", "ri:mention"):
+            who = (attrd.get("ri:username") or attrd.get("ri:account-id")
+                   or attrd.get("ri:userkey") or "")
+            self._resource("@" + who if who else "@user")
+            return
+        if tag in ("ri:attachment", "ri:blog-post", "ri:space", "ri:content-entity"):
+            self._resource(attrd.get("ri:filename") or attrd.get("ri:content-title")
+                           or attrd.get("ri:space-key") or "")
+            return
+        if tag == "ac:emoticon":
+            return
+        if tag.startswith("ac:") or tag.startswith("ri:"):
+            # Unknown Confluence element: render its children, ignore the tag.
+            return
+
+        # --- ordinary HTML ---
         if tag == "br":
             self._emit("\n" if self._in_pre else "  \n")
         elif tag == "p":
@@ -361,11 +767,7 @@ class _MarkdownExtractor(html.parser.HTMLParser):
         elif tag == "hr":
             self._emit("\n\n---\n\n")
         elif tag == "a":
-            href = ""
-            for key, val in attrs:
-                if key == "href":
-                    href = val or ""
-            self._href_stack.append(href)
+            self._href_stack.append(attrd.get("href", ""))
             self._emit("[")
         elif tag == "ul":
             self._list_stack.append("ul")
@@ -374,7 +776,11 @@ class _MarkdownExtractor(html.parser.HTMLParser):
             self._ol_counters.append(0)
         elif tag == "li":
             indent = "  " * max(0, len(self._list_stack) - 1)
-            if self._list_stack and self._list_stack[-1] == "ol":
+            classes = attrd.get("class", "").lower().split()
+            if "checked" in classes or "unchecked" in classes:
+                # A rendered inline task: keep the tick state the class carries.
+                marker = "- [x] " if "checked" in classes else "- [ ] "
+            elif self._list_stack and self._list_stack[-1] == "ol":
                 self._ol_counters[-1] += 1
                 marker = "{}. ".format(self._ol_counters[-1])
             else:
@@ -385,11 +791,17 @@ class _MarkdownExtractor(html.parser.HTMLParser):
             if self._table_depth == 1:
                 self._rows = []
         elif tag == "tr":
-            if self._rows is not None:
+            # Only the outermost table is rendered as a grid; a nested table's
+            # rows must not clobber the row being built for the outer one.
+            if self._rows is not None and self._table_depth == 1:
                 self._row = []
         elif tag in ("td", "th"):
-            if self._row is not None:
-                self._cell = []
+            if (self._row is not None and not self._cell_open
+                    and self._table_depth == 1):
+                self._cell_open = True
+                self._push_sink()
+            elif self._table_depth > 1:
+                self._emit(" ")     # nested table, flattened into its cell
 
     def handle_endtag(self, tag):
         if tag in self._SKIP_TAGS:
@@ -398,6 +810,87 @@ class _MarkdownExtractor(html.parser.HTMLParser):
             return
         if self._skip_depth:
             return
+
+        # --- Confluence-specific markup ---
+        if tag in ("ac:structured-macro", "ac:macro"):
+            body = self._pop_sink()
+            if self._macros:
+                macro = self._macros.pop()
+                macro["body"] = body
+                self._emit(self._render_macro(macro))
+            else:
+                self._emit(body)
+            return
+        if tag == "ac:parameter":
+            value = self._pop_sink().strip()
+            key = self._param_names.pop() if self._param_names else ""
+            if self._macros:
+                self._macros[-1]["params"][key] = value
+            elif value:
+                self._emit(value)
+            return
+        if tag in ("ac:plain-text-body", "ac:plain-text-link-body"):
+            value = self._pop_sink()
+            if self._plain_body:
+                self._plain_body.pop()
+            if tag == "ac:plain-text-body" and self._macros:
+                # Kept apart from the rich-text body so the code macro can fence
+                # it without the macro's own parameters leaking in.
+                self._macros[-1]["plain"] = value
+            else:
+                self._emit(value)
+            return
+        if tag == "ac:task-list":
+            self._emit("\n\n")
+            return
+        if tag == "ac:task":
+            leftover = self._pop_sink()
+            if self._tasks:
+                task = self._tasks.pop()
+                if not task["body"]:
+                    task["body"] = leftover
+                self._emit(self._render_task(task))
+            else:
+                self._emit(leftover)
+            return
+        if tag in ("ac:task-id", "ac:task-uuid"):
+            self._pop_sink()        # internal identifiers: not content
+            return
+        if tag == "ac:task-status":
+            value = self._pop_sink().strip()
+            if self._tasks:
+                self._tasks[-1]["status"] = value
+            return
+        if tag == "ac:task-body":
+            value = self._pop_sink()
+            if self._tasks:
+                self._tasks[-1]["body"] = value
+            else:
+                self._emit(value)
+            return
+        if tag == "ac:link":
+            label = " ".join(self._pop_sink().split())
+            link = self._links.pop() if self._links else {"target": "", "anchor": ""}
+            target = link["target"]
+            if link["anchor"]:
+                target = (target + "#" + link["anchor"]) if target else ("#" + link["anchor"])
+            if label and target and label != target:
+                self._emit("[{}]({})".format(label, target))
+            else:
+                self._emit(label or target)
+            return
+        if tag == "ac:image":
+            inner = " ".join(self._pop_sink().split())
+            self._emit("[image: {}]".format(inner) if inner else "[image]")
+            return
+        if tag in self._PASSTHROUGH_TAGS:
+            if tag in ("ac:layout-section", "ac:layout-cell"):
+                self._emit("\n\n")
+            return
+        if tag.startswith("ac:") or tag.startswith("ri:"):
+            return
+
+        # --- ordinary HTML ---
         if tag == "p":
             self._emit("\n\n")
         elif tag in ("h1", "h2", "h3", "h4", "h5", "h6"):
@@ -423,26 +916,53 @@ class _MarkdownExtractor(html.parser.HTMLParser):
                     self._ol_counters.pop()
             self._emit("\n")
         elif tag in ("td", "th"):
-            if self._cell is not None and self._row is not None:
-                # Markdown cells are single-line: flatten and escape pipes.
-                cell_text = " ".join("".join(self._cell).split())
-                self._row.append(cell_text.replace("|", "\\|"))
-                self._cell = None
+            if self._table_depth == 1:
+                self._close_cell()
+            else:
+                # A nested table is flattened into the cell that contains it;
+                # separate its values so they do not run together.
+                self._emit(" ")
         elif tag == "tr":
-            if self._row is not None and self._rows is not None:
-                self._rows.append(self._row)
-                self._row = None
+            if self._table_depth == 1:
+                self._close_cell()  # tolerate a row that closes with a cell open
+                if self._row is not None and self._rows is not None:
+                    self._rows.append(self._row)
+                    self._row = None
         elif tag == "table":
-            if self._table_depth == 1 and self._rows is not None:
-                self._emit_table(self._rows)
+            if self._table_depth == 1:
+                # Flush whatever is still open. Markup that omits </td> or </tr>
+                # (legal in HTML, and seen in some rendered bodies) would
+                # otherwise drop the last row on the floor.
+                self._close_cell()
+                if self._row and self._rows is not None:
+                    self._rows.append(self._row)
+                self._row = None
+                rows = self._rows or []
                 self._rows = None
+                self._emit_table(rows)
             if self._table_depth:
                 self._table_depth -= 1
+
+    def _close_cell(self):
+        """Finish the open table cell, if any, appending it to the current row."""
+        if not self._cell_open:
+            return
+        # Markdown cells are single-line: flatten and escape pipes.
+        cell_text = " ".join(self._pop_sink().split())
+        self._cell_open = False
+        if self._row is not None:
+            self._row.append(cell_text.replace("|", "\\|"))
+
+    def handle_startendtag(self, tag, attrs):
+        # XHTML self-closing element, e.g. <ri:user ri:userkey="..."/>. The base
+        # class calls start then end, which is right for every tag we handle.
+        self.handle_starttag(tag, attrs)
+        self.handle_endtag(tag)
 
     def handle_data(self, data):
         if self._skip_depth:
             return
-        if self._in_pre:
+        if self._in_pre or self._plain_body:
             self._emit(data)
             return
         if data.strip() == "":
@@ -477,9 +997,15 @@ class _MarkdownExtractor(html.parser.HTMLParser):
 
         out = [fmt(rows[0]), "| " + " | ".join(["---"] * ncols) + " |"]
         out.extend(fmt(r) for r in rows[1:])
-        self.parts.append("\n\n" + "\n".join(out) + "\n\n")
+        self._emit("\n\n" + "\n".join(out) + "\n\n")
 
     def get_markdown(self):
+        # Flush any sink left open by malformed markup, outermost last, so no
+        # content is lost when a document ends mid-element.
+        while len(self._sinks) > 1:
+            leftover = self._pop_sink()
+            if leftover:
+                self._emit(leftover)
         text = "".join(self.parts)
         # Trim trailing spaces and collapse runs of blank lines to a single one.
         lines = [ln.rstrip() for ln in text.split("\n")]
@@ -546,7 +1072,7 @@ class ConfluenceError(Exception):
 class ConfluenceClient:
     def __init__(self, name, base_url, token=None, user=None, password=None,
                  verify_ssl=True, ca_cert=None, timeout=30, max_body=0,
-                 kb_dir=None, kb_autosave=False):
+                 kb_dir=None, kb_autosave=False, body_format=BODY_FORMAT):
         if not name:
             raise ValueError("name is required")
         if not base_url:
@@ -555,6 +1081,9 @@ class ConfluenceClient:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.max_body = max_body
+        # Which body representation to read; see BODY_FORMAT at the top of this
+        # file. A per-call body_format argument overrides it.
+        self.body_format = normalise_body_format(body_format, BODY_FORMAT)
         # Folder to save pages into as Markdown; None/empty forbids saving.
         self.kb_dir = kb_dir or None
         # Whether a page read without an explicit save_to_kb argument is saved
@@ -695,14 +1224,82 @@ class ConfluenceClient:
             )
         return header + "\n\n" + "\n\n".join(lines) + footer
 
-    def _render_page(self, page, save_to_kb=None):
+    def _body_expand(self, body_format=None):
         """
-        Format a single content object (with body.storage) as text.
+        The 'expand' value needed to fetch the body this call wants.
+
+        The storage format is always requested alongside a rendered one: it
+        costs nothing (Confluence stores it verbatim), it is the fallback when
+        an instance does not return the rendered representation, and in 'auto'
+        mode it is what decides whether the rendered body is needed at all.
+        """
+        fmt = body_format or self.body_format
+        if fmt == "storage":
+            return "body.storage"
+        if fmt == "export_view":
+            return "body.export_view,body.storage"
+        return "body.view,body.storage"
+
+    def _pick_body(self, page, body_format=None):
+        """
+        Choose which representation of the body to read, returning
+        (html, representation_name).
+
+        Confluence keeps a page's SOURCE in 'storage' and its RENDERED output in
+        'view'/'export_view'. Macros that generate their content at display time
+        - a task report, a page-properties report, a children list, Jira issues -
+        appear in storage as an empty macro tag with settings, so reading storage
+        alone reports those pages as having no content. Reading a rendered body
+        is the only way to get that content, because Confluence itself is what
+        produces it.
+
+        'auto' (the default) picks per page: storage when the page carries all
+        its own content (cleaner text, no display chrome), the rendered body when
+        the page uses a macro whose output is generated.
+        """
+        fmt = body_format or self.body_format
+        bodies = page.get("body") or {}
+
+        def value(rep):
+            return ((bodies.get(rep) or {}).get("value")) or ""
+
+        storage = value("storage")
+        if fmt == "storage":
+            return storage, "storage"
+        preferred = "export_view" if fmt == "export_view" else "view"
+        if fmt == "auto" and storage and not has_dynamic_macro(storage):
+            return storage, "storage"
+        rendered = value(preferred)
+        if rendered.strip():
+            return rendered, preferred
+        # The instance did not return the rendered body (older API, or a render
+        # failure). Storage still holds everything except the generated macros,
+        # whose placeholders then say what is missing.
+        return storage, "storage"
+
+    def _body_note(self, representation, page_html):
+        """One line for the output header saying where the body came from."""
+        if representation == "storage":
+            if has_dynamic_macro(page_html):
+                return ("storage (page source) - this page uses macros whose "
+                        "content Confluence generates when the page is "
+                        "displayed; read it again with body_format=\"view\" to "
+                        "include them")
+            return "storage (page source)"
+        return "{} (rendered by Confluence, so macro content is included)".format(
+            representation)
+
+    def _render_page(self, page, save_to_kb=None, body_format=None):
+        """
+        Format a single content object as Markdown.
 
         save_to_kb decides whether the page is also written to the
         knowledge-base folder: True on request, False to skip, None ("the
         caller did not say") to follow the kb_autosave setting, which is off
         unless the endpoint deliberately turned it on.
+
+        body_format overrides this server's CONFLUENCE_BODY_FORMAT for one call
+        (see _pick_body).
         """
         title = page.get("title", "(untitled)")
         cid = page.get("id", "?")
@@ -710,8 +1307,11 @@ class ConfluenceClient:
         space = (page.get("space") or {}).get("key", "?")
         version = (page.get("version") or {}).get("number", "?")
         link = self._abs_link(page, (page.get("_links") or {}).get("webui", ""))
-        storage = (((page.get("body") or {}).get("storage") or {}).get("value")) or ""
-        text = html_to_text(storage)
+        body_html, representation = self._pick_body(page, body_format)
+        # Markdown, not plain text: a task list, a task report and a page
+        # properties table are all TABULAR, and flattening them to prose is what
+        # made "list the tasks on page X" unanswerable.
+        text = html_to_markdown(body_html)
         truncated_note = ""
         if self.max_body and len(text) > self.max_body:
             text = text[: self.max_body]
@@ -725,7 +1325,8 @@ class ConfluenceClient:
         # Only name the server when there is more than one to tell apart.
         if self.label_output:
             fields.append(("Server", self.name))
-        fields.extend([("Version", version), ("URL", link)])
+        fields.extend([("Version", version), ("URL", link),
+                       ("Body", self._body_note(representation, body_html))])
         meta = "".join("{}: {}\n".format(k, v) for k, v in fields) + "\n--- Content ---\n"
         rendered = meta + (text if text else "(this page has no readable body content)") + truncated_note
 
@@ -745,7 +1346,8 @@ class ConfluenceClient:
                 )
         elif wanted:
             try:
-                path = self._save_to_kb(title, link, space, version, storage)
+                path = self._save_to_kb(title, link, space, version,
+                                        body_html, representation)
                 log("saved page to knowledge base: {}".format(path))
                 rendered += "\n\n[Saved to knowledge base: {}]".format(path)
             except OSError as e:
@@ -753,7 +1355,7 @@ class ConfluenceClient:
                 rendered += "\n\n[Knowledge-base save FAILED: {}]".format(e)
         return rendered
 
-    def _save_to_kb(self, title, link, space, version, storage):
+    def _save_to_kb(self, title, link, space, version, body_html, representation):
         """
         Write the page to '<kb_dir>/Confluence - <title>.md', overwriting any
         existing file. Returns the path written; raises OSError on failure.
@@ -762,10 +1364,14 @@ class ConfluenceClient:
         'Confluence <server> - <title>.md', so a page with the same title on
         both instances produces two files instead of one overwriting the other.
 
+        The saved body is the SAME representation that was read (see
+        _pick_body), so a page saved for the RAG index carries the macro content
+        the reader saw rather than an empty macro tag.
+
         The FULL body is always saved (the CONFLUENCE_MAX_BODY limit only trims
         what is returned to the model, not what is stored for RAG).
         """
-        md_body = html_to_markdown(storage)
+        md_body = html_to_markdown(body_html)
         stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
         server_line = "- Server: {}\n".format(self.name) if self.label_output else ""
         header = (
@@ -774,10 +1380,12 @@ class ConfluenceClient:
             "{server_line}"
             "- Space: {space}\n"
             "- Version: {version}\n"
+            "- Body: {representation}\n"
             "- Fetched: {stamp}\n\n"
             "---\n\n"
         ).format(title=title, url=link or "(unknown)", server_line=server_line,
-                 space=space, version=version, stamp=stamp)
+                 space=space, version=version, representation=representation,
+                 stamp=stamp)
         content = header + (md_body if md_body else "(no readable body content)\n")
 
         # Create the folder if needed, then write. newline="\n" keeps endings
@@ -792,21 +1400,24 @@ class ConfluenceClient:
             fh.write(content)
         return path
 
-    def get_page(self, page_id, save_to_kb=None):
+    def get_page(self, page_id, save_to_kb=None, body_format=None):
         if page_id is None or str(page_id).strip() == "":
             raise ConfluenceError("'page_id' is required")
         page_id = str(page_id).strip()
-        params = {"expand": "body.storage,version,space"}
+        body_format = normalise_body_format(body_format) or self.body_format
+        params = {"expand": self._body_expand(body_format) + ",version,space"}
         page = self._get("/rest/api/content/" + urllib.parse.quote(page_id, safe=""), params)
-        return self._render_page(page, save_to_kb=save_to_kb)
+        return self._render_page(page, save_to_kb=save_to_kb,
+                                 body_format=body_format)
 
-    def get_page_by_title(self, title, space, save_to_kb=None):
+    def get_page_by_title(self, title, space, save_to_kb=None, body_format=None):
         if not title or not space:
             raise ConfluenceError("Both 'title' and 'space' are required")
+        body_format = normalise_body_format(body_format) or self.body_format
         params = {
             "title": title,
             "spaceKey": space,
-            "expand": "body.storage,version,space",
+            "expand": self._body_expand(body_format) + ",version,space",
             "limit": 1,
         }
         data = self._get("/rest/api/content", params)
@@ -814,7 +1425,8 @@ class ConfluenceClient:
         if not results:
             return "No page titled {!r} found in space {!r}{}.".format(
                 title, space, self._on_server())
-        return self._render_page(results[0], save_to_kb=save_to_kb)
+        return self._render_page(results[0], save_to_kb=save_to_kb,
+                                 body_format=body_format)
 
     def resolve_page_id(self, title, space):
         """
@@ -962,6 +1574,33 @@ def save_to_kb_property():
     }
 
 
+def body_format_property():
+    """
+    The shared 'body_format' argument for the two page-reading tools.
+
+    It exists for the retry: the server picks a sensible representation on its
+    own, but when a macro's content is still missing the model needs a way to
+    ask for the rendered page without an environment change on the endpoint.
+    """
+    return {
+        "type": "string",
+        "enum": list(BODY_FORMATS),
+        "description": (
+            "Which version of the page body to read. Leave this unset "
+            "('auto'): the server reads the page source for an ordinary page "
+            "and asks Confluence to RENDER the page when it uses a macro whose "
+            "content is generated at display time (task report, page "
+            "properties report, children list, Jira issues). Set 'view' to "
+            "force the rendered page, 'export_view' if a macro is STILL empty "
+            "under 'view' (page trees and some third-party macros only render "
+            "on export), or 'storage' for the raw source with no macro output. "
+            "If a page reads as having no tasks/rows/issues where the user "
+            "expects some, retry with 'view', then 'export_view', before "
+            "telling them the page is empty."
+        ),
+    }
+
+
 def base_tool_definitions():
     """
     The tools as advertised when a single server is configured (JSON-Schema
@@ -1025,10 +1664,16 @@ def base_tool_definitions():
             "name": "confluence_get_page",
             "description": (
                 "Retrieve a single Confluence page by its numeric page ID. "
-                "Returns the title, space, version, URL and the page body "
-                "converted to plain text. Reading a page does not save it "
-                "anywhere; pass 'save_to_kb' only if the user asks for it to "
-                "be kept."
+                "Returns the title, space, version, URL and the page body as "
+                "Markdown, with Confluence macros rendered: inline task lists "
+                "become '- [ ]' / '- [x]' checkboxes, info/note/warning panels "
+                "become quotes, expand macros are shown open, code macros "
+                "become fenced blocks, and tables stay tables. Macros whose "
+                "content Confluence generates when the page is displayed (task "
+                "report, page properties report, children list, Jira issues) "
+                "are fetched by asking Confluence to render the page - see "
+                "'body_format'. Reading a page does not save it anywhere; pass "
+                "'save_to_kb' only if the user asks for it to be kept."
             ),
             "inputSchema": {
                 "type": "object",
@@ -1038,6 +1683,7 @@ def base_tool_definitions():
                         "description": "The numeric Confluence content ID, e.g. '393217'.",
                     },
                     "save_to_kb": save_to_kb_property(),
+                    "body_format": body_format_property(),
                 },
                 "required": ["page_id"],
             },
@@ -1060,6 +1706,7 @@ def base_tool_definitions():
                         "description": "The space key the page lives in (e.g. 'DOCS').",
                     },
                     "save_to_kb": save_to_kb_property(),
+                    "body_format": body_format_property(),
                 },
                 "required": ["title", "space"],
             },
@@ -1192,12 +1839,14 @@ def call_tool(servers, name, arguments):
 
     if name == "confluence_get_page":
         return client.get_page(arguments.get("page_id"),
-                               save_to_kb=arguments.get("save_to_kb"))
+                               save_to_kb=arguments.get("save_to_kb"),
+                               body_format=arguments.get("body_format"))
 
     if name == "confluence_get_page_by_title":
         return client.get_page_by_title(
             arguments.get("title"), arguments.get("space"),
             save_to_kb=arguments.get("save_to_kb"),
+            body_format=arguments.get("body_format"),
         )
 
     if name == "confluence_list_pages_under":
@@ -1490,6 +2139,7 @@ def run_check(servers):
             else "on request only"))
     else:
         log("KB save folder   : disabled - no page can be saved")
+    log("Page body format : {}".format(servers.default.body_format))
     if failed:
         log("CHECK FAILED for {} of {} server(s): {}".format(
             len(failed), len(servers.clients), ", ".join(failed)))
@@ -1534,6 +2184,17 @@ def main(argv=None):
     timeout = env_int("CONFLUENCE_TIMEOUT", 30)
     max_body = env_int("CONFLUENCE_MAX_BODY", 0)
     kb_autosave = env_bool("CONFLUENCE_KB_AUTOSAVE", KB_AUTOSAVE)
+    # Which body representation to read (see BODY_FORMAT). A typo must not stop
+    # the server, but it must not be silently honoured either: warn and use the
+    # default, because the wrong body means missing macro content.
+    body_format_env = env_str("CONFLUENCE_BODY_FORMAT")
+    body_format = normalise_body_format(body_format_env, None)
+    if body_format is None:
+        if body_format_env:
+            log("WARNING: CONFLUENCE_BODY_FORMAT={!r} is not one of {}; using "
+                "{!r}.".format(body_format_env, ", ".join(BODY_FORMATS),
+                               BODY_FORMAT))
+        body_format = BODY_FORMAT
 
     # The knowledge-base folder comes from the suite-wide EVA_KNOWLEDGE_DIR
     # (sub-folder "confluence"), or CONFLUENCE_KB_DIR for a path of its own;
@@ -1597,6 +2258,7 @@ def main(argv=None):
                 max_body=max_body,
                 kb_dir=kb_dir,
                 kb_autosave=kb_autosave,
+                body_format=body_format,
             )
             for (spec_name, spec_url, spec_token, spec_user, spec_password,
                  spec_verify, spec_ca) in specs
@@ -1623,6 +2285,12 @@ def main(argv=None):
     else:
         log("knowledge-base saving on request only (save_to_kb=true) -> {}"
             .format(servers.default.kb_dir))
+    if body_format == "storage":
+        log("page bodies: storage only - macros that Confluence renders at "
+            "display time (task reports, page properties, children lists) will "
+            "read as empty. Unset CONFLUENCE_BODY_FORMAT to restore 'auto'.")
+    else:
+        log("page bodies: {} (macro content included)".format(body_format))
     if servers.multi:
         for position, client in enumerate(servers.clients, start=1):
             log("server {}: {} -> {}{}".format(

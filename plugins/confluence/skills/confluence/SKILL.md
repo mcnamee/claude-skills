@@ -1,6 +1,6 @@
 ---
 name: confluence
-description: Search and read Confluence pages via the confluence MCP server, across one or two Confluence instances. Use when the user asks to find, read, summarise or pull content from Confluence (runbooks, handbooks, wiki pages, spaces), including when they name a particular Confluence server, or when they ask for a Confluence page to be saved into the local knowledge base.
+description: Search and read Confluence pages via the confluence MCP server, across one or two Confluence instances. Use when the user asks to find, read, summarise or pull content from Confluence (runbooks, handbooks, wiki pages, spaces), including when they ask for the tasks, action items, statuses, properties or child pages listed on a Confluence page (macro content), when they name a particular Confluence server, or when they ask for a Confluence page to be saved into the local knowledge base.
 ---
 
 # Confluence (via the `confluence` MCP server)
@@ -48,6 +48,41 @@ If a tool reports an unknown server, it lists the names that *are* configured �
 use one of those rather than guessing, and tell the user if the instance they
 asked for is not wired in.
 
+## Macros: where a page's real content lives
+
+A page body comes back as Markdown with its macros rendered, so most of this is
+automatic. What matters is knowing when content is **missing** rather than
+absent.
+
+Confluence macros come in two kinds:
+
+- **Stored in the page** — info/note/warning panels, expand, code, inline task
+  lists, status lozenges. These always read. Inline tasks arrive as `- [ ]` and
+  `- [x]` checkboxes with the assignee as `@username`, so counting or filtering
+  someone's tasks is straightforward.
+- **Generated when the page is displayed** — Task Report, Page Properties
+  Report, Children Display, Page Tree, Jira Issues, Include Page, Excerpt
+  Include. The page source holds only the macro's settings, so these have to be
+  fetched by asking Confluence to render the page.
+
+The tools do that on their own. Two things to watch:
+
+1. **Read the `Body:` line** at the top of the output. `storage (page source)`
+   plus a note means generated macros were not included; `view` or
+   `export_view` means they were.
+2. **A placeholder is a retry, not an answer.** Where the body says
+   *"[Confluence task report (macro ...). Its content is generated ... not shown
+   here]"*, the content exists and was not fetched. Call the same tool again
+   with `body_format: "view"`. If it is still a placeholder, try
+   `body_format: "export_view"`. Only after both should you tell the user the
+   page has nothing on it.
+
+Never report a page as empty, or a person as having no tasks, on the strength of
+a placeholder — that is the one failure this argument exists to prevent.
+
+`body_format` also takes `"storage"` (raw source, no macro output) if the user
+explicitly wants to see how a page is built rather than what it shows.
+
 ## Workflow
 
 1. Start with `confluence_search` using 2–4 topic keywords. Prefer fewer,
@@ -59,6 +94,12 @@ asked for is not wired in.
    page title and ID — plus the server, if there are two — so the user can find
    it.
 4. For "everything under X" requests, walk `confluence_list_pages_under`.
+5. **"What tasks are on page X?" / "what is assigned to Jane on X?"** → read the
+   page and answer from the checkboxes and the task-report rows. If the body
+   carries a macro placeholder instead, retry with `body_format: "view"` before
+   answering (see [Macros](#macros-where-a-pages-real-content-lives)). Quote the
+   task text, who it is assigned to and any due date, and say whether each one
+   is ticked.
 
 ## Saving to the knowledge base
 
@@ -89,3 +130,8 @@ the path.
 - Long pages may be truncated in the returned text if `CONFLUENCE_MAX_BODY` is
   set;
   say so if an answer might sit past the truncation point.
+- A rendered body is a snapshot of what Confluence showed at the moment of the
+  read. A task report reflects the state of tasks right then, so say when you
+  read it if the user is acting on the list.
+- Saving a page keeps the same body that was read, so a page saved with its
+  macro content keeps that content in the knowledge base.

@@ -1,12 +1,12 @@
 # Confluence (read-only)
 
-Search and read Confluence pages across one or two Confluence instances, and
-save a page to Markdown — when you ask for it — so it feeds a local RAG
-knowledge base.
+Search and read Confluence pages across one or two Confluence instances, macro
+content included, and save a page to Markdown — when you ask for it — so it
+feeds a local RAG knowledge base.
 
 | | |
 |---|---|
-| **Server** | `confluence.py` v4.0.0 |
+| **Server** | `confluence.py` v5.0.0 |
 | **pip install** | _none_ — standard library only (HTTP via stdlib `urllib`) |
 | **Platform** | any |
 | **Writes to disk** | only when you ask a page to be saved — then one Markdown file in `C:\Eva\knowledge\confluence` |
@@ -43,6 +43,56 @@ setx CONFLUENCE_TOKEN_2 "token-for-the-second-server"   # only if you have two
 `setx` does not affect processes that are already running, so quit VS Code
 completely (a window reload is not enough) and reopen it. Check it took in a
 **new** window with `$env:CONFLUENCE_TOKEN`.
+
+## Macros
+
+Most of what makes a Confluence page useful sits inside a macro, and macros come
+in two kinds. The difference decides where the content lives, and so how it has
+to be fetched.
+
+| Kind | Examples | Where the content is |
+|---|---|---|
+| **In the page source** | info / note / warning / tip panels, expand, code, inline task lists, status lozenges, excerpts | Confluence stores the content itself |
+| **Generated when the page is displayed** | Task Report, Page Properties Report, Children Display, Page Tree, Jira Issues, Include Page, Excerpt Include, charts, diagrams | The source holds only the macro's **settings**; Confluence builds the content each time the page is opened |
+
+This server reads both. Page bodies come back as **Markdown**:
+
+- inline tasks become `- [ ]` / `- [x]` checkboxes, with the assignee as
+  `@username` and the due date kept
+- info / note / warning / tip / panel become block quotes with their title
+- **expand macros are shown open**, so content hidden behind a toggle is read
+- code macros become fenced blocks, with the language
+- status lozenges become `**[DONE]**`
+- tables stay tables, so a report reads as rows rather than a run-on sentence
+- links to pages, users and attachments become readable links and `@mentions`
+
+For the generated kind, the server asks **Confluence** to render the page and
+reads the result — the only way that content can be obtained, because Confluence
+is what produces it.
+
+So "list all the tasks on page X for Jane" works whether the page carries inline
+task checkboxes or a Task Report macro pointed at her.
+
+### Which body gets read
+
+`CONFLUENCE_BODY_FORMAT` (and the per-call `body_format` argument on both page
+tools) chooses:
+
+| Value | Reads |
+|---|---|
+| `auto` **(default)** | The page source for an ordinary page, and the **rendered** page whenever the page uses a macro whose content is generated. Best of both: no display chrome on ordinary pages, full content where it matters |
+| `view` | Always the rendered page — what the browser shows |
+| `export_view` | The render Confluence uses for PDF/Word export. Try this if a macro is **still** empty under `view`: a Page Tree, and some third-party macros, only render statically on export |
+| `storage` | The raw page source only, with no macro output at all (how this server behaved before v5.0.0) |
+
+Every page read reports which one it used on a `Body:` line, and a page read
+from the source names each macro whose content was **not** fetched, with its
+settings — so an empty section is visible as missing content rather than as an
+empty page. If that happens, ask for the page again with `body_format="view"`,
+then `body_format="export_view"`.
+
+Unknown macros count as generated on purpose. A third-party macro this server
+has never heard of triggers a rendered fetch rather than reading as empty.
 
 ## Saving to the knowledge base
 
@@ -183,6 +233,7 @@ Setting `CONFLUENCE_BASE_URL_2` is what enables it.
 | Env var | Purpose |
 |---|---|
 | `CONFLUENCE_TIMEOUT` | Request timeout in seconds (default 30) |
+| `CONFLUENCE_BODY_FORMAT` | Which version of a page body to read: `auto` (default), `view`, `export_view` or `storage` — see [Macros](#macros) |
 | `CONFLUENCE_MAX_BODY` | Truncate page bodies to N chars, 0 = unlimited (default). Applies only to text returned to the model, not to saved files |
 | `CONFLUENCE_KB_DIR` | Full path to the save folder, instead of `%EVA_KNOWLEDGE_DIR%\confluence`. `off` forbids saving outright, after which the server writes no local file at all |
 | `CONFLUENCE_KB_AUTOSAVE=true` | Save **every** page read, without being asked (default false). Needs a save folder to be on |
@@ -217,6 +268,8 @@ writes one Markdown file inside the knowledge-base folder, and nowhere else.
 7. "Is the retention policy on Green the same as the one on Blue?" → the same tool called once per server, then compared
 8. "Pull the onboarding runbook into our local knowledge base for offline search." → `confluence_get_page` (or `confluence_get_page_by_title`) with `save_to_kb=true`, which writes the Markdown copy the `knowledge-base` plugin's `kb_index`/`kb_ask` can find afterwards
 9. "Summarise the release notes page." → the same tools **without** `save_to_kb` — you get the summary and nothing lands in the knowledge base
+10. "List all the tasks assigned to Jane on page 393217." → `confluence_get_page`; inline task checkboxes and a Task Report macro both come back as rows
+11. "That page looks empty but it has a task report on it." → the same tool again with `body_format="view"`, then `body_format="export_view"`
 
 ## Troubleshooting
 
@@ -252,3 +305,22 @@ Behind an internal CA, point `CONFLUENCE_CA_CERT` at the PEM bundle rather than
 reaching for `CONFLUENCE_VERIFY_SSL=false`. If the two instances sit behind
 different CAs, `CONFLUENCE_CA_CERT_2` covers the second one; leave it unset and
 the second server uses the first's bundle.
+
+### A macro's content is missing
+
+Read the `Body:` line at the top of the page output — it says which version of
+the body was used, and a page read from the source lists every macro whose
+content was not fetched.
+
+1. Ask for the page again with `body_format="view"`. That forces Confluence to
+   render the page.
+2. Still empty? Try `body_format="export_view"`. A Page Tree, and some
+   third-party macros, only render statically on export.
+3. Still empty after both? The macro's content is genuinely not reachable
+   through the REST API on this instance — usually a macro that renders in the
+   browser rather than on the server, or one whose plugin is not licensed. The
+   placeholder names the macro, so it can be checked in Confluence itself.
+
+If **every** page reads as source-only, check `CONFLUENCE_BODY_FORMAT` — a value
+of `storage` turns macro rendering off entirely. `--check` prints the setting in
+use on its `Page body format` line.
