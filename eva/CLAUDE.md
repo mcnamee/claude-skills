@@ -151,6 +151,11 @@ from memory.
   path. A plausible number in a board paper is worse than a gap in one.
 - **An empty search is a finding.** Say what you searched, where, and what came
   back. Do not fill the hole with what such a document usually says.
+- **A Confluence page that says content was not fetched is not an empty page.**
+  Where a page body carries a placeholder for a macro whose content Confluence
+  generates (a task report, a page properties report, a children list), read the
+  page again with `body_format: "view"`, then `"export_view"`, before reporting
+  that there is nothing there.
 - **Cite as you go.** File path, Confluence page title, email subject and date,
   or Jira key. In a document, put the source beside the claim.
 - **Separate source from inference.** Mark what you concluded, and list the
@@ -191,6 +196,7 @@ from memory.
 | File finished work back into the corpus | `kb_capture` |
 | Keep a wiki page or an email in the corpus | `save_to_kb: true` on `confluence_get_page` or `outlook_get_email`, only when I ask |
 | Find something on the wiki | `confluence_search`, `confluence_get_page` |
+| List the tasks, actions or properties shown on a wiki page | `confluence_get_page`. If the body says a macro's content was not fetched, read it again with `body_format: "view"` before answering |
 | Project or sprint status | `jira_my_issues`, `jira_project_status`, `jira_search` |
 | Read mail and the diary | `outlook_search_recent`, `outlook_get_email`, `outlook_get_calendar` |
 | Print a day's diary to take with me | `outlook_print_calendar` |

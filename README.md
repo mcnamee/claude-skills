@@ -75,7 +75,7 @@ source material with something invented.
 | [**powerpoint**](plugins/powerpoint) | 5.0.0 | Build sectioned `.pptx` decks that inherit your own template's layouts and theme, with formatted speaker notes, audited against the 10/20/30 rule | `python-pptx` |
 | [**excel**](plugins/excel) | 5.0.0 | Read and analyse workbooks; parses `.xlsx` directly, so Excel isn't needed | _none_ |
 | [**outlook**](plugins/outlook) | 9.1.0 | Read local Outlook mail and calendar via COM, with a content blacklist; schedules a meeting (fuzzy directory search, free/busy, and an **unsent** draft you send yourself); prints a day as an A4 PDF planner in your own category colours, and saves an email to the knowledge base when you ask | `pywin32` |
-| [**confluence**](plugins/confluence) | 4.0.0 | Search and read Confluence pages, across one or two instances; saves a page to the knowledge base when you ask | _none_ |
+| [**confluence**](plugins/confluence) | 5.0.0 | Search and read Confluence pages, across one or two instances, with macro content included; saves a page to the knowledge base when you ask | _none_ |
 | [**jira**](plugins/jira) | 2.0.0 | Query issues, sprints and projects (Jira Data Center v2 API) | _none_ |
 | [**knowledge-base**](plugins/knowledge-base) | 4.0.0 | True RAG over your own Markdown: local ChromaDB index + your embeddings API, and capture notes back into it | `chromadb` |
 | [**pdf-to-md**](plugins/pdf-to-md) | 6.0.0 | Convert PDFs to Markdown with tables preserved | `pymupdf pymupdf4llm` |
