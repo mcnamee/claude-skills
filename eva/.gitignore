@@ -7,9 +7,10 @@
 # no empty directories, so each folder survives in the repo because of its
 # README.
 #
-# The one other exception is CLAUDE.md at the top of the tree: Eva's operating
-# instructions are part of the scaffold, not your material, so they travel with
-# the repo the same way the READMEs do.
+# The other exceptions are CLAUDE.md and opencode.json at the top of the tree:
+# Eva's operating instructions and the OpenCode project config are part of the
+# scaffold, not your material, so they travel with the repo the same way the
+# READMEs do.
 #
 # To commit one file deliberately (a genuinely generic template, say):
 #     git add -f eva/templates/word/"Report Template.docx"
@@ -21,4 +22,5 @@
 !*/
 !README.md
 !/CLAUDE.md
+!/opencode.json
 !.gitignore

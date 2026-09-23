@@ -1,0 +1,111 @@
+{
+  // OpenCode project config for the Eva suite. Lands at C:\Eva\opencode.json
+  // when the eva\ tree is copied, and applies whenever OpenCode (or its VS Code
+  // extension) is opened in C:\Eva. Setup: OPENCODE.md at the repo root.
+  //
+  // Paths come from two environment variables, substituted as raw text into
+  // this file before it is parsed - so both MUST use forward slashes
+  // (C:/Python312/python.exe, H:/Claude-Skills). A backslash here is a JSON
+  // escape: most fail to parse, and \b, \n, \t or \r silently change the path.
+  //   EVA_PYTHON    the python.exe the servers run under (same as Claude Code)
+  //   EVA_REPO_DIR  your clone of this repo, e.g. H:/Claude-Skills
+  // Every other setting (EVA_DOCUMENTS_DIR, CONFLUENCE_BASE_URL, tokens, ...)
+  // is inherited from your Windows environment by each server - nothing to
+  // repeat here.
+  "$schema": "https://opencode.ai/config.json",
+
+  // Eva's operating instructions (OpenCode would also find CLAUDE.md on its
+  // own; naming it keeps that from depending on a compatibility fallback).
+  "instructions": ["CLAUDE.md"],
+
+  // Never publish a session to opencode.ai, and never self-update.
+  "share": "disabled",
+  "autoupdate": false,
+
+  // Default provider: Anthropic, keyed by the ANTHROPIC_API_KEY environment
+  // variable (or run /connect once). Only this provider is offered. To use a
+  // corporate gateway, uncomment baseURL. To use a different provider, change
+  // enabled_providers, provider and both model lines together.
+  "enabled_providers": ["anthropic"],
+  "model": "anthropic/claude-sonnet-5",
+  "small_model": "anthropic/claude-haiku-4-5",
+  "provider": {
+    "anthropic": {
+      "options": {
+        // "baseURL": "https://your-gateway.example/v1"
+      }
+    }
+  },
+
+  // Every plugin's skill, read straight from your clone, so a `git pull` is
+  // all it takes to update them. Adds to OpenCode's usual skill folders
+  // (C:\Eva\.claude\skills, ~/.claude/skills, ~/.config/opencode/skills) -
+  // it does not replace them.
+  "skills": {
+    "paths": ["{env:EVA_REPO_DIR}/plugins"]
+  },
+
+  // One entry per plugin, named as in Claude Code so the tool names match.
+  // Set "enabled": false for any plugin you have not installed the pip
+  // dependencies for. "timeout" (ms) covers start-up and every tool call;
+  // OpenCode's 5-second default is too short for these servers.
+  "mcp": {
+    "word": {
+      "type": "local",
+      "command": ["{env:EVA_PYTHON}", "{env:EVA_REPO_DIR}/plugins/word/word.py"],
+      "environment": { "PYTHONUTF8": "1" },
+      "enabled": true,
+      "timeout": 300000
+    },
+    "powerpoint": {
+      "type": "local",
+      "command": ["{env:EVA_PYTHON}", "{env:EVA_REPO_DIR}/plugins/powerpoint/powerpoint.py"],
+      "environment": { "PYTHONUTF8": "1" },
+      "enabled": true,
+      "timeout": 300000
+    },
+    "excel": {
+      "type": "local",
+      "command": ["{env:EVA_PYTHON}", "{env:EVA_REPO_DIR}/plugins/excel/excel.py"],
+      "environment": { "PYTHONUTF8": "1" },
+      "enabled": true,
+      "timeout": 300000
+    },
+    "outlook": {
+      "type": "local",
+      "command": ["{env:EVA_PYTHON}", "{env:EVA_REPO_DIR}/plugins/outlook/outlook.py"],
+      "environment": { "PYTHONUTF8": "1" },
+      "enabled": true,
+      "timeout": 300000
+    },
+    "confluence": {
+      "type": "local",
+      "command": ["{env:EVA_PYTHON}", "{env:EVA_REPO_DIR}/plugins/confluence/confluence.py"],
+      "environment": { "PYTHONUTF8": "1" },
+      "enabled": true,
+      "timeout": 300000
+    },
+    "jira": {
+      "type": "local",
+      "command": ["{env:EVA_PYTHON}", "{env:EVA_REPO_DIR}/plugins/jira/jira.py"],
+      "environment": { "PYTHONUTF8": "1" },
+      "enabled": true,
+      "timeout": 300000
+    },
+    "knowledge-base": {
+      "type": "local",
+      "command": ["{env:EVA_PYTHON}", "{env:EVA_REPO_DIR}/plugins/knowledge-base/knowledge-base.py"],
+      "environment": { "PYTHONUTF8": "1" },
+      "enabled": true,
+      // Longer: a first kb_index over a large corpus can run for minutes.
+      "timeout": 900000
+    },
+    "pdf2md": {
+      "type": "local",
+      "command": ["{env:EVA_PYTHON}", "{env:EVA_REPO_DIR}/plugins/pdf-to-md/pdf-to-md.py"],
+      "environment": { "PYTHONUTF8": "1" },
+      "enabled": true,
+      "timeout": 300000
+    }
+  }
+}
