@@ -37,6 +37,14 @@
     }
   },
 
+  // Every plugin's skill, read straight from your clone, so a `git pull` is
+  // all it takes to update them. Adds to OpenCode's usual skill folders
+  // (C:\Eva\.claude\skills, ~/.claude/skills, ~/.config/opencode/skills) -
+  // it does not replace them.
+  "skills": {
+    "paths": ["{env:EVA_REPO_DIR}/plugins"]
+  },
+
   // One entry per plugin, named as in Claude Code so the tool names match.
   // Set "enabled": false for any plugin you have not installed the pip
   // dependencies for. "timeout" (ms) covers start-up and every tool call;

@@ -1,3 +1,0 @@
-#!/bin/sh
-# Runs after every `git pull` that merges or fast-forwards.
-exec sh "$(git rev-parse --show-toplevel)/.githooks/sync-opencode-skills"

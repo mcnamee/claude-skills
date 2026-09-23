@@ -12,7 +12,7 @@ Nothing in the servers changes. What changes is the packaging around them:
 | `/plugin install` per plugin | one project config, [`eva/opencode.json`](eva/opencode.json), registering all eight servers |
 | `${CLAUDE_PLUGIN_ROOT}` finds each `.py` | a fifth environment variable, `EVA_REPO_DIR`, points at your clone |
 | Plugin install prompts (Confluence URL, author, ...) | plain environment variables - see step 5 |
-| Skills come with each plugin | a git hook copies them to OpenCode's skills folder on every `git pull` |
+| Skills come with each plugin | `opencode.json`'s `skills.paths` reads them straight from your clone |
 | `CLAUDE.md` loads by convention | named in `opencode.json`'s `instructions` |
 | Agents (`agents/`) | not provided for OpenCode |
 
@@ -118,38 +118,30 @@ dependencies you skipped (typically `outlook` without `pywin32`), set
 `"enabled": false` on its entry in `C:\Eva\opencode.json`. Otherwise it just
 shows as failed.
 
-## 7. Install the skills, and keep them current
+## 7. Skills
 
-OpenCode reads skills from `%USERPROFILE%\.config\opencode\skills`. The plugin
-skills live inside each plugin in this repo, so a git hook copies them across
-every time you pull. Turn it on once, in your clone:
+Nothing to install for the plugin skills. `opencode.json` points OpenCode's
+`skills.paths` at `EVA_REPO_DIR/plugins`, so it reads every plugin's skill
+straight from your clone, and a `git pull` is all it takes to update them.
 
-```powershell
-cd H:\Claude-Skills
-git config core.hooksPath .githooks
-& "C:\Program Files\Git\bin\sh.exe" .githooks/sync-opencode-skills
-```
+This adds to OpenCode's usual skill folders rather than replacing them, so your
+own skills keep working from any of:
 
-The last line does the first copy by hand, since the hook only runs when a
-pull actually brings something in - run it the same way whenever you want to
-re-sync without pulling. From then on, every `git pull` (including VS Code's
-**Sync** button, and `git pull --rebase`) prints `opencode: synced N plugin skill(s) to ...`. Each
-skill folder is replaced whole, so a file removed in the repo disappears from
-the copy too. Skills you added yourself are left alone.
+- `C:\Eva\.claude\skills` (when OpenCode is opened in `C:\Eva`)
+- `%USERPROFILE%\.claude\skills` - which also means standalone skills you
+  installed for Claude Code already work
+- `%USERPROFILE%\.config\opencode\skills`
 
-`core.hooksPath` applies to this clone only, and replaces `.git\hooks`, so any
-hooks you had there stop running. The hooks are in [`.githooks/`](.githooks).
-
-The **standalone skills** (`skills\`) aren't copied by the hook: it replaces a
-skill folder whole, which would wipe any exemplars you keep in the installed
-copy. Copy the ones you want by hand, once:
+To add a **standalone skill** (`skills\`) you haven't installed for Claude
+Code, copy it into one of those, e.g.:
 
 ```powershell
 Copy-Item -Recurse H:\Claude-Skills\skills\brief-writer "$env:USERPROFILE\.config\opencode\skills\"
 ```
 
-(If you also use Claude Code, OpenCode reads `%USERPROFILE%\.claude\skills`
-too, so standalone skills installed there already work.)
+Give your own skills names that don't clash with a plugin skill (`word`,
+`outlook`, `slide-deck` and so on). With two skills of the same name, OpenCode
+keeps only one, and which one isn't guaranteed.
 
 ## 8. Check it
 
@@ -183,4 +175,4 @@ Then open `C:\Eva` in VS Code, open the integrated terminal and run `opencode`
 | OpenCode reports a JSON or config parse error | A backslash in `EVA_PYTHON` or `EVA_REPO_DIR` - use forward slashes (step 3) |
 | A server shows as failed | Run its `--check` (step 8); usually a missing pip package or folder |
 | A variable seems ignored | VS Code was running when it was set - quit it completely and reopen |
-| No `opencode: synced` line after a pull | `git config core.hooksPath` isn't set in this clone (step 7) |
+| A plugin skill is missing | `EVA_REPO_DIR` is unset or wrong - OpenCode skips a `skills.paths` folder that doesn't exist |
