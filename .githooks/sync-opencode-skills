@@ -1,0 +1,32 @@
+#!/bin/sh
+# Copies every plugin skill (plugins/<plugin>/skills/<skill>/) into OpenCode's
+# global skills folder, so OpenCode finds the same skills Claude Code gets from
+# each plugin. Run by the post-merge and post-rewrite hooks after `git pull`,
+# or by hand:  sh .githooks/sync-opencode-skills
+#
+# Each skill folder is replaced wholesale, so a file removed from a skill in
+# the repo is removed from the copy too. Skills that did not come from this
+# repo are left alone. Setup: OPENCODE.md at the repo root.
+
+set -eu
+
+repo=$(git rev-parse --show-toplevel)
+
+# The same folder OpenCode reads: XDG_CONFIG_HOME if set, else ~/.config.
+# Under Git for Windows, $HOME is %USERPROFILE%, so this is
+# C:\Users\<you>\.config\opencode\skills.
+dest="${XDG_CONFIG_HOME:-$HOME/.config}/opencode/skills"
+mkdir -p "$dest"
+
+count=0
+for skill in "$repo"/plugins/*/skills/*/; do
+    skill=${skill%/}
+    # No match leaves the glob unexpanded; SKILL.md marks a real skill.
+    [ -f "$skill/SKILL.md" ] || continue
+    name=$(basename "$skill")
+    rm -rf "$dest/$name"
+    cp -R "$skill" "$dest/$name"
+    count=$((count + 1))
+done
+
+echo "opencode: synced $count plugin skill(s) to $dest"

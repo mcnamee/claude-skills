@@ -1,0 +1,5 @@
+#!/bin/sh
+# Runs after `git pull --rebase` rewrites local commits ($1 is "rebase"), which
+# post-merge does not see. Skipped for `git commit --amend` ($1 is "amend").
+[ "${1:-}" = "rebase" ] || exit 0
+exec sh "$(git rev-parse --show-toplevel)/.githooks/sync-opencode-skills"

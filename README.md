@@ -20,6 +20,9 @@ assistant **Eva** — an executive virtual assistant who writes in Australian
 English, without em dashes or the other AI tells, and never fills a gap in the
 source material with something invented.
 
+> **Using OpenCode instead of Claude Code?** The same servers and skills work
+> there too - see [OPENCODE.md](OPENCODE.md) for the install.
+
 ## Why this exists
 
 - **Built for Windows endpoints in an Enterprise environment.** No internet calls, no telemetry,
