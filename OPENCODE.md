@@ -5,138 +5,127 @@ equivalent of the [Install](README.md#install) section: the same servers, the
 same skills and the same `H:\Eva` tree, wired in through OpenCode's own config
 instead of Claude Code plugins.
 
-Nothing in the servers changes. What changes is the packaging around them:
+Nothing in the servers changes. What changes is the packaging around them, and
+all of it lives in **one file, `H:\Eva\opencode.json`** - no environment
+variables to set:
 
 | Claude Code | OpenCode |
 |---|---|
-| `/plugin install` per plugin | one project config, [`eva/opencode.json`](eva/opencode.json), registering all eight servers |
-| `${CLAUDE_PLUGIN_ROOT}` finds each `.py` | a fifth environment variable, `EVA_REPO_DIR`, points at your clone |
-| Plugin install prompts (Confluence URL, author, ...) | plain environment variables - see step 5 |
-| Skills come with each plugin | `opencode.json`'s `skills.paths` reads them straight from your clone |
-| `CLAUDE.md` loads by convention | named in `opencode.json`'s `instructions` |
+| `/plugin install` per plugin | one config registering all eight servers |
+| `EVA_PYTHON` and `${CLAUDE_PLUGIN_ROOT}` find each `.py` | the paths are written into the config |
+| Plugin install prompts, and secrets as environment variables | each server's `environment` block in the config |
+| Skills come with each plugin | the config's `skills.paths` reads them straight from your clone |
+| `CLAUDE.md` loads by convention | named in the config's `instructions` |
 | Agents (`agents/`) | not provided for OpenCode |
 
-Everything below is **Windows / PowerShell**.
+Because the config sits on `H:` with the rest of `H:\Eva`, it survives a
+change of endpoint. (OpenCode's global config, under `%USERPROFILE%\.config`,
+does not, so nothing here uses it.)
+
+Everything below is **Windows / PowerShell**, and assumes the repo is cloned at
+`H:\Claude-Skills`.
 
 ## 1. Lay out the working folder
 
-Same as for Claude Code - copy the repo's `eva\` folder to `H:\Eva`:
-
-```powershell
-Copy-Item -Recurse H:\Claude-Skills\eva H:\Eva
-```
-
-This brings `H:\Eva\opencode.json` with it, which OpenCode reads whenever it is
-opened in `H:\Eva`. Fill in the **About me** block of `H:\Eva\CLAUDE.md` as the
+Same as for Claude Code - copy the repo's `eva\` folder to `H:\Eva`, and fill in
+the **About me** block of `H:\Eva\CLAUDE.md` as the
 [main README](README.md#install) describes.
 
-> Copying `eva\` again later overwrites `H:\Eva\opencode.json`. If you edit
-> your copy (to switch off a server, say), re-apply the edit after the copy -
-> or copy just the README files you need rather than the whole tree.
+The copy brings a template, `H:\Eva\opencode.example.jsonc`. OpenCode does not
+read it; it is the starting point for your own config.
 
 ## 2. Install the pip dependencies
 
-Exactly as in [step 2 of the main install](README.md#install), into the
-interpreter you will name as `EVA_PYTHON`.
+Exactly as in [step 2 of the main install](README.md#install), into the Python
+you will name in the config.
 
-## 3. Set the environment variables
-
-The four suite-wide variables, plus `EVA_REPO_DIR` for OpenCode:
+## 3. Create your config
 
 ```powershell
-[Environment]::SetEnvironmentVariable("EVA_PYTHON",        "C:/path/to/python.exe", "User")
-[Environment]::SetEnvironmentVariable("EVA_REPO_DIR",      "H:/Claude-Skills",      "User")
-[Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "H:\Eva\documents",      "User")
-[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "H:\Eva\templates",      "User")
-[Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "H:\Eva\knowledge",      "User")
+Copy-Item H:\Eva\opencode.example.jsonc H:\Eva\opencode.json
 ```
 
-**`EVA_PYTHON` and `EVA_REPO_DIR` must use forward slashes.** OpenCode pastes
-their values into `opencode.json` as raw text before parsing it, so a backslash
-becomes a JSON escape: `H:\Claude-Skills` stops OpenCode loading the config at
-all, and a folder starting with `b`, `n`, `r` or `t` (`\bin`, `\tools`) silently
-turns into a different path. Windows accepts forward slashes, so the same
-`EVA_PYTHON` still works for Claude Code if you run both.
+Then edit `H:\Eva\opencode.json`. Copying `eva\` again later only replaces the
+template, so your filled-in copy is never overwritten. (Compare the two after a
+`git pull` if you want to pick up a new server or setting.)
 
-The three folder variables are never pasted into the config - each server reads
-them straight from the environment - so they can keep their backslashes.
+**Paths.** Find and replace:
 
-| Variable | What it points at |
-|---|---|
-| `EVA_PYTHON` | The `python.exe` from step 2 |
-| `EVA_REPO_DIR` | Your clone of this repo (OpenCode only) |
-| `EVA_DOCUMENTS_DIR` / `EVA_TEMPLATES_DIR` / `EVA_KNOWLEDGE_DIR` | As in the [main README](README.md#install) |
+- `C:/path/to/python.exe` with the `python.exe` from step 2 (it appears once
+  per server)
+- `H:/Claude-Skills`, only if your clone lives somewhere else
 
-## 4. Choose the model
+Write paths with **forward slashes** (`C:/Python312/python.exe`). This is a JSON
+file, so a single backslash is an escape character: `C:\Python312` fails to
+load, and `\b`, `\n`, `\r` or `\t` silently change the path. Doubled
+backslashes (`C:\\Python312\\python.exe`) also work.
 
-`opencode.json` defaults to Anthropic, with only that provider offered. Either
-set `ANTHROPIC_API_KEY`, or run `/connect` once inside OpenCode:
+**Folders.** Nothing to do. Every server defaults to its sub-folder of
+`H:\Eva`. To move one, add its override variable to that server's `environment`
+block, e.g. `"MSWORD_DOCS_DIR": "D:/Work/Word"` - the variables are in each
+plugin's README.
 
-```powershell
-setx ANTHROPIC_API_KEY "your-api-key"
-```
+## 4. Fill in each plugin's settings
 
-For a corporate gateway, uncomment `baseURL` in the `provider` block. For a
-different provider, change `enabled_providers`, `provider`, `model` and
-`small_model` together.
+Each server's `environment` block lists its settings with blank values. Fill in
+the ones you need. **A blank value means "not set"**, so the server's default
+applies and there is nothing to delete. What each one accepts is in that
+plugin's README.
+
+| Plugin | Settings | Required |
+|---|---|---|
+| [word](plugins/word) | `MSWORD_AUTHOR` (tracked-change author) | |
+| [outlook](plugins/outlook) | `OUTLOOK_SEARCH_FOLDERS`, `OUTLOOK_BLACKLIST_FILE`, `OUTLOOK_CALENDAR_HOURS`, `OUTLOOK_CALENDAR_PAGE_FILL`, `OUTLOOK_CALENDAR_COLOURS`, `OUTLOOK_MEETING_HOURS`, `OUTLOOK_ALLOW_DRAFTS`, `OUTLOOK_GAL_SCAN_CAP` | |
+| [confluence](plugins/confluence) | `CONFLUENCE_NAME`, `CONFLUENCE_BASE_URL`, `CONFLUENCE_TOKEN`; the `_2` versions for a second instance; `CONFLUENCE_KB_AUTOSAVE`, `CONFLUENCE_BODY_FORMAT` | `CONFLUENCE_BASE_URL`, `CONFLUENCE_TOKEN` |
+| [jira](plugins/jira) | `JIRA_BASE_URL`, `JIRA_PROJECTS`, `JIRA_TOKEN` | `JIRA_BASE_URL`, `JIRA_TOKEN` |
+| [knowledge-base](plugins/knowledge-base) | `KB_EMBED_URL`, `KB_EMBED_MODEL`, `KB_EMBED_API_KEY` | |
+| [excel](plugins/excel), [powerpoint](plugins/powerpoint), [pdf-to-md](plugins/pdf-to-md) | *(none)* | |
+
+Tokens and API keys go in here too. That keeps them in a plain-text file on
+`H:`, which is backed up - fine if the people who run the backups can already
+reach those accounts, but worth a thought.
+
+**A value in the config beats a Windows environment variable of the same name,
+blank included.** If you already set something as a Windows variable for Claude
+Code and want OpenCode to use it, delete that line from the config.
+
+## 5. Choose the model
+
+The config defaults to Anthropic, with only that provider offered. Uncomment
+`apiKey` in the `provider` block and fill it in, or leave it commented and run
+`/connect` once inside OpenCode.
+
+For a corporate gateway, uncomment `baseURL`. For a different provider, change
+`enabled_providers`, `provider`, `model` and `small_model` together.
 
 The config also turns off session sharing (`"share": "disabled"`) and
 self-updating (`"autoupdate": false`).
 
-## 5. Set each plugin's own settings
-
-In Claude Code, `/plugin install` prompts for these. OpenCode has no prompts, so
-set them as environment variables instead - only for the plugins you use, and
-only the ones you need. Each server inherits your environment, so nothing needs
-adding to `opencode.json`. What each one does and accepts is in that plugin's
-README.
-
-| Plugin | Variables | Secrets |
-|---|---|---|
-| [word](plugins/word) | `MSWORD_AUTHOR` (tracked-change author) | |
-| [outlook](plugins/outlook) | `OUTLOOK_SEARCH_FOLDERS`, `OUTLOOK_BLACKLIST_FILE`, `OUTLOOK_CALENDAR_HOURS`, `OUTLOOK_CALENDAR_PAGE_FILL`, `OUTLOOK_CALENDAR_COLOURS`, `OUTLOOK_MEETING_HOURS`, `OUTLOOK_ALLOW_DRAFTS`, `OUTLOOK_GAL_SCAN_CAP` | |
-| [confluence](plugins/confluence) | `CONFLUENCE_NAME`, `CONFLUENCE_BASE_URL`, and `CONFLUENCE_NAME_2`, `CONFLUENCE_BASE_URL_2` for a second instance | `CONFLUENCE_TOKEN`, `CONFLUENCE_TOKEN_2` |
-| [jira](plugins/jira) | `JIRA_BASE_URL`, `JIRA_PROJECTS` | `JIRA_TOKEN` |
-| [knowledge-base](plugins/knowledge-base) | `KB_EMBED_URL`, `KB_EMBED_MODEL` | `KB_EMBED_API_KEY` |
-| [excel](plugins/excel), [powerpoint](plugins/powerpoint), [pdf-to-md](plugins/pdf-to-md) | *(none)* | |
-
-```powershell
-setx CONFLUENCE_BASE_URL "https://confluence.example.com"
-setx CONFLUENCE_TOKEN    "your-personal-access-token"
-```
-
-The per-server folder overrides (`MSWORD_DOCS_DIR` and so on) work exactly as
-the [configuration conventions](README.md#configuration-conventions) describe.
-
-`setx` doesn't reach processes that are already running: **quit VS Code
-completely** and reopen it after setting anything.
-
 ## 6. Switch off what you haven't installed
 
-Every server in `opencode.json` starts enabled. For any plugin whose pip
-dependencies you skipped (typically `outlook` without `pywin32`), set
-`"enabled": false` on its entry in `H:\Eva\opencode.json`. Otherwise it just
-shows as failed.
+Every server starts enabled. For any plugin whose pip dependencies you skipped
+(typically `outlook` without `pywin32`), or that you don't use, set
+`"enabled": false` on its entry. Otherwise it just shows as failed.
 
 ## 7. Skills
 
-Nothing to install for the plugin skills. `opencode.json` points OpenCode's
-`skills.paths` at `EVA_REPO_DIR/plugins`, so it reads every plugin's skill
+Nothing to install for the plugin skills. The config points OpenCode's
+`skills.paths` at `H:/Claude-Skills/plugins`, so it reads every plugin's skill
 straight from your clone, and a `git pull` is all it takes to update them.
 
 This adds to OpenCode's usual skill folders rather than replacing them, so your
 own skills keep working from any of:
 
-- `H:\Eva\.claude\skills` (when OpenCode is opened in `H:\Eva`)
-- `%USERPROFILE%\.claude\skills` - which also means standalone skills you
-  installed for Claude Code already work
+- `H:\Eva\.claude\skills` (when OpenCode is opened in `H:\Eva`) - the one that
+  survives a change of endpoint
+- `%USERPROFILE%\.claude\skills`
 - `%USERPROFILE%\.config\opencode\skills`
 
-To add a **standalone skill** (`skills\`) you haven't installed for Claude
-Code, copy it into one of those, e.g.:
+To add a **standalone skill** (`skills\`), copy it into `H:\Eva\.claude\skills`:
 
 ```powershell
-Copy-Item -Recurse H:\Claude-Skills\skills\brief-writer "$env:USERPROFILE\.config\opencode\skills\"
+New-Item -ItemType Directory -Force H:\Eva\.claude\skills | Out-Null
+Copy-Item -Recurse H:\Claude-Skills\skills\brief-writer H:\Eva\.claude\skills\
 ```
 
 Give your own skills names that don't clash with a plugin skill (`word`,
@@ -145,12 +134,15 @@ keeps only one, and which one isn't guaranteed.
 
 ## 8. Check it
 
-Run a server's `--check` first. It is far easier to read than an MCP
-connection failure:
+Run a server's `--check` to confirm the Python path and its pip packages:
 
 ```powershell
-& $env:EVA_PYTHON "$env:EVA_REPO_DIR/plugins/word/word.py" --check
+& C:\path\to\python.exe H:\Claude-Skills\plugins\word\word.py --check
 ```
+
+This works as-is for `word`, `powerpoint`, `excel`, `outlook` and `pdf-to-md`.
+`confluence`, `jira` and `knowledge-base` need their settings, which live in
+the config rather than your environment, so check those through OpenCode below.
 
 Then open `H:\Eva` in VS Code, open the integrated terminal and run `opencode`
 (or press `Ctrl+Esc` once the OpenCode extension is installed). From
@@ -164,15 +156,16 @@ Then open `H:\Eva` in VS Code, open the integrated terminal and run `opencode`
 - **Skills are loaded by the model**, through OpenCode's `skill` tool, rather
   than as `/word:word`-style slash commands.
 - **No agents.** `agents/researcher.md` is Claude Code only.
-- **Timeouts.** OpenCode's default MCP timeout is 5 seconds. `opencode.json`
-  sets 5 minutes per server, and 15 for `knowledge-base`, whose first index
-  over a large corpus can run for minutes.
+- **Timeouts.** OpenCode's default MCP timeout is 5 seconds. The config sets 5
+  minutes per server, and 15 for `knowledge-base`, whose first index over a
+  large corpus can run for minutes.
 
 ## Troubleshooting
 
 | Symptom | Cause |
 |---|---|
-| OpenCode reports a JSON or config parse error | A backslash in `EVA_PYTHON` or `EVA_REPO_DIR` - use forward slashes (step 3) |
-| A server shows as failed | Run its `--check` (step 8); usually a missing pip package or folder |
-| A variable seems ignored | VS Code was running when it was set - quit it completely and reopen |
-| A plugin skill is missing | `EVA_REPO_DIR` is unset or wrong - OpenCode skips a `skills.paths` folder that doesn't exist |
+| OpenCode reports a JSON or config parse error | A single backslash in a path - use forward slashes (step 3) |
+| None of the servers appear | OpenCode wasn't opened in `H:\Eva`, or the file is still named `opencode.example.jsonc` |
+| A server shows as failed | Run its `--check` (step 8); usually a wrong Python path, a missing pip package, or a required setting left blank |
+| A Windows variable seems ignored | The config has a line for it, which wins even when blank - delete the line |
+| A plugin skill is missing | The `skills.paths` entry doesn't match your clone - OpenCode skips a folder that doesn't exist |
