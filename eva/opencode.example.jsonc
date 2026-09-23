@@ -1,0 +1,161 @@
+{
+  // OpenCode config TEMPLATE for the Eva suite. Copy it once to
+  // H:\Eva\opencode.json and fill it in there:
+  //
+  //     Copy-Item H:\Eva\opencode.example.jsonc H:\Eva\opencode.json
+  //
+  // OpenCode reads H:\Eva\opencode.json whenever it (or its VS Code extension)
+  // is opened in H:\Eva. Copying the repo's eva\ folder again only replaces
+  // this template, never your filled-in opencode.json. Setup: OPENCODE.md at
+  // the repo root.
+  //
+  // Everything is configured in this one file - no environment variables.
+  //   - Paths: find-and-replace C:/path/to/python.exe with your python.exe,
+  //     and H:/Claude-Skills with your clone if it lives elsewhere. Write
+  //     paths with forward slashes (C:/Python312/python.exe); a backslash must
+  //     be doubled (C:\\Python312\\python.exe), because this is JSON.
+  //   - Settings: fill in the "environment" block of each server you use.
+  //     A blank value means "not set", so the server's default applies.
+  //   - A value here BEATS a Windows environment variable of the same name,
+  //     blank included. To use a Windows variable instead, delete the line.
+  "$schema": "https://opencode.ai/config.json",
+
+  // Eva's operating instructions (OpenCode would also find CLAUDE.md on its
+  // own; naming it keeps that from depending on a compatibility fallback).
+  "instructions": ["CLAUDE.md"],
+
+  // Never publish a session to opencode.ai, and never self-update.
+  "share": "disabled",
+  "autoupdate": false,
+
+  // Default provider: Anthropic. Uncomment apiKey and fill it in, or leave it
+  // commented and run /connect once inside OpenCode. Only this provider is
+  // offered. To use a corporate gateway, uncomment baseURL. To use a different
+  // provider, change enabled_providers, provider and both model lines together.
+  "enabled_providers": ["anthropic"],
+  "model": "anthropic/claude-sonnet-5",
+  "small_model": "anthropic/claude-haiku-4-5",
+  "provider": {
+    "anthropic": {
+      "options": {
+        // "apiKey": "your-api-key",
+        // "baseURL": "https://your-gateway.example/v1"
+      }
+    }
+  },
+
+  // Every plugin's skill, read straight from your clone, so a `git pull` is
+  // all it takes to update them. Adds to OpenCode's usual skill folders
+  // (H:\Eva\.claude\skills, ~/.claude/skills, ~/.config/opencode/skills) -
+  // it does not replace them.
+  "skills": {
+    "paths": ["H:/Claude-Skills/plugins"]
+  },
+
+  // One entry per plugin, named as in Claude Code so the tool names match.
+  // Set "enabled": false for any plugin you have not installed the pip
+  // dependencies for. "timeout" (ms) covers start-up and every tool call;
+  // OpenCode's 5-second default is too short for these servers.
+  //
+  // Folders default to H:\Eva (documents, templates, knowledge), so none are
+  // listed. To move one, add its variable to that server's "environment",
+  // e.g. "MSWORD_DOCS_DIR": "D:/Work/Word" - see the plugin's README.
+  "mcp": {
+    "word": {
+      "type": "local",
+      "command": ["C:/path/to/python.exe", "H:/Claude-Skills/plugins/word/word.py"],
+      "environment": {
+        "PYTHONUTF8": "1",
+        // Name stamped on Word tracked changes, e.g. your own name.
+        "MSWORD_AUTHOR": ""
+      },
+      "enabled": true,
+      "timeout": 300000
+    },
+    "powerpoint": {
+      "type": "local",
+      "command": ["C:/path/to/python.exe", "H:/Claude-Skills/plugins/powerpoint/powerpoint.py"],
+      "environment": { "PYTHONUTF8": "1" },
+      "enabled": true,
+      "timeout": 300000
+    },
+    "excel": {
+      "type": "local",
+      "command": ["C:/path/to/python.exe", "H:/Claude-Skills/plugins/excel/excel.py"],
+      "environment": { "PYTHONUTF8": "1" },
+      "enabled": true,
+      "timeout": 300000
+    },
+    "outlook": {
+      "type": "local",
+      "command": ["C:/path/to/python.exe", "H:/Claude-Skills/plugins/outlook/outlook.py"],
+      // Each of these is optional; what they accept is in plugins/outlook/README.md.
+      "environment": {
+        "PYTHONUTF8": "1",
+        "OUTLOOK_SEARCH_FOLDERS": "",
+        "OUTLOOK_BLACKLIST_FILE": "",
+        "OUTLOOK_CALENDAR_HOURS": "",
+        "OUTLOOK_CALENDAR_PAGE_FILL": "",
+        "OUTLOOK_CALENDAR_COLOURS": "",
+        "OUTLOOK_MEETING_HOURS": "",
+        "OUTLOOK_ALLOW_DRAFTS": "",
+        "OUTLOOK_GAL_SCAN_CAP": ""
+      },
+      "enabled": true,
+      "timeout": 300000
+    },
+    "confluence": {
+      "type": "local",
+      "command": ["C:/path/to/python.exe", "H:/Claude-Skills/plugins/confluence/confluence.py"],
+      // BASE_URL and TOKEN are required; the _2 lines add a second instance.
+      // The rest are optional - see plugins/confluence/README.md.
+      "environment": {
+        "PYTHONUTF8": "1",
+        "CONFLUENCE_NAME": "",
+        "CONFLUENCE_BASE_URL": "",
+        "CONFLUENCE_TOKEN": "",
+        "CONFLUENCE_NAME_2": "",
+        "CONFLUENCE_BASE_URL_2": "",
+        "CONFLUENCE_TOKEN_2": "",
+        "CONFLUENCE_KB_AUTOSAVE": "",
+        "CONFLUENCE_BODY_FORMAT": ""
+      },
+      "enabled": true,
+      "timeout": 300000
+    },
+    "jira": {
+      "type": "local",
+      "command": ["C:/path/to/python.exe", "H:/Claude-Skills/plugins/jira/jira.py"],
+      // BASE_URL and TOKEN are required; PROJECTS is an optional allowlist.
+      "environment": {
+        "PYTHONUTF8": "1",
+        "JIRA_BASE_URL": "",
+        "JIRA_PROJECTS": "",
+        "JIRA_TOKEN": ""
+      },
+      "enabled": true,
+      "timeout": 300000
+    },
+    "knowledge-base": {
+      "type": "local",
+      "command": ["C:/path/to/python.exe", "H:/Claude-Skills/plugins/knowledge-base/knowledge-base.py"],
+      // Your embeddings endpoint - see plugins/knowledge-base/README.md.
+      "environment": {
+        "PYTHONUTF8": "1",
+        "KB_EMBED_URL": "",
+        "KB_EMBED_MODEL": "",
+        "KB_EMBED_API_KEY": ""
+      },
+      "enabled": true,
+      // Longer: a first kb_index over a large corpus can run for minutes.
+      "timeout": 900000
+    },
+    "pdf2md": {
+      "type": "local",
+      "command": ["C:/path/to/python.exe", "H:/Claude-Skills/plugins/pdf-to-md/pdf-to-md.py"],
+      "environment": { "PYTHONUTF8": "1" },
+      "enabled": true,
+      "timeout": 300000
+    }
+  }
+}

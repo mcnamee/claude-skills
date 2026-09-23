@@ -38,7 +38,7 @@ The tree is organised by **what writes to a folder**, not by topic:
 ```
 H:\Eva\
 ├─ CLAUDE.md         who Eva is, and how she writes
-├─ opencode.json     OpenCode's config, if you use it instead of Claude Code
+├─ opencode.example.jsonc   OpenCode only: copy to opencode.json and fill in
 ├─ knowledge\        the indexed corpus (.md / .txt only)
 │  ├─ notes\           Markdown you write by hand
 │  ├─ captures\        notes kb_capture writes back
@@ -204,7 +204,7 @@ nothing in the plugins assumes the drive or the folder name.
 ## Why nothing here is committed
 
 [`.gitignore`](.gitignore) ignores every file except these READMEs,
-[`CLAUDE.md`](CLAUDE.md) and [`opencode.json`](opencode.json), because in real use this tree is full of your
+[`CLAUDE.md`](CLAUDE.md) and [`opencode.example.jsonc`](opencode.example.jsonc), because in real use this tree is full of your
 organisation's documents and this repo is public. The folder structure still
 travels with the repo: git stores no empty directories, so each folder is in the
 repo *because* of its README.
