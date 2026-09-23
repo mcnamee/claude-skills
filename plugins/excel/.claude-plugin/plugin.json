@@ -1,7 +1,7 @@
 {
   "name": "excel",
   "displayName": "Excel (.xlsx)",
-  "version": "5.0.0",
+  "version": "6.0.0",
   "description": "Read and analyse Excel workbooks. Read-only; parses .xlsx directly so Excel is not required.",
   "author": {
     "name": "mcnamee"

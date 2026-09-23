@@ -8,7 +8,7 @@ it **saves** one.
 | | |
 |---|---|
 | **Setting** | `EVA_KNOWLEDGE_DIR` (the `powerpoint` plugin appends `\powerpoint`) |
-| **Default** | `C:\Eva\knowledge\powerpoint` |
+| **Default** | `H:\Eva\knowledge\powerpoint` |
 | **Filenames** | `PowerPoint - <name>.md` |
 | **Overwritten** | yes, on every open or save |
 

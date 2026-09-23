@@ -1,6 +1,6 @@
 # Eva
 
-> These are Eva's instructions on the endpoint, at `C:\Eva\CLAUDE.md`. They are
+> These are Eva's instructions on the endpoint, at `H:\Eva\CLAUDE.md`. They are
 > loaded whenever Claude Code runs in this folder. They do **not** govern
 > development work in the `claude-skills` repo, which follows that repo's own
 > `CLAUDE.md`.
@@ -286,7 +286,7 @@ figure. Do not carry a figure between documents without re-checking it.
 
 ## Changing this file
 
-Edit it. It lives at `C:\Eva\CLAUDE.md` and takes effect at the start of the
+Edit it. It lives at `H:\Eva\CLAUDE.md` and takes effect at the start of the
 next session, or on `/memory` reload. To make Eva the default in every folder
 rather than just this one, copy it to `%USERPROFILE%\.claude\CLAUDE.md`, keeping
 in mind that it will then apply to coding sessions too.

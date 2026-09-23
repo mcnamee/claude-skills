@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 r"""
-pdf-to-md.py (v6.0.0) - Self-contained MCP (Model Context Protocol) stdio
+pdf-to-md.py (v7.0.0) - Self-contained MCP (Model Context Protocol) stdio
 server that converts PDFs in a folder to Markdown, including tables (both
 bordered and borderless).
 
@@ -45,8 +45,8 @@ this server uses three:
     EVA_PYTHON          full path to the python.exe that has pymupdf4llm
                         installed, e.g. C:\Python311\python.exe (read by the
                         plugin manifest, not by this file)
-    EVA_DOCUMENTS_DIR   root of the document library (default C:\Eva\documents)
-    EVA_KNOWLEDGE_DIR   root of the RAG corpus       (default C:\Eva\knowledge)
+    EVA_DOCUMENTS_DIR   root of the document library (default H:\Eva\documents)
+    EVA_KNOWLEDGE_DIR   root of the RAG corpus       (default H:\Eva\knowledge)
 
 This server works in the "pdf" sub-folder of each root - the same arrangement
 as every other plugin. BOTH FOLDERS MUST EXIST:
@@ -62,10 +62,10 @@ as every other plugin. BOTH FOLDERS MUST EXIST:
 To set them permanently for your account (PowerShell, one-off):
 
     [Environment]::SetEnvironmentVariable("EVA_PYTHON", "C:\Python311\python.exe", "User")
-    [Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "C:\Eva\documents", "User")
-    [Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "C:\Eva\knowledge", "User")
+    [Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "H:\Eva\documents", "User")
+    [Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "H:\Eva\knowledge", "User")
 
-Copy the repo's eva\ folder to C:\Eva and both folders exist, correctly
+Copy the repo's eva\ folder to H:\Eva and both folders exist, correctly
 related to each other - see eva\README.md.
 
 Server-specific settings, all optional and all environment variables:
@@ -113,7 +113,7 @@ echo with nested JSON, which silently drops the "arguments" object):
     {"jsonrpc":"2.0","id":2,"method":"tools/list"}
     {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"convert_all_pdfs","arguments":{}}}
     '@
-    $env:EVA_DOCUMENTS_DIR = "C:\Eva\documents"; $env:EVA_KNOWLEDGE_DIR = "C:\Eva\knowledge"
+    $env:EVA_DOCUMENTS_DIR = "H:\Eva\documents"; $env:EVA_KNOWLEDGE_DIR = "H:\Eva\knowledge"
     $msgs | python C:\path\to\pdf-to-md.py
 
 Expected: three JSON lines on stdout (initialize result, tool list, conversion
@@ -125,7 +125,7 @@ To test the single-file fuzzy tool, replace the third line with:
 A quick conversion check (no MCP) - the file name has a dash, so it has to
 be loaded by path rather than imported by name:
 
-    python -c "import importlib.util as u; s=u.spec_from_file_location('p', r'C:\path\to\pdf-to-md.py'); m=u.module_from_spec(s); s.loader.exec_module(m); print(m.convert_one(r'C:\Eva\documents\pdf\Some File.pdf')[1][:800])"
+    python -c "import importlib.util as u; s=u.spec_from_file_location('p', r'C:\path\to\pdf-to-md.py'); m=u.module_from_spec(s); s.loader.exec_module(m); print(m.convert_one(r'H:\Eva\documents\pdf\Some File.pdf')[1][:800])"
 
 =============================================================================
  TOOLS EXPOSED
@@ -195,7 +195,7 @@ pymupdf4llm output back.
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "6.0.0"
+__version__ = "7.0.0"
 
 import argparse
 import contextlib
@@ -265,28 +265,28 @@ SERVER_VERSION = __version__
 #   EVA_KNOWLEDGE_DIR   -> %EVA_KNOWLEDGE_DIR%\pdf   the converted Markdown
 #
 # The two roots below are the fallback when a variable is not set, and match
-# the Eva working tree - copy the repo's eva\ folder to C:\Eva and both folders
+# the Eva working tree - copy the repo's eva\ folder to H:\Eva and both folders
 # exist. See eva\README.md. There are NO folder command-line flags:
 # configuration is environment variables only, so two settings can never
 # disagree about a path. To point ONE folder somewhere else, set
 # PDF2MD_DOCS_DIR / PDF2MD_KB_DIR to a full path of its own.
 # ---------------------------------------------------------------------------
 SUBFOLDER = "pdf"                  # this server's sub-folder in each root
-EVA_DOCUMENTS_DIR = r"C:\Eva\documents"
-EVA_KNOWLEDGE_DIR = r"C:\Eva\knowledge"
+EVA_DOCUMENTS_DIR = r"H:\Eva\documents"
+EVA_KNOWLEDGE_DIR = r"H:\Eva\knowledge"
 
 # Resolved from the environment in parse_args(); the literals here are what a
-# stock C:\Eva install resolves to.
+# stock H:\Eva install resolves to.
 #
 # Where the source PDFs live. Read-only: conversion never alters a PDF. Only
 # the top level is converted unless PDF2MD_RECURSIVE=1.
-DOCS_DIR = r"C:\Eva\documents\pdf"
+DOCS_DIR = r"H:\Eva\documents\pdf"
 
 # Where the converted Markdown is written. This sits INSIDE the knowledge-base
-# plugin's corpus (C:\Eva\knowledge) on purpose: converting a PDF is then the
+# plugin's corpus (H:\Eva\knowledge) on purpose: converting a PDF is then the
 # same act as adding it to the RAG corpus. Point it somewhere outside that
 # folder and the Markdown will pile up unindexed.
-OUTPUT_DIR = r"C:\Eva\knowledge\pdf"
+OUTPUT_DIR = r"H:\Eva\knowledge\pdf"
 
 # Keep image references and "missing image" placeholder text in the Markdown?
 # Default False: this server never writes or embeds image files, so every image

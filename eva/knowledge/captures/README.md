@@ -8,7 +8,7 @@ chat.
 | | |
 |---|---|
 | **Setting** | `EVA_KNOWLEDGE_DIR` (the `knowledge-base` plugin appends `\captures`) |
-| **Default** | `C:\Eva\knowledge\captures` |
+| **Default** | `H:\Eva\knowledge\captures` |
 | **Filenames** | `<source> - <title>.md`, e.g. `Research - Licence renewal.md` |
 | **Must sit** | inside [`..`](..) — a capture folder outside the indexed root would never be searchable |
 

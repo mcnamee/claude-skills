@@ -1,7 +1,7 @@
 {
   "name": "confluence",
   "displayName": "Confluence (read-only)",
-  "version": "5.0.0",
+  "version": "6.0.0",
   "description": "Search and read Confluence pages across one or two instances, with macro content (task reports, page properties, panels, inline tasks) included, saving a page to Markdown for a local RAG knowledge base when you ask for it.",
   "author": {
     "name": "mcnamee"

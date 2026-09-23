@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r"""
-powerpoint.py (v5.0.0) - A single-file MCP (Model Context Protocol) stdio server
+powerpoint.py (v6.0.0) - A single-file MCP (Model Context Protocol) stdio server
 that builds PowerPoint .pptx decks, optionally from your own template, and
 audits them against Guy Kawasaki's 10/20/30 rule.
 
@@ -34,7 +34,7 @@ WHAT IT CAN DO
       List what is available with powerpoint_list_presentations.
     - Keep blank templates in a folder of their own - the "powerpoint"
       sub-folder of the suite's template root, by default
-      C:\Eva\templates\powerpoint. It is a READ-ONLY second root:
+      H:\Eva\templates\powerpoint. It is a READ-ONLY second root:
       its files can be listed, opened and used as the base for
       powerpoint_create, but every attempt to SAVE over one is refused, so a
       template cannot be turned into someone's half-finished deck.
@@ -262,9 +262,9 @@ WHAT IT CANNOT DO
 
         EVA_PYTHON          full path to the python.exe that has the
                             dependencies installed, e.g. C:\Python311\python.exe
-        EVA_DOCUMENTS_DIR   root of the document library (C:\Eva\documents)
-        EVA_TEMPLATES_DIR   root of the template library (C:\Eva\templates)
-        EVA_KNOWLEDGE_DIR   root of the RAG corpus       (C:\Eva\knowledge)
+        EVA_DOCUMENTS_DIR   root of the document library (H:\Eva\documents)
+        EVA_TEMPLATES_DIR   root of the template library (H:\Eva\templates)
+        EVA_KNOWLEDGE_DIR   root of the RAG corpus       (H:\Eva\knowledge)
 
     This server works in the "powerpoint" sub-folder of each root. ALL THREE
     FOLDERS MUST EXIST:
@@ -286,11 +286,11 @@ WHAT IT CANNOT DO
     To set them permanently for your account (PowerShell, one-off):
 
         [Environment]::SetEnvironmentVariable("EVA_PYTHON", "C:\Python311\python.exe", "User")
-        [Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "C:\Eva\documents", "User")
-        [Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\templates", "User")
-        [Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "C:\Eva\knowledge", "User")
+        [Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "H:\Eva\documents", "User")
+        [Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "H:\Eva\templates", "User")
+        [Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "H:\Eva\knowledge", "User")
 
-    Copy the repo's eva\ folder to C:\Eva and every folder above exists,
+    Copy the repo's eva\ folder to H:\Eva and every folder above exists,
     correctly related to the others - see eva\README.md.
 
     Server-specific settings, all optional:
@@ -354,7 +354,7 @@ failed transfer" rule):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "5.0.0"
+__version__ = "6.0.0"
 
 # =============================================================================
 # CONFIGURATION  (all user-editable settings live here, nothing scattered below)
@@ -377,7 +377,7 @@ PROTOCOL_VERSION_FALLBACK = "2024-11-05"  # used if the client sends none
 #   EVA_KNOWLEDGE_DIR   -> %EVA_KNOWLEDGE_DIR%\powerpoint  Markdown for the index
 #
 # The three roots below are the fallback when a variable is not set, and match
-# the Eva working tree: copy the repo's eva\ folder to C:\Eva and every folder
+# the Eva working tree: copy the repo's eva\ folder to H:\Eva and every folder
 # exists. There are NO folder command-line flags - configuration is environment
 # variables only, so two settings can never disagree about a path.
 #
@@ -387,12 +387,12 @@ PROTOCOL_VERSION_FALLBACK = "2024-11-05"  # used if the client sends none
 # one to "off" (any of the DISABLE_KEYWORDS) to switch that feature off.
 # -----------------------------------------------------------------------------
 SUBFOLDER = "powerpoint"           # this server's sub-folder in each root
-EVA_DOCUMENTS_DIR = r"C:\Eva\documents"
-EVA_TEMPLATES_DIR = r"C:\Eva\templates"
-EVA_KNOWLEDGE_DIR = r"C:\Eva\knowledge"
+EVA_DOCUMENTS_DIR = r"H:\Eva\documents"
+EVA_TEMPLATES_DIR = r"H:\Eva\templates"
+EVA_KNOWLEDGE_DIR = r"H:\Eva\knowledge"
 
 # Resolved from the environment in main(); the literals here are what a stock
-# C:\Eva install resolves to.
+# H:\Eva install resolves to.
 #
 # DOCS_DIR is the REQUIRED path sandbox. The server refuses to open or save any
 # file outside this directory tree, and REFUSES TO START if the folder is
@@ -407,7 +407,7 @@ EVA_KNOWLEDGE_DIR = r"C:\Eva\knowledge"
 # Related caution: only open .pptx files from trusted sources - a maliciously
 # crafted file could use XML entity tricks to pull local file contents into
 # the slide text that the model then reads.
-DOCS_DIR = r"C:\Eva\documents\powerpoint"
+DOCS_DIR = r"H:\Eva\documents\powerpoint"
 
 # TEMPLATES_DIR holds blank .pptx/.potx TEMPLATES (the branded deck shell with
 # your title slide, section divider and content layouts). It is a READ-ONLY
@@ -419,10 +419,10 @@ DOCS_DIR = r"C:\Eva\documents\powerpoint"
 #     be overwritten with a filled-in copy of itself. New decks always go to
 #     DOCS_DIR.
 # One folder per plugin, mirroring DOCS_DIR: the `word` plugin's blanks sit
-# beside these in C:\Eva\templates\word. The server also refuses to start if
+# beside these in H:\Eva\templates\word. The server also refuses to start if
 # this folder IS - or contains - DOCS_DIR, because that arrangement would refuse
 # every save.
-TEMPLATES_DIR = r"C:\Eva\templates\powerpoint"
+TEMPLATES_DIR = r"H:\Eva\templates\powerpoint"
 
 # KB_DIR is the knowledge-base (RAG) folder: EVERY deck opened, created or
 # saved is ALSO written out as a Markdown file into it, the same way word.py
@@ -430,8 +430,8 @@ TEMPLATES_DIR = r"C:\Eva\templates\powerpoint"
 # named 'PowerPoint - <name>.md' and overwritten each time. The server writes
 # there itself (the model never chooses the path), so it does not need to sit
 # inside DOCS_DIR - but it MUST stay inside the knowledge-base plugin's corpus
-# (C:\Eva\knowledge) or the mirrored Markdown is never indexed.
-KB_DIR = r"C:\Eva\knowledge\powerpoint"
+# (H:\Eva\knowledge) or the mirrored Markdown is never indexed.
+KB_DIR = r"H:\Eva\knowledge\powerpoint"
 
 # --- Guy Kawasaki's 10/20/30 rule ------------------------------------------
 # The thresholds powerpoint_review audits against. They are constants rather
@@ -4286,7 +4286,7 @@ def main():
         else:
             log("       That is the built-in default. Create the folder, set "
                 "EVA_DOCUMENTS_DIR to your own document root, or copy the "
-                "repo's eva\\ folder to C:\\Eva to lay out the whole tree.")
+                "repo's eva\\ folder to H:\\Eva to lay out the whole tree.")
         sys.exit(2)
 
     # The templates folder is optional. A path the USER chose and got wrong
@@ -4303,7 +4303,7 @@ def main():
             sys.exit(2)
         log("WARNING: the default templates folder does not exist, so "
             "templates are disabled: {}".format(TEMPLATES_DIR))
-        log("         Create it (copying the repo's eva\\ folder to C:\\Eva "
+        log("         Create it (copying the repo's eva\\ folder to H:\\Eva "
             "lays out the whole tree) to create decks from a template.")
         TEMPLATES_DIR = None
 

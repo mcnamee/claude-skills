@@ -241,6 +241,6 @@ paragraphs with levels, tables, notes) → edit → `powerpoint_save`.
   Build from it with `powerpoint_create(template=...)` instead.
 - `.potx` files can be read as templates; decks are always **saved as `.pptx`**.
 - Opening, creating and saving a deck each mirror it to Markdown for the
-  knowledge base (on by default, to `C:\Eva\knowledge\powerpoint`).
+  knowledge base (on by default, to `H:\Eva\knowledge\powerpoint`).
 - Not supported: charts, SmartArt, animations, transitions, images, and editing
   a template's theme.

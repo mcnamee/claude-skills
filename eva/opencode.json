@@ -1,7 +1,7 @@
 {
-  // OpenCode project config for the Eva suite. Lands at C:\Eva\opencode.json
+  // OpenCode project config for the Eva suite. Lands at H:\Eva\opencode.json
   // when the eva\ tree is copied, and applies whenever OpenCode (or its VS Code
-  // extension) is opened in C:\Eva. Setup: OPENCODE.md at the repo root.
+  // extension) is opened in H:\Eva. Setup: OPENCODE.md at the repo root.
   //
   // Paths come from two environment variables, substituted as raw text into
   // this file before it is parsed - so both MUST use forward slashes
@@ -39,7 +39,7 @@
 
   // Every plugin's skill, read straight from your clone, so a `git pull` is
   // all it takes to update them. Adds to OpenCode's usual skill folders
-  // (C:\Eva\.claude\skills, ~/.claude/skills, ~/.config/opencode/skills) -
+  // (H:\Eva\.claude\skills, ~/.claude/skills, ~/.config/opencode/skills) -
   // it does not replace them.
   "skills": {
     "paths": ["{env:EVA_REPO_DIR}/plugins"]

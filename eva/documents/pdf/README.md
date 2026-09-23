@@ -6,7 +6,7 @@ knowledge base, and the day planners the `outlook` plugin prints.
 | | |
 |---|---|
 | **Setting** | `EVA_DOCUMENTS_DIR` (both the `pdf-to-md` and `outlook` plugins append `\pdf`) |
-| **Default** | `C:\Eva\documents\pdf` |
+| **Default** | `H:\Eva\documents\pdf` |
 | **Access** | `pdf-to-md` reads only — conversion never alters a PDF. `outlook` writes day planners here and touches nothing else |
 | **Output** | [`..\..\knowledge\pdf`](../../knowledge/pdf) |
 

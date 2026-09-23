@@ -8,7 +8,7 @@ from a meeting nobody minuted.
 |---|---|
 | **Written by** | you, in any editor |
 | **Read by** | the `knowledge-base` plugin's index |
-| **Default path** | `C:\Eva\knowledge\notes` |
+| **Default path** | `H:\Eva\knowledge\notes` |
 
 This is the only folder in [`..`](..) that a plugin never writes to, which makes
 it the one place nothing can overwrite. Everything else in `knowledge\` is

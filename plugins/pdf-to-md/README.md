@@ -5,10 +5,10 @@ local knowledge base built from PDF source material.
 
 | | |
 |---|---|
-| **Server** | `pdf-to-md.py` v6.0.0 |
+| **Server** | `pdf-to-md.py` v7.0.0 |
 | **pip install** | `pymupdf pymupdf4llm` |
 | **Platform** | any |
-| **Writes to disk** | yes — the output folder only (`C:\Eva\knowledge\pdf`) |
+| **Writes to disk** | yes — the output folder only (`H:\Eva\knowledge\pdf`) |
 
 OCR of scanned PDFs additionally requires **Tesseract installed on the machine**
 (not a pip package).
@@ -32,15 +32,15 @@ there are no folder prompts at install time and no folder command-line flags.
 | Variable | Purpose | Default |
 |---|---|---|
 | `EVA_PYTHON` | The `python.exe` every server runs under - the same one you installed the pip dependencies into | *(none - you must set it)* |
-| `EVA_DOCUMENTS_DIR` | Root of the document library | `C:\Eva\documents` |
-| `EVA_TEMPLATES_DIR` | Root of the template library | `C:\Eva\templates` |
-| `EVA_KNOWLEDGE_DIR` | Root of the RAG corpus - the one folder the index reads | `C:\Eva\knowledge` |
+| `EVA_DOCUMENTS_DIR` | Root of the document library | `H:\Eva\documents` |
+| `EVA_TEMPLATES_DIR` | Root of the template library | `H:\Eva\templates` |
+| `EVA_KNOWLEDGE_DIR` | Root of the RAG corpus - the one folder the index reads | `H:\Eva\knowledge` |
 
 ```powershell
 [Environment]::SetEnvironmentVariable("EVA_PYTHON",        "C:\Python311\python.exe",     "User")
-[Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "C:\Eva\documents",             "User")
-[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\templates",   "User")
-[Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "C:\Eva\knowledge",             "User")
+[Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "H:\Eva\documents",             "User")
+[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "H:\Eva\templates",   "User")
+[Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "H:\Eva\knowledge",             "User")
 ```
 
 `setx NAME "value"` does the same thing from `cmd`. Neither affects processes
@@ -53,7 +53,7 @@ Of the four, this server uses three: `EVA_PYTHON`, `EVA_DOCUMENTS_DIR` and
 
 Every server works in its **own sub-folder** of those roots, named after
 the plugin. This one uses `pdf`, and **each folder below must exist** -
-create them, or copy the repo's [`eva/`](../../eva) folder to `C:\Eva` and
+create them, or copy the repo's [`eva/`](../../eva) folder to `H:\Eva` and
 they all do.
 
 | Folder | What it is for | Missing? |

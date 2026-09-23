@@ -72,5 +72,5 @@ folder is the brief-writer skill's own, and only briefs belong in it - the two
 skills never read each other's.
 
 Either way, a file you name in the prompt beats the folder, including one in
-`C:\Eva\documents\word` (which, unlike a skill folder, the `word` server can
+`H:\Eva\documents\word` (which, unlike a skill folder, the `word` server can
 actually open).

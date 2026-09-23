@@ -5,17 +5,17 @@ index. This copy in the repo is a **scaffold**: the folder tree with a README in
 every folder explaining what belongs there, Eva's own instructions in
 [`CLAUDE.md`](CLAUDE.md), and no content.
 
-Copy it to `C:\Eva` on the endpoint, set four environment variables, and every
+Copy it to `H:\Eva` on the endpoint, set four environment variables, and every
 plugin in this repo lines up with it - with nothing left to configure but your
 API keys and Confluence/Jira URLs.
 
 ```powershell
-Copy-Item -Recurse C:\path\to\claude-skills\eva C:\Eva
+Copy-Item -Recurse C:\path\to\claude-skills\eva H:\Eva
 
 [Environment]::SetEnvironmentVariable("EVA_PYTHON",        "C:\Python311\python.exe",        "User")
-[Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "C:\Eva\documents",               "User")
-[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\templates",             "User")
-[Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "C:\Eva\knowledge",               "User")
+[Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "H:\Eva\documents",               "User")
+[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "H:\Eva\templates",             "User")
+[Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "H:\Eva\knowledge",               "User")
 ```
 
 Those four are the *whole* configuration story for folders. Each plugin appends
@@ -36,7 +36,7 @@ The tree is organised by **what writes to a folder**, not by topic:
 | [`templates\`](templates) | Blank branded files a new document is created from — style, not facts | you |
 
 ```
-C:\Eva\
+H:\Eva\
 ├─ CLAUDE.md         who Eva is, and how she writes
 ├─ opencode.json     OpenCode's config, if you use it instead of Claude Code
 ├─ knowledge\        the indexed corpus (.md / .txt only)
@@ -67,7 +67,7 @@ and Australian conventions for dates, times and money, bans em dashes and the
 rest of the AI tells, and sets out how she sources facts on a network with no
 internet and what she is not allowed to do on your behalf.
 
-Claude Code loads it whenever you run in `C:\Eva`, so open Claude Code *here*
+Claude Code loads it whenever you run in `H:\Eva`, so open Claude Code *here*
 rather than somewhere else and it applies with nothing to configure. To make Eva
 the default in every folder, copy it to `%USERPROFILE%\.claude\CLAUDE.md`
 instead, remembering it will then shape coding sessions too.
@@ -85,9 +85,9 @@ per-plugin to configure and nothing that can drift out of step.
 | Variable | Root | Default |
 |---|---|---|
 | `EVA_PYTHON` | the `python.exe` every server runs under | *(no default - set it)* |
-| `EVA_DOCUMENTS_DIR` | `documents\` | `C:\Eva\documents` |
-| `EVA_TEMPLATES_DIR` | `templates\` | `C:\Eva\templates` |
-| `EVA_KNOWLEDGE_DIR` | `knowledge\` | `C:\Eva\knowledge` |
+| `EVA_DOCUMENTS_DIR` | `documents\` | `H:\Eva\documents` |
+| `EVA_TEMPLATES_DIR` | `templates\` | `H:\Eva\templates` |
+| `EVA_KNOWLEDGE_DIR` | `knowledge\` | `H:\Eva\knowledge` |
 
 Where each plugin lands, and **which folders must exist**:
 
@@ -105,7 +105,7 @@ Where each plugin lands, and **which folders must exist**:
 `knowledge-base` is the one exception to the sub-folder rule, and necessarily
 so: it indexes the entire `knowledge\` root, which is exactly the point of
 every other plugin writing into a sub-folder of it. Its vector store lives
-outside the corpus in `index\` (`KB_INDEX_DIR`, default `C:\Eva\index`).
+outside the corpus in `index\` (`KB_INDEX_DIR`, default `H:\Eva\index`).
 
 ### Overriding one folder
 
@@ -173,21 +173,21 @@ policy. If you want a document to be both a reference *and* a model to write
 like, put its content in `knowledge\notes\` and keep the formatted copy with
 the skill.
 
-**Upgrading an existing `C:\Eva`?** Move the templates out of the old
+**Upgrading an existing `H:\Eva`?** Move the templates out of the old
 `reference\` zone into one folder per plugin, hand the exemplars to the skills
 that now read them, and set the four environment variables:
 
 ```powershell
-New-Item -ItemType Directory -Force C:\Eva\templates\word, C:\Eva\templates\powerpoint
-Move-Item C:\Eva\reference\templates\*.docx        C:\Eva\templates\word
-Move-Item C:\Eva\reference\templates\*.pptx,*.potx C:\Eva\templates\powerpoint
-Copy-Item C:\Eva\reference\exemplars\* "$env:USERPROFILE\.claude\skills\exemplar-writer\exemplars"
-Remove-Item -Recurse C:\Eva\reference
+New-Item -ItemType Directory -Force H:\Eva\templates\word, H:\Eva\templates\powerpoint
+Move-Item H:\Eva\reference\templates\*.docx        H:\Eva\templates\word
+Move-Item H:\Eva\reference\templates\*.pptx,*.potx H:\Eva\templates\powerpoint
+Copy-Item H:\Eva\reference\exemplars\* "$env:USERPROFILE\.claude\skills\exemplar-writer\exemplars"
+Remove-Item -Recurse H:\Eva\reference
 
 [Environment]::SetEnvironmentVariable("EVA_PYTHON",        "C:\Python311\python.exe", "User")
-[Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "C:\Eva\documents",         "User")
-[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\templates",         "User")
-[Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "C:\Eva\knowledge",         "User")
+[Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "H:\Eva\documents",         "User")
+[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "H:\Eva\templates",         "User")
+[Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "H:\Eva\knowledge",         "User")
 ```
 
 Then reconfigure the plugins once (`/plugin` → each one) to drop the folder
@@ -195,8 +195,8 @@ answers they no longer ask for.
 
 ## Moving it somewhere else
 
-`C:\Eva` is the fallback baked into each plugin's config block — short, on the
-system drive, the same for every user, and free of the spaces and
+`H:\Eva` is the fallback baked into each plugin's config block — short, the
+same path for every user with an `H:` drive, and free of the spaces and
 `%USERPROFILE%` expansion that break command lines. To put the tree elsewhere,
 copy it there and point the four environment variables at the new location;
 nothing in the plugins assumes the drive or the folder name.

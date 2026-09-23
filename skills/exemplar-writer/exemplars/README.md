@@ -52,15 +52,15 @@ skill's. It will say the markings are there rather than filing it for you.
 ## What does not
 
 - **Blank templates and letterhead** - those are what a document is *built
-  from*, not read for guidance. They go in `C:\Eva\templates\word` or
-  `C:\Eva\templates\powerpoint`, where the `word` and `powerpoint` plugins can
+  from*, not read for guidance. They go in `H:\Eva\templates\word` or
+  `H:\Eva\templates\powerpoint`, where the `word` and `powerpoint` plugins can
   open them.
 - **Briefs** - [`/brief-writer`](../../brief-writer) has its own exemplars
   folder, and its own structure for them.
 - **Emails** - same, [`/email-writer`](../../email-writer).
 - **Reference data to answer questions from** - that is what the
   [`knowledge-base`](../../../plugins/knowledge-base) plugin indexes, out of
-  `C:\Eva\knowledge`. See below for why exemplars deliberately are not indexed.
+  `H:\Eva\knowledge`. See below for why exemplars deliberately are not indexed.
 - **Twelve near-identical reports.** The extras only make the match harder.
 
 ## Index
@@ -89,20 +89,20 @@ Two fixes, either is fine:
 1. **Keep a `.md` copy beside the original.** The better arrangement anyway for
    an exemplar you reach for often - no conversion step, and the structure is
    visible at a glance.
-2. **Keep the original in the Eva tree** (`C:\Eva\documents\word`,
+2. **Keep the original in the Eva tree** (`H:\Eva\documents\word`,
    `\powerpoint`, `\pdf`) and point the skill at it there in your prompt. That
    folder *is* inside the server's sandbox, and a file you name explicitly beats
    this folder anyway.
 
 ## Why none of this is indexed
 
-Exemplars are deliberately kept out of `C:\Eva\knowledge`, the only folder the
+Exemplars are deliberately kept out of `H:\Eva\knowledge`, the only folder the
 RAG index reads. Add a board paper to the indexed corpus and its phrasing comes
 back with the same authority as a policy: `kb_ask` starts citing house style as
 fact, and a two-year-old example as current practice.
 
 If you want a document to be **both** - a genuine reference as well as a model
-to write like - put its content in `C:\Eva\knowledge\notes\` and keep the
+to write like - put its content in `H:\Eva\knowledge\notes\` and keep the
 formatted copy here. Same document, two jobs, no confusion about which is being
 cited.
 

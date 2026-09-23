@@ -107,7 +107,7 @@ Reading a page does **not** save it. `confluence_get_page` and
 `confluence_get_page_by_title` take `save_to_kb`, false by default; set it to
 true **only when the user asks for the page to be kept** — "save this to the
 knowledge base", "add that page to the KB", "pull the runbook in for offline
-search". The file lands in `C:\Eva\knowledge\confluence` and the tool reports
+search". The file lands in `H:\Eva\knowledge\confluence` and the tool reports
 the path.
 
 - **Never set it while researching.** Pages you open to answer a question are

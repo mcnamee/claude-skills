@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-confluence.py (v5.0.0) - A single-file MCP (Model Context Protocol) server
+confluence.py (v6.0.0) - A single-file MCP (Model Context Protocol) server
 for querying ONE OR TWO Confluence Data Center instances (tested against the
 9.x v1 REST API) using only the Python 3 standard library.
 
@@ -82,7 +82,7 @@ your Windows account:
   EVA_PYTHON            full path to the python.exe the MCP client launches,
                         e.g. C:\Python311\python.exe (read by the plugin
                         manifest, not by this file)
-  EVA_KNOWLEDGE_DIR     root of the RAG corpus (default C:\Eva\knowledge).
+  EVA_KNOWLEDGE_DIR     root of the RAG corpus (default H:\Eva\knowledge).
                         This server saves into its own "confluence"
                         sub-folder, and THAT FOLDER MUST EXIST:
                         %EVA_KNOWLEDGE_DIR%\confluence
@@ -170,7 +170,7 @@ stored in the plugin - set them as Windows user environment variables before
 starting Claude Code, and the plugin picks them up from there:
 
     setx EVA_PYTHON         "C:\Python311\python.exe"
-    setx EVA_KNOWLEDGE_DIR  "C:\Eva\knowledge"
+    setx EVA_KNOWLEDGE_DIR  "H:\Eva\knowledge"
     setx CONFLUENCE_TOKEN   "token-for-the-first-server"
     setx CONFLUENCE_TOKEN_2 "token-for-the-second-server"
 
@@ -209,7 +209,7 @@ config (every setting, tokens included, goes in the environment):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "5.0.0"
+__version__ = "6.0.0"
 
 import argparse
 import base64
@@ -231,15 +231,15 @@ SERVER_VERSION = __version__
 # call asks for it (save_to_kb=true).
 # RESOLVED FROM THE ENVIRONMENT in main(): the "confluence" sub-folder of
 # %EVA_KNOWLEDGE_DIR% (the suite-wide RAG root), or CONFLUENCE_KB_DIR for a
-# full path of its own. The literal here is what a stock C:\Eva install
+# full path of its own. The literal here is what a stock H:\Eva install
 # resolves to; it MUST stay inside the knowledge-base plugin's corpus
-# (C:\Eva\knowledge) or the saved pages would never be indexed. The folder is
+# (H:\Eva\knowledge) or the saved pages would never be indexed. The folder is
 # created on demand.
 # Set CONFLUENCE_KB_DIR=off to forbid saving altogether, after which this
 # server touches no local file at all.
 SUBFOLDER = "confluence"                 # this server's knowledge sub-folder
-EVA_KNOWLEDGE_DIR = r"C:\Eva\knowledge"  # fallback for the suite-wide root
-KB_DIR = r"C:\Eva\knowledge\confluence"
+EVA_KNOWLEDGE_DIR = r"H:\Eva\knowledge"  # fallback for the suite-wide root
+KB_DIR = r"H:\Eva\knowledge\confluence"
 
 # Which representation of a page body to read. Confluence keeps the page SOURCE
 # in "storage" and the RENDERED page in "view"/"export_view"; a macro that

@@ -27,7 +27,7 @@ and to verify with `python pdf-to-md.py --check`.
 3. Report the per-file results (converted / skipped / failed) rather than
    just "done" — scanned pages without OCR fail per-file, not silently.
 4. Output lands in the configured output folder, which by default is inside
-   the knowledge-base corpus (`C:\Eva\knowledge\pdf`) — so converted content
+   the knowledge-base corpus (`H:\Eva\knowledge\pdf`) — so converted content
    is searchable as soon as it is indexed (suggest `kb_index` if the RAG server
    is in use).
 

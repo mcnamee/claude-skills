@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-knowledge-base.py (v4.0.0)
+knowledge-base.py (v5.0.0)
 ==========================
 
 A single-file MCP (Model Context Protocol) server providing true RAG
@@ -61,7 +61,7 @@ your Windows account:
 | EVA_PYTHON        | Full path to the python.exe the MCP client launches, e.g. |
 |                   | C:\\Python311\\python.exe (read by the plugin manifest,     |
 |                   | not by this file)                                        |
-| EVA_KNOWLEDGE_DIR | The RAG corpus root, default C:\\Eva\\knowledge. THIS      |
+| EVA_KNOWLEDGE_DIR | The RAG corpus root, default H:\\Eva\\knowledge. THIS      |
 |                   | FOLDER MUST EXIST. Unlike the other plugins, this server  |
 |                   | indexes the WHOLE root rather than one sub-folder - every |
 |                   | .md/.markdown/.txt file under it, recursively, including  |
@@ -76,7 +76,7 @@ The rest are this server's own. API keys are, as ever, environment-only.
 |-------------------------|-------------------------------------------------------------|
 | KB_DOCS_DIR             | Override the indexed corpus with a full path of its own,     |
 |                         | instead of EVA_KNOWLEDGE_DIR                                 |
-| KB_INDEX_DIR            | ChromaDB folder. Default: C:\\Eva\\index - deliberately       |
+| KB_INDEX_DIR            | ChromaDB folder. Default: H:\\Eva\\index - deliberately       |
 |                         | OUTSIDE the corpus, so a large binary database does not sit  |
 |                         | inside the folder you index, zip and copy                    |
 | KB_OUTPUT_DIR           | Override the folder kb_capture writes new notes into,        |
@@ -206,7 +206,7 @@ environment variable before starting Claude Code, and the plugin picks it up
 from there:
 
     setx EVA_PYTHON        "C:\\Python311\\python.exe"
-    setx EVA_KNOWLEDGE_DIR "C:\\Eva\\knowledge"
+    setx EVA_KNOWLEDGE_DIR "H:\\Eva\\knowledge"
     setx KB_EMBED_API_KEY  "..."
 
 Every other setting is available as its KB_* environment variable. See
@@ -216,7 +216,7 @@ FIRST RUN / TESTING (PowerShell, before wiring into the MCP client)
 ---------------------------------------------------------------
 Set the configuration in the environment once, then use the action flags:
 
-    $env:EVA_KNOWLEDGE_DIR = "C:\\Eva\\knowledge"
+    $env:EVA_KNOWLEDGE_DIR = "H:\\Eva\\knowledge"
     $env:KB_EMBED_URL      = "https://..."
     $env:KB_EMBED_API_KEY  = "..."      (this session only; setx makes it permanent)
 
@@ -271,7 +271,7 @@ NOTES
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "4.0.0"
+__version__ = "5.0.0"
 
 import os
 import re
@@ -322,34 +322,34 @@ DOC_EXTENSIONS = {".md", ".markdown", ".txt"}
 #                          %EVA_KNOWLEDGE_DIR%\captures for kb_capture
 #
 # The roots below are the fallback when a variable is not set, and match the
-# Eva working tree - copy the repo's eva\ folder to C:\Eva and they exist,
+# Eva working tree - copy the repo's eva\ folder to H:\Eva and they exist,
 # correctly related to each other. See eva\README.md. There are NO
 # configuration command-line flags: everything is an environment variable, so
 # two settings can never disagree about a path. KB_DOCS_DIR, KB_INDEX_DIR and
 # KB_OUTPUT_DIR each override ONE folder with a full path of its own.
 # ---------------------------------------------------------------------------
 SUBFOLDER = "captures"                   # where kb_capture writes, in the root
-EVA_KNOWLEDGE_DIR = r"C:\Eva\knowledge"  # fallback for the suite-wide root
+EVA_KNOWLEDGE_DIR = r"H:\Eva\knowledge"  # fallback for the suite-wide root
 
 # REQUIRED. The indexed corpus: every .md/.markdown/.txt file under here is
 # chunked, embedded and searchable. Dot-folders and dot-files are skipped, and
 # non-text files are ignored, so the mirrors the other servers write into
 # sub-folders of this one are picked up automatically. Resolved from the
-# environment in main(); the literal here is what a stock C:\Eva install
+# environment in main(); the literal here is what a stock H:\Eva install
 # resolves to.
-DOCS_DIR = r"C:\Eva\knowledge"
+DOCS_DIR = r"H:\Eva\knowledge"
 
 # The ChromaDB vector store. Deliberately OUTSIDE DOCS_DIR so a
 # multi-hundred-megabyte binary database does not sit inside the corpus you
 # want to be able to zip, copy or grep. Set KB_INDEX_DIR to one of the
 # DISABLE_KEYWORDS to fall back to a hidden .kb-rag-index folder inside
 # DOCS_DIR instead.
-INDEX_DIR = r"C:\Eva\index"
+INDEX_DIR = r"H:\Eva\index"
 
 # Where kb_capture writes new notes: the "captures" sub-folder of the corpus.
 # It MUST resolve inside DOCS_DIR - a capture folder outside the corpus would
 # be written to and never indexed - and must not be a dot-folder.
-OUTPUT_DIR = r"C:\Eva\knowledge\captures"
+OUTPUT_DIR = r"H:\Eva\knowledge\captures"
 
 # Values that mean "explicitly turned off" for a folder setting. A BLANK value
 # is what an MCP client substitutes for a setting the user left empty, so it
@@ -1948,7 +1948,7 @@ def main():
         else:
             log("       That is the built-in default. Create the folder, set "
                 "EVA_KNOWLEDGE_DIR to your own knowledge root, or copy the "
-                "repo's eva\\ folder to C:\\Eva to lay out the whole tree.")
+                "repo's eva\\ folder to H:\\Eva to lay out the whole tree.")
         sys.exit(2)
     if not embed_url:
         log("FATAL: no embeddings endpoint set. Set KB_EMBED_URL.")

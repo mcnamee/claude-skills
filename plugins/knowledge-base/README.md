@@ -5,10 +5,10 @@ local ChromaDB vector index plus your own embeddings API.
 
 | | |
 |---|---|
-| **Server** | `knowledge-base.py` v4.0.0 |
+| **Server** | `knowledge-base.py` v5.0.0 |
 | **pip install** | `chromadb` (HTTP to your endpoints is stdlib `urllib` — no `requests`) |
 | **Platform** | any |
-| **Writes to disk** | yes — the vector index folder (`C:\Eva\index`), plus captured notes under `C:\Eva\knowledge\captures` |
+| **Writes to disk** | yes — the vector index folder (`H:\Eva\index`), plus captured notes under `H:\Eva\knowledge\captures` |
 
 ## How it works
 
@@ -56,7 +56,7 @@ line, where other local users would see it in a process listing.
 
 ```powershell
 setx EVA_PYTHON        "C:\Python311\python.exe"
-setx EVA_KNOWLEDGE_DIR "C:\Eva\knowledge"
+setx EVA_KNOWLEDGE_DIR "H:\Eva\knowledge"
 setx KB_EMBED_API_KEY  "your-api-key"
 ```
 
@@ -74,7 +74,7 @@ Before wiring it into the client — the docstring at the top of
 environment once, then the action flags do the rest:
 
 ```powershell
-$env:EVA_KNOWLEDGE_DIR = "C:\Eva\knowledge"
+$env:EVA_KNOWLEDGE_DIR = "H:\Eva\knowledge"
 $env:KB_EMBED_URL      = "https://your-gateway/v1/embeddings"
 $env:KB_EMBED_API_KEY  = "your-api-key"
 
@@ -105,15 +105,15 @@ there are no folder prompts at install time and no folder command-line flags.
 | Variable | Purpose | Default |
 |---|---|---|
 | `EVA_PYTHON` | The `python.exe` every server runs under - the same one you installed the pip dependencies into | *(none - you must set it)* |
-| `EVA_DOCUMENTS_DIR` | Root of the document library | `C:\Eva\documents` |
-| `EVA_TEMPLATES_DIR` | Root of the template library | `C:\Eva\templates` |
-| `EVA_KNOWLEDGE_DIR` | Root of the RAG corpus - the one folder the index reads | `C:\Eva\knowledge` |
+| `EVA_DOCUMENTS_DIR` | Root of the document library | `H:\Eva\documents` |
+| `EVA_TEMPLATES_DIR` | Root of the template library | `H:\Eva\templates` |
+| `EVA_KNOWLEDGE_DIR` | Root of the RAG corpus - the one folder the index reads | `H:\Eva\knowledge` |
 
 ```powershell
 [Environment]::SetEnvironmentVariable("EVA_PYTHON",        "C:\Python311\python.exe",     "User")
-[Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "C:\Eva\documents",             "User")
-[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\templates",   "User")
-[Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "C:\Eva\knowledge",             "User")
+[Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "H:\Eva\documents",             "User")
+[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "H:\Eva\templates",   "User")
+[Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "H:\Eva\knowledge",             "User")
 ```
 
 `setx NAME "value"` does the same thing from `cmd`. Neither affects processes
@@ -126,13 +126,13 @@ Of the four, this server uses `EVA_PYTHON` and `EVA_KNOWLEDGE_DIR`.
 Every other server works in its own sub-folder of the knowledge root; this one
 is the exception, and indexes the **whole root**. **Each folder below must
 exist** - create them, or copy the repo's [`eva/`](../../eva) folder to
-`C:\Eva` and they all do.
+`H:\Eva` and they all do.
 
 | Folder | What it is for | Missing? |
 |---|---|---|
 | `%EVA_KNOWLEDGE_DIR%` | **The indexed corpus** - every `.md`/`.markdown`/`.txt` file under it, recursively. This is the plugin that reads the *whole* knowledge root rather than one sub-folder of it, which is exactly why every other plugin writes into a sub-folder: `knowledge\word`, `knowledge\email`, `knowledge\confluence`, `knowledge\pdf` and the rest are all inside the corpus, so a stock install indexes every one of them with no further wiring | **Fatal.** The server refuses to start without it |
 | `%EVA_KNOWLEDGE_DIR%\captures` | Where `kb_capture` writes new notes. It has to sit **inside** the corpus, and must not be a dot-folder or land inside the index folder - all three are pruned from indexing, so a note written there would never be searchable | Created on demand. The server refuses to start if it resolves outside the corpus, rather than let a note be written and never indexed |
-| `KB_INDEX_DIR` — default `C:\Eva\index` | The ChromaDB vector store. Deliberately **outside** the corpus, so a multi-hundred-megabyte binary database does not sit inside the folder you want to zip, copy or grep. Derived and disposable: delete it and re-index to rebuild, which you must do after changing embeddings model. This is the one folder in the suite that is not under a shared root | Created on demand. Set `KB_INDEX_DIR=off` to fall back to a hidden `.kb-rag-index` folder inside the corpus |
+| `KB_INDEX_DIR` — default `H:\Eva\index` | The ChromaDB vector store. Deliberately **outside** the corpus, so a multi-hundred-megabyte binary database does not sit inside the folder you want to zip, copy or grep. Derived and disposable: delete it and re-index to rebuild, which you must do after changing embeddings model. This is the one folder in the suite that is not under a shared root | Created on demand. Set `KB_INDEX_DIR=off` to fall back to a hidden `.kb-rag-index` folder inside the corpus |
 
 > See [`eva/knowledge`](../../eva/knowledge) for what belongs in each
 > sub-folder of the corpus.
@@ -146,9 +146,9 @@ a full path each, for an endpoint whose layout differs.
 
 | Env var | Purpose |
 |---|---|
-| `KB_DOCS_DIR` | **Required.** Folder of `.md`/`.markdown`/`.txt` docs, searched recursively. Default `C:\Eva\knowledge` |
-| `KB_INDEX_DIR` | ChromaDB folder. Default `C:\Eva\index` — outside the corpus, so a large binary database does not sit inside the folder you want to be able to zip or grep. Clear the `INDEX_DIR` constant to fall back to `<docs-dir>\.kb-rag-index` |
-| `KB_OUTPUT_DIR` | Folder `kb_capture` writes new notes into (default `C:\Eva\knowledge\captures`, created on demand). Must resolve **inside** the corpus, and must not be a dot-folder or sit inside the index folder — all three are pruned from indexing, so a note written there would never be searchable. The server refuses to start rather than let that happen |
+| `KB_DOCS_DIR` | **Required.** Folder of `.md`/`.markdown`/`.txt` docs, searched recursively. Default `H:\Eva\knowledge` |
+| `KB_INDEX_DIR` | ChromaDB folder. Default `H:\Eva\index` — outside the corpus, so a large binary database does not sit inside the folder you want to be able to zip or grep. Clear the `INDEX_DIR` constant to fall back to `<docs-dir>\.kb-rag-index` |
+| `KB_OUTPUT_DIR` | Folder `kb_capture` writes new notes into (default `H:\Eva\knowledge\captures`, created on demand). Must resolve **inside** the corpus, and must not be a dot-folder or sit inside the index folder — all three are pruned from indexing, so a note written there would never be searchable. The server refuses to start rather than let that happen |
 | `KB_COLLECTION` | ChromaDB collection name (default `kb-rag`) |
 | `KB_EMBED_URL` | **Required.** Full URL of the embeddings endpoint |
 | `KB_EMBED_MODEL` | Model name sent in embed requests (omit if the endpoint fixes one) |
@@ -196,9 +196,9 @@ flags are actions:
 
 ## File access
 
-Reads only inside the documents folder (`C:\Eva\knowledge`). Writes the
-vector-index folder (`C:\Eva\index`) and captured notes
-(`C:\Eva\knowledge\captures`); network only to the endpoint(s) you configure.
+Reads only inside the documents folder (`H:\Eva\knowledge`). Writes the
+vector-index folder (`H:\Eva\index`) and captured notes
+(`H:\Eva\knowledge\captures`); network only to the endpoint(s) you configure.
 
 Existing documents are never modified or deleted — the only file the server
 creates is a new note from `kb_capture`, and the caller supplies a **title, not

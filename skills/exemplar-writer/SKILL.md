@@ -133,7 +133,7 @@ unreadable. When one is:
 - Say which file you could not open, in one line.
 - Ask for a `.md` or `.txt` copy beside it, which is the better arrangement
   anyway for an exemplar reached for often.
-- Or, if the same document also sits in `C:\Eva\documents\word` (or
+- Or, if the same document also sits in `H:\Eva\documents\word` (or
   `\powerpoint`, or `\pdf`), open it there instead - that folder **is** inside
   the server's sandbox.
 
@@ -278,13 +278,13 @@ The deliverable is Markdown in the chat. Build a file only if the user asks for
 one at the end.
 
 - **A `.docx`** - hand it to the `word` server: `msword_create` with a blank
-  from `C:\Eva\templates\word` as its `template`, then one `msword_add_content`
+  from `H:\Eva\templates\word` as its `template`, then one `msword_add_content`
   call carrying the whole ordered document, then `msword_save`. It lands in
-  `C:\Eva\documents\word`.
+  `H:\Eva\documents\word`.
 - **A `.pptx`** - hand it to the `powerpoint` server: `powerpoint_create` with a
-  template from `C:\Eva\templates\powerpoint`, `powerpoint_list_layouts` to see
+  template from `H:\Eva\templates\powerpoint`, `powerpoint_list_layouts` to see
   what it offers, then one `powerpoint_add_slides` call. It lands in
-  `C:\Eva\documents\powerpoint`.
+  `H:\Eva\documents\powerpoint`.
 
 Do not attempt either yourself, and do not write the file into the skill folder.
 

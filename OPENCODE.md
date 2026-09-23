@@ -2,7 +2,7 @@
 
 The rest of this repo is written for Claude Code. This page is the OpenCode
 equivalent of the [Install](README.md#install) section: the same servers, the
-same skills and the same `C:\Eva` tree, wired in through OpenCode's own config
+same skills and the same `H:\Eva` tree, wired in through OpenCode's own config
 instead of Claude Code plugins.
 
 Nothing in the servers changes. What changes is the packaging around them:
@@ -20,17 +20,17 @@ Everything below is **Windows / PowerShell**.
 
 ## 1. Lay out the working folder
 
-Same as for Claude Code - copy the repo's `eva\` folder to `C:\Eva`:
+Same as for Claude Code - copy the repo's `eva\` folder to `H:\Eva`:
 
 ```powershell
-Copy-Item -Recurse H:\Claude-Skills\eva C:\Eva
+Copy-Item -Recurse H:\Claude-Skills\eva H:\Eva
 ```
 
-This brings `C:\Eva\opencode.json` with it, which OpenCode reads whenever it is
-opened in `C:\Eva`. Fill in the **About me** block of `C:\Eva\CLAUDE.md` as the
+This brings `H:\Eva\opencode.json` with it, which OpenCode reads whenever it is
+opened in `H:\Eva`. Fill in the **About me** block of `H:\Eva\CLAUDE.md` as the
 [main README](README.md#install) describes.
 
-> Copying `eva\` again later overwrites `C:\Eva\opencode.json`. If you edit
+> Copying `eva\` again later overwrites `H:\Eva\opencode.json`. If you edit
 > your copy (to switch off a server, say), re-apply the edit after the copy -
 > or copy just the README files you need rather than the whole tree.
 
@@ -46,9 +46,9 @@ The four suite-wide variables, plus `EVA_REPO_DIR` for OpenCode:
 ```powershell
 [Environment]::SetEnvironmentVariable("EVA_PYTHON",        "C:/path/to/python.exe", "User")
 [Environment]::SetEnvironmentVariable("EVA_REPO_DIR",      "H:/Claude-Skills",      "User")
-[Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "C:\Eva\documents",      "User")
-[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\templates",      "User")
-[Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "C:\Eva\knowledge",      "User")
+[Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "H:\Eva\documents",      "User")
+[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "H:\Eva\templates",      "User")
+[Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "H:\Eva\knowledge",      "User")
 ```
 
 **`EVA_PYTHON` and `EVA_REPO_DIR` must use forward slashes.** OpenCode pastes
@@ -115,7 +115,7 @@ completely** and reopen it after setting anything.
 
 Every server in `opencode.json` starts enabled. For any plugin whose pip
 dependencies you skipped (typically `outlook` without `pywin32`), set
-`"enabled": false` on its entry in `C:\Eva\opencode.json`. Otherwise it just
+`"enabled": false` on its entry in `H:\Eva\opencode.json`. Otherwise it just
 shows as failed.
 
 ## 7. Skills
@@ -127,7 +127,7 @@ straight from your clone, and a `git pull` is all it takes to update them.
 This adds to OpenCode's usual skill folders rather than replacing them, so your
 own skills keep working from any of:
 
-- `C:\Eva\.claude\skills` (when OpenCode is opened in `C:\Eva`)
+- `H:\Eva\.claude\skills` (when OpenCode is opened in `H:\Eva`)
 - `%USERPROFILE%\.claude\skills` - which also means standalone skills you
   installed for Claude Code already work
 - `%USERPROFILE%\.config\opencode\skills`
@@ -152,9 +152,9 @@ connection failure:
 & $env:EVA_PYTHON "$env:EVA_REPO_DIR/plugins/word/word.py" --check
 ```
 
-Then open `C:\Eva` in VS Code, open the integrated terminal and run `opencode`
+Then open `H:\Eva` in VS Code, open the integrated terminal and run `opencode`
 (or press `Ctrl+Esc` once the OpenCode extension is installed). From
-`C:\Eva`, `opencode mcp list` shows each server and whether it connected.
+`H:\Eva`, `opencode mcp list` shows each server and whether it connected.
 
 ## Differences to expect
 
