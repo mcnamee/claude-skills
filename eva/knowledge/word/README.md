@@ -7,7 +7,7 @@ whenever it **saves** one.
 | | |
 |---|---|
 | **Setting** | `EVA_KNOWLEDGE_DIR` (the `word` plugin appends `\word`) |
-| **Default** | `C:\Eva\knowledge\word` |
+| **Default** | `H:\Eva\knowledge\word` |
 | **Filenames** | `Word - <name>.md` |
 | **Overwritten** | yes, on every open or save |
 

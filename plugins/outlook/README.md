@@ -7,12 +7,12 @@ day planner for any day.
 
 | | |
 |---|---|
-| **Server** | `outlook.py` v9.1.0 |
+| **Server** | `outlook.py` v10.0.0 |
 | **pip install** | `pywin32` |
 | **Platform** | **Windows only** — requires classic Win32 Outlook (not "New Outlook") installed, running, and logged into a profile |
 | **Sends** | **never.** Not an email, not a reply, not a meeting invitation. It cannot accept, move or delete anything either |
 | **Writes to the mailbox** | one thing: an **unsent** meeting draft in your calendar, which you review and send yourself (`OUTLOOK_ALLOW_DRAFTS=false` removes even that) |
-| **Writes to disk** | only on request: an email saved as Markdown in `C:\Eva\knowledge\email`, or a day planner PDF in `C:\Eva\documents\pdf` |
+| **Writes to disk** | only on request: an email saved as Markdown in `H:\Eva\knowledge\email`, or a day planner PDF in `H:\Eva\documents\pdf` |
 
 ## Install
 
@@ -143,7 +143,7 @@ offered.
 
 Ask for "today's printable calendar", "tomorrow's planner" or "an agenda I can
 take into the meeting" and `outlook_print_calendar` writes an **A4 landscape
-PDF** into `C:\Eva\documents\pdf`. Print it single-sided and fold it in half:
+PDF** into `H:\Eva\documents\pdf`. Print it single-sided and fold it in half:
 the day itself runs down the left panel on an hour-by-hour timeline, the
 following days are summarised on the right.
 
@@ -357,15 +357,15 @@ there are no folder prompts at install time and no folder command-line flags.
 | Variable | Purpose | Default |
 |---|---|---|
 | `EVA_PYTHON` | The `python.exe` every server runs under - the same one you installed the pip dependencies into | *(none - you must set it)* |
-| `EVA_DOCUMENTS_DIR` | Root of the document library | `C:\Eva\documents` |
-| `EVA_TEMPLATES_DIR` | Root of the template library | `C:\Eva\templates` |
-| `EVA_KNOWLEDGE_DIR` | Root of the RAG corpus - the one folder the index reads | `C:\Eva\knowledge` |
+| `EVA_DOCUMENTS_DIR` | Root of the document library | `H:\Eva\documents` |
+| `EVA_TEMPLATES_DIR` | Root of the template library | `H:\Eva\templates` |
+| `EVA_KNOWLEDGE_DIR` | Root of the RAG corpus - the one folder the index reads | `H:\Eva\knowledge` |
 
 ```powershell
 [Environment]::SetEnvironmentVariable("EVA_PYTHON",        "C:\Python311\python.exe",     "User")
-[Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "C:\Eva\documents",             "User")
-[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\templates",   "User")
-[Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "C:\Eva\knowledge",             "User")
+[Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "H:\Eva\documents",             "User")
+[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "H:\Eva\templates",   "User")
+[Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "H:\Eva\knowledge",             "User")
 ```
 
 `setx NAME "value"` does the same thing from `cmd`. Neither affects processes
@@ -382,7 +382,7 @@ folder at all; the two below are where it writes, and only when you ask.
 | `%EVA_KNOWLEDGE_DIR%\email` | Where `outlook_get_email` saves a message as Markdown **when the call asks for it** (`Email - <date> - <subject> (<id>).md`, overwritten if the same message is saved again), for the `knowledge-base` plugin to index. Blacklisted messages are never written | Created at startup. If it cannot be created the server refuses to start, rather than failing on the first email you ask it to keep |
 | `%EVA_DOCUMENTS_DIR%\pdf` | Where `outlook_print_calendar` writes the day planner (`Calendar - <date> <weekday>.pdf`, overwritten when you re-print that day) | Created at startup. If it cannot be created the server **still starts** and says so; only printing is disabled, so mail and calendar stay readable |
 
-Create them, or copy the repo's [`eva/`](../../eva) folder to `C:\Eva` and they
+Create them, or copy the repo's [`eva/`](../../eva) folder to `H:\Eva` and they
 both exist.
 
 > **Why `documents\pdf` and not `documents\outlook`?** The document library is
@@ -489,7 +489,7 @@ delete — `Send()` is never called anywhere in the file, and
 7. "Find everything about the 'Acme renewal' across my Inbox, Sent Items and Archive from the last month." → `outlook_search_recent`
 8. "Search only my 'Projects' and 'Sent Items' folders for anything about the budget review." → `outlook_search_recent` with a `folders` argument overriding the default set
 9. "What are my actual Outlook folder names, so I can point the search at the right archive?" → `outlook_list_folders`
-10. "Give me today's calendar to print." → `outlook_print_calendar` — an A4 landscape day planner in `C:\Eva\documents\pdf`
+10. "Give me today's calendar to print." → `outlook_print_calendar` — an A4 landscape day planner in `H:\Eva\documents\pdf`
 11. "Print tomorrow's planner with the whole week down the side." → `outlook_print_calendar` with `date: "tomorrow"`, `lookahead_days: 6`
 12. "Who's Josh Smith in the directory?" → `outlook_find_people` — returns the `invite_as` address the scheduling tools need
 13. "Is there a room called R5-3-84?" → `outlook_find_people` with `kind: "room"`

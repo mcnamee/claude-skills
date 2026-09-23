@@ -7,7 +7,7 @@ a PDF is the same act as adding it to the knowledge base.
 | | |
 |---|---|
 | **Setting** | `EVA_KNOWLEDGE_DIR` (the `pdf-to-md` plugin appends `\pdf`) |
-| **Default** | `C:\Eva\knowledge\pdf` |
+| **Default** | `H:\Eva\knowledge\pdf` |
 | **Source PDFs** | [`..\..\documents\pdf`](../../documents/pdf) |
 | **Filenames** | the PDF's name with a `.md` extension |
 

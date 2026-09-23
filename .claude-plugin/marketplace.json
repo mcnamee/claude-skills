@@ -10,7 +10,7 @@
       "name": "word",
       "source": "./plugins/word",
       "description": "Read, edit and create Word .docx files - including Word tracked changes, native styles and filling out templates.",
-      "version": "8.0.0",
+      "version": "9.0.0",
       "keywords": [
         "word",
         "docx",
@@ -22,7 +22,7 @@
       "name": "powerpoint",
       "source": "./plugins/powerpoint",
       "description": "Build PowerPoint decks that inherit your own template's layouts and theme, and audit them against Guy Kawasaki's 10/20/30 rule.",
-      "version": "5.0.0",
+      "version": "6.0.0",
       "keywords": [
         "powerpoint",
         "pptx",
@@ -35,7 +35,7 @@
       "name": "excel",
       "source": "./plugins/excel",
       "description": "Read and analyse Excel workbooks. Read-only; parses .xlsx directly so Excel is not required.",
-      "version": "5.0.0",
+      "version": "6.0.0",
       "keywords": [
         "excel",
         "xlsx",
@@ -46,7 +46,7 @@
       "name": "outlook",
       "source": "./plugins/outlook",
       "description": "Read local classic Outlook mail and calendar via COM, schedule a meeting (fuzzy directory search, free/busy, and an unsent draft you send yourself), and print a day as a PDF planner in your own category colours. Windows only; requires pywin32.",
-      "version": "9.1.0",
+      "version": "10.0.0",
       "keywords": [
         "outlook",
         "email",
@@ -61,7 +61,7 @@
       "name": "confluence",
       "source": "./plugins/confluence",
       "description": "Search and read Confluence pages across one or two instances, with macro content (task reports, page properties, panels, inline tasks) included, saving a page to Markdown for a local RAG knowledge base when you ask for it.",
-      "version": "5.0.0",
+      "version": "6.0.0",
       "keywords": [
         "confluence",
         "wiki",
@@ -83,7 +83,7 @@
       "name": "knowledge-base",
       "source": "./plugins/knowledge-base",
       "description": "True RAG over your own Markdown docs: a local ChromaDB vector index plus your embeddings API. Captures new notes back into it. Requires chromadb.",
-      "version": "4.0.0",
+      "version": "5.0.0",
       "keywords": [
         "rag",
         "knowledge-base",
@@ -95,7 +95,7 @@
       "name": "pdf-to-md",
       "source": "./plugins/pdf-to-md",
       "description": "Convert PDFs to Markdown with tables preserved, for feeding a local knowledge base. Requires pymupdf.",
-      "version": "6.0.0",
+      "version": "7.0.0",
       "keywords": [
         "pdf",
         "markdown",

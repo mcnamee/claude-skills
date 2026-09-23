@@ -7,7 +7,7 @@ incremental.
 | | |
 |---|---|
 | **Setting** | `KB_INDEX_DIR` (`knowledge-base`; the one folder outside the four shared roots) |
-| **Default** | `C:\Eva\index` |
+| **Default** | `H:\Eva\index` |
 | **Contents** | a SQLite database and binary vector segments — not human-readable |
 | **Size** | grows with the corpus; hundreds of MB is normal |
 

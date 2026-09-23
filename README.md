@@ -12,7 +12,7 @@ Three things, all for Claude Code, all working **entirely offline**:
   a finished result, built on top of the servers and skills above.
 
 Plus **[`eva/`](eva)** — the working folder they all read, write and index,
-carried here as a scaffold you copy to `C:\Eva`. It holds the knowledge base,
+carried here as a scaffold you copy to `H:\Eva`. It holds the knowledge base,
 the document library, and the **templates** — the blank `.docx`/`.pptx` files
 new documents and decks are built from. It also carries
 [`eva/CLAUDE.md`](eva/CLAUDE.md), the standing instructions that make the
@@ -74,14 +74,14 @@ source material with something invented.
 
 | Plugin | Version | What it does | pip install |
 |---|---|---|---|
-| [**word**](plugins/word) | 8.0.0 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
-| [**powerpoint**](plugins/powerpoint) | 5.0.0 | Build sectioned `.pptx` decks that inherit your own template's layouts and theme, with formatted speaker notes, audited against the 10/20/30 rule | `python-pptx` |
-| [**excel**](plugins/excel) | 5.0.0 | Read and analyse workbooks; parses `.xlsx` directly, so Excel isn't needed | _none_ |
-| [**outlook**](plugins/outlook) | 9.1.0 | Read local Outlook mail and calendar via COM, with a content blacklist; schedules a meeting (fuzzy directory search, free/busy, and an **unsent** draft you send yourself); prints a day as an A4 PDF planner in your own category colours, and saves an email to the knowledge base when you ask | `pywin32` |
-| [**confluence**](plugins/confluence) | 5.0.0 | Search and read Confluence pages, across one or two instances, with macro content included; saves a page to the knowledge base when you ask | _none_ |
+| [**word**](plugins/word) | 9.0.0 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
+| [**powerpoint**](plugins/powerpoint) | 6.0.0 | Build sectioned `.pptx` decks that inherit your own template's layouts and theme, with formatted speaker notes, audited against the 10/20/30 rule | `python-pptx` |
+| [**excel**](plugins/excel) | 6.0.0 | Read and analyse workbooks; parses `.xlsx` directly, so Excel isn't needed | _none_ |
+| [**outlook**](plugins/outlook) | 10.0.0 | Read local Outlook mail and calendar via COM, with a content blacklist; schedules a meeting (fuzzy directory search, free/busy, and an **unsent** draft you send yourself); prints a day as an A4 PDF planner in your own category colours, and saves an email to the knowledge base when you ask | `pywin32` |
+| [**confluence**](plugins/confluence) | 6.0.0 | Search and read Confluence pages, across one or two instances, with macro content included; saves a page to the knowledge base when you ask | _none_ |
 | [**jira**](plugins/jira) | 2.0.0 | Query issues, sprints and projects (Jira Data Center v2 API) | _none_ |
-| [**knowledge-base**](plugins/knowledge-base) | 4.0.0 | True RAG over your own Markdown: local ChromaDB index + your embeddings API, and capture notes back into it | `chromadb` |
-| [**pdf-to-md**](plugins/pdf-to-md) | 6.0.0 | Convert PDFs to Markdown with tables preserved | `pymupdf pymupdf4llm` |
+| [**knowledge-base**](plugins/knowledge-base) | 5.0.0 | True RAG over your own Markdown: local ChromaDB index + your embeddings API, and capture notes back into it | `chromadb` |
+| [**pdf-to-md**](plugins/pdf-to-md) | 7.0.0 | Convert PDFs to Markdown with tables preserved | `pymupdf pymupdf4llm` |
 
 Each plugin's README covers its settings, tools, file access and example
 prompts. Every server also carries a semantic version in `__version__`, printed
@@ -95,10 +95,10 @@ of a command needs the call operator (`& "C:\...\python.exe"`), and `%VAR%`
 does not expand — it's `$env:VAR`.
 
 **1. Lay out the working folder.** Copy the repo's [`eva/`](eva) folder to
-`C:\Eva`:
+`H:\Eva`:
 
 ```powershell
-Copy-Item -Recurse C:\path\to\claude-skills\eva C:\Eva
+Copy-Item -Recurse C:\path\to\claude-skills\eva H:\Eva
 ```
 
 That one step creates every folder the servers need, correctly related to each
@@ -109,7 +109,7 @@ feature off. See [Folder layout](#folder-layout) for what goes where, and
 `eva/README.md` for each folder's own README.
 
 The copy brings [`eva/CLAUDE.md`](eva/CLAUDE.md) with it, which is what turns
-Claude into Eva when you run Claude Code in `C:\Eva`. Open it and fill in the
+Claude into Eva when you run Claude Code in `H:\Eva`. Open it and fill in the
 **About me** block — your name, role, who you write to, how you sign off. See
 [The assistant's instructions](#the-assistants-instructions).
 
@@ -130,17 +130,17 @@ sub-folder of the three roots, named after the plugin.
 
 ```powershell
 [Environment]::SetEnvironmentVariable("EVA_PYTHON",        "C:\path\to\python.exe",       "User")
-[Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "C:\Eva\documents",            "User")
-[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\templates",  "User")
-[Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "C:\Eva\knowledge",            "User")
+[Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "H:\Eva\documents",            "User")
+[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "H:\Eva\templates",  "User")
+[Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "H:\Eva\knowledge",            "User")
 ```
 
 | Variable | What it points at | Default if unset |
 |---|---|---|
 | `EVA_PYTHON` | The `python.exe` from step 2 — every server runs under it. A mismatch here is the most common cause of "dependency missing" | *(none — set it)* |
-| `EVA_DOCUMENTS_DIR` | The document library | `C:\Eva\documents` |
-| `EVA_TEMPLATES_DIR` | The template library | `C:\Eva\templates` |
-| `EVA_KNOWLEDGE_DIR` | The RAG corpus — the one indexed root | `C:\Eva\knowledge` |
+| `EVA_DOCUMENTS_DIR` | The document library | `H:\Eva\documents` |
+| `EVA_TEMPLATES_DIR` | The template library | `H:\Eva\templates` |
+| `EVA_KNOWLEDGE_DIR` | The RAG corpus — the one indexed root | `H:\Eva\knowledge` |
 
 **4. Add this repo as a marketplace**, then install whichever plugins you want.
 These are slash commands, typed inside Claude Code — not shell commands:
@@ -267,19 +267,19 @@ The per-plugin READMEs list each server's actual settings.
    also work). A folder you named yourself that does not exist is a fatal
    error, because it is almost always a typo; a built-in default that does not
    exist yet is a warning, and the feature it enables simply stays off.
-6. **Every folder must exist.** Copying [`eva/`](eva) to `C:\Eva` creates all of
+6. **Every folder must exist.** Copying [`eva/`](eva) to `H:\Eva` creates all of
    them; each server's `--check` reports which are missing and where the path
    came from.
 
 ## Folder layout
 
-One working folder, `C:\Eva`, holds everything the servers read, write and
+One working folder, `H:\Eva`, holds everything the servers read, write and
 index. The repo carries it as a scaffold — [`eva/`](eva) is the same tree with a
-README in every folder and no content, so `Copy-Item -Recurse ...\eva C:\Eva`
+README in every folder and no content, so `Copy-Item -Recurse ...\eva H:\Eva`
 lays it out in one step and every default below is already correct.
 
 ```
-C:\Eva\
+H:\Eva\
 ├─ CLAUDE.md         who Eva is, and how she writes
 ├─ knowledge\        the RAG corpus - Markdown only, the ONE indexed root
 │  ├─ notes\           Markdown you write by hand
@@ -314,7 +314,7 @@ sub-folder. **Every folder listed here must exist.**
 | `knowledge-base` | — | — | the **whole root** it indexes, plus `captures\` |
 | `jira` | — | — | — |
 
-`knowledge-base` also keeps its vector store in `C:\Eva\index`
+`knowledge-base` also keeps its vector store in `H:\Eva\index`
 (`KB_INDEX_DIR`) — the one folder in the suite that is not under a shared root,
 deliberately outside the corpus so a large binary database does not sit in the
 folder you index.
@@ -358,7 +358,7 @@ three shared roots, and those folders are **required**:
 | `word` | Read/write, confined to the one documents folder (where new documents are created too) plus the knowledge-base folder; the templates folder is read-only. Opening, creating and saving each mirror to the knowledge-base folder |
 | `powerpoint` | Read/write, confined to the one presentations folder (where new decks are created too) plus the knowledge-base folder; the templates folder is read-only. Opening, creating and saving each mirror to the knowledge-base folder |
 | `excel` | Read-only, confined to the workbook folder (top level only) |
-| `knowledge-base` | Reads the documents folder; writes its vector index (`C:\Eva\index`) and captured notes (`C:\Eva\knowledge\captures`, always inside the documents folder); never edits or deletes an existing document; network only to the endpoints you configure |
+| `knowledge-base` | Reads the documents folder; writes its vector index (`H:\Eva\index`) and captured notes (`H:\Eva\knowledge\captures`, always inside the documents folder); never edits or deletes an existing document; network only to the endpoints you configure |
 | `pdf-to-md` | Reads the PDF folder, writes the output folder |
 | `confluence` | Writes only the knowledge-base folder, and only for a page you asked to keep (`save_to_kb`); reading a page saves nothing. Set the folder to `off` and the server touches no local file |
 | `outlook` | Reads no local folder at all. Writes two, both only when asked: the knowledge-base folder for an email you asked to keep (`save_to_kb`), and the PDF folder for a day planner you asked it to print. Reading mail saves nothing, and a blacklisted message or meeting is never written at all. Set both folders to `off` and the server touches no local file. In the mailbox it can never send, accept, move or delete; its one write there is an **unsent** meeting draft you review and send yourself (`OUTLOOK_ALLOW_DRAFTS=false` removes even that) |
@@ -507,7 +507,7 @@ are your own documents — see [`eva/.gitignore`](eva/.gitignore) and each skill
 
 The plugins give Claude tools and the folders give it somewhere to work.
 [`eva/CLAUDE.md`](eva/CLAUDE.md), which the copy in step 1 puts at
-`C:\Eva\CLAUDE.md`, gives it a job. Claude Code loads it whenever you run in
+`H:\Eva\CLAUDE.md`, gives it a job. Claude Code loads it whenever you run in
 that folder, so run there rather than somewhere else.
 
 It defines **Eva**, an executive virtual assistant: correspondence, diary and
@@ -533,7 +533,7 @@ fixes the things you would otherwise correct in every reply:
 
 Fill in the **About me** block at the top (name, role, stakeholders, sign-off)
 and edit the rest to suit — it is prose, and yours to change. To make Eva the
-default in every folder instead of just `C:\Eva`, copy the file to
+default in every folder instead of just `H:\Eva`, copy the file to
 `%USERPROFILE%\.claude\CLAUDE.md`, remembering it will then shape coding
 sessions too.
 

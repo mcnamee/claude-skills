@@ -8,7 +8,7 @@ document lands in [`..\..\documents\word`](../../documents/word).
 | | |
 |---|---|
 | **Setting** | `EVA_TEMPLATES_DIR` (the `word` plugin appends `\word`) |
-| **Default** | `C:\Eva\templates\word` |
+| **Default** | `H:\Eva\templates\word` |
 | **Formats** | `.docx` (not `.dotx` — see below) |
 | **Access** | read **only** — every save into this folder is refused |
 | **Committed to git?** | no (see [`..\..\.gitignore`](../../.gitignore)) |
@@ -79,7 +79,7 @@ save-in-place on a template opened by mistake. New documents always land in
 
 - *"Create a Q3 report from my report template."* → `msword_create` with
   `template: "Report Template.docx"`, then `msword_add_content`, then
-  `msword_save` — the new file lands in `C:\Eva\documents\word`.
+  `msword_save` — the new file lands in `H:\Eva\documents\word`.
 - *"Use the agenda template and fill it out for Monday's meeting, one row per
   item."* → create from the template, `msword_replace_text` for the
   `{{TOKEN}}`s, a cloned table row per item, then drop the example row.

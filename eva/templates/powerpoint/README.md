@@ -10,7 +10,7 @@ starts blank with the styling intact.
 | | |
 |---|---|
 | **Setting** | `EVA_TEMPLATES_DIR` (the `powerpoint` plugin appends `\powerpoint`) |
-| **Default** | `C:\Eva\templates\powerpoint` |
+| **Default** | `H:\Eva\templates\powerpoint` |
 | **Formats** | `.pptx` and `.potx` (both read-only; decks always save as `.pptx`) |
 | **Access** | read **only** — every save into this folder is refused |
 | **Committed to git?** | no (see [`..\..\.gitignore`](../../.gitignore)) |

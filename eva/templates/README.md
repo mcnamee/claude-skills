@@ -18,7 +18,7 @@ Both **must exist** for their plugin to offer templates at all: a missing one is
 not fatal, but the server starts with templates disabled and says so on stderr.
 
 ```powershell
-[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\templates", "User")
+[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "H:\Eva\templates", "User")
 ```
 
 Each folder carries its own README covering what makes a good template for that
@@ -65,7 +65,7 @@ shell it was written in belongs here.
 
 ## Wiring it up
 
-Both plugins default to their folder here, so a stock `C:\Eva` install needs
+Both plugins default to their folder here, so a stock `H:\Eva` install needs
 nothing set. To point one somewhere else, use the flag or the environment
 variable above — flag beats environment variable beats the default — or pass
 `off` to run with no templates at all.

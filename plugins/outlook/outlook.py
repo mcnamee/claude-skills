@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-outlook.py (v9.1.0)
+outlook.py (v10.0.0)
 ======================
 
 A single-file MCP (Model Context Protocol) server giving an LLM near-read-only
@@ -78,7 +78,7 @@ the knowledge base: every message opened while answering a question used to be
 embedded and quotable in later answers, whether it deserved to be or not.
 
 The folder is the "email" sub-folder of the suite-wide RAG root
-(%EVA_KNOWLEDGE_DIR%\email, C:\Eva\knowledge\email on a stock install), which
+(%EVA_KNOWLEDGE_DIR%\email, H:\Eva\knowledge\email on a stock install), which
 sits inside the knowledge-base plugin's corpus so saved mail is actually
 indexed. Point OUTLOOK_KB_DIR at a full path of its own to override just this
 server.
@@ -386,8 +386,8 @@ for your Windows account. This server uses three of them:
     EVA_PYTHON          full path to the python.exe that has pywin32
                         installed, e.g. C:\\Python311\\python.exe (read by the
                         plugin manifest, not by this file)
-    EVA_KNOWLEDGE_DIR   root of the RAG corpus (default C:\\Eva\\knowledge)
-    EVA_DOCUMENTS_DIR   root of the document library (default C:\\Eva\\documents)
+    EVA_KNOWLEDGE_DIR   root of the RAG corpus (default H:\\Eva\\knowledge)
+    EVA_DOCUMENTS_DIR   root of the document library (default H:\\Eva\\documents)
 
 This server works in one sub-folder of each:
 
@@ -409,10 +409,10 @@ This server works in one sub-folder of each:
 To set them permanently for your account (PowerShell, one-off):
 
     [Environment]::SetEnvironmentVariable("EVA_PYTHON", "C:\\Python311\\python.exe", "User")
-    [Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "C:\\Eva\\knowledge", "User")
-    [Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "C:\\Eva\\documents", "User")
+    [Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "H:\\Eva\\knowledge", "User")
+    [Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "H:\\Eva\\documents", "User")
 
-Copy the repo's eva\\ folder to C:\\Eva and the folder exists - see
+Copy the repo's eva\\ folder to H:\\Eva and the folder exists - see
 eva\\README.md.
 
 Server-specific settings, all optional and all environment variables:
@@ -509,7 +509,7 @@ IMPORTANT (stdio-on-Windows pitfalls)
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "9.1.0"
+__version__ = "10.0.0"
 
 import os
 import re
@@ -567,15 +567,15 @@ SEARCH_ALL_FOLDERS = ["Inbox", "Sent Items", "Archive"]
 #        filter.
 #        RESOLVED FROM THE ENVIRONMENT in main(): the "email" sub-folder of
 #        %EVA_KNOWLEDGE_DIR% (the suite-wide RAG root), or OUTLOOK_KB_DIR for
-#        a full path of its own. The literal here is what a stock C:\Eva
+#        a full path of its own. The literal here is what a stock H:\Eva
 #        install resolves to; it MUST stay inside the knowledge-base plugin's
-#        corpus (C:\Eva\knowledge) or the saved mail would never be indexed.
+#        corpus (H:\Eva\knowledge) or the saved mail would never be indexed.
 #        Set OUTLOOK_KB_DIR=off to forbid saving entirely - no email is then
 #        written to disk and a save_to_kb request is refused. (The day planner
 #        has its own switch, OUTLOOK_DOCS_DIR, in 5b below.)
 SUBFOLDER = "email"                      # this server's knowledge sub-folder
-EVA_KNOWLEDGE_DIR = r"C:\Eva\knowledge"  # fallback for the suite-wide root
-KB_DIR = r"C:\Eva\knowledge\email"
+EVA_KNOWLEDGE_DIR = r"H:\Eva\knowledge"  # fallback for the suite-wide root
+KB_DIR = r"H:\Eva\knowledge\email"
 
 # --- 5b. PDF_DIR  (where outlook_print_calendar writes the printable planner).
 #        The ONE folder this server creates documents in. It is the "pdf"
@@ -583,11 +583,11 @@ KB_DIR = r"C:\Eva\knowledge\email"
 #        organised by file type and a printed planner is a PDF - it lands beside
 #        your own PDFs rather than in an output folder of its own.
 #        RESOLVED FROM THE ENVIRONMENT in main(); the literal here is what a
-#        stock C:\Eva install resolves to. Set OUTLOOK_DOCS_DIR to a full path
+#        stock H:\Eva install resolves to. Set OUTLOOK_DOCS_DIR to a full path
 #        of its own, or to "off" to forbid printing entirely.
 DOCS_SUBFOLDER = "pdf"                     # this server's documents sub-folder
-EVA_DOCUMENTS_DIR = r"C:\Eva\documents"     # fallback for the suite-wide root
-PDF_DIR = r"C:\Eva\documents\pdf"
+EVA_DOCUMENTS_DIR = r"H:\Eva\documents"     # fallback for the suite-wide root
+PDF_DIR = r"H:\Eva\documents\pdf"
 
 # --- 5c. Printable day planner defaults.
 #        CALENDAR_DAY_START_HOUR / CALENDAR_DAY_END_HOUR are the working day the

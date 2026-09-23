@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r"""
-excel.py (v5.0.0) -- Read-only Excel (.xlsx) MCP server.
+excel.py (v6.0.0) -- Read-only Excel (.xlsx) MCP server.
 
 PURPOSE
     A single-file, standard-library-only MCP (Model Context Protocol) stdio
@@ -48,8 +48,8 @@ REQUIREMENTS
 CONFIGURATION
     The workbook folder is REQUIRED. It is the "excel" sub-folder of
     %EVA_DOCUMENTS_DIR%, the suite-wide document root shared by every plugin in
-    this repo, so C:\Eva\documents\excel on a stock install (copy the repo's
-    eva\ folder to C:\Eva and it exists). THE FOLDER MUST EXIST: the server
+    this repo, so H:\Eva\documents\excel on a stock install (copy the repo's
+    eva\ folder to H:\Eva and it exists). THE FOLDER MUST EXIST: the server
     refuses to start otherwise, and only ever reads files inside it (symlinks
     that resolve outside the folder are excluded). Set EXCEL_DOCS_DIR to
     override just this server with a full path of its own. There are no folder
@@ -95,7 +95,7 @@ CONFIGURATION  (environment variables, no folder flags)
       EVA_PYTHON          full path to the python.exe the MCP client launches,
                           e.g. C:\Python311\python.exe (read by the plugin
                           manifest, not by this file)
-      EVA_DOCUMENTS_DIR   root of the document library (default C:\Eva\documents)
+      EVA_DOCUMENTS_DIR   root of the document library (default H:\Eva\documents)
 
     This server works in the "excel" sub-folder of the document root, and THAT
     FOLDER MUST EXIST:
@@ -107,9 +107,9 @@ CONFIGURATION  (environment variables, no folder flags)
     To set them permanently for your account (PowerShell, one-off):
 
       [Environment]::SetEnvironmentVariable("EVA_PYTHON", "C:\Python311\python.exe", "User")
-      [Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "C:\Eva\documents", "User")
+      [Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "H:\Eva\documents", "User")
 
-    Copy the repo's eva\ folder to C:\Eva and the folder exists - see
+    Copy the repo's eva\ folder to H:\Eva and the folder exists - see
     eva\README.md.
 
     EXCEL_DOCS_DIR overrides the workbook folder with a full path of its own,
@@ -142,7 +142,7 @@ PROTOCOL NOTE
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "5.0.0"
+__version__ = "6.0.0"
 
 import sys
 import os
@@ -165,22 +165,22 @@ from datetime import datetime, timedelta
 #   EVA_DOCUMENTS_DIR   -> %EVA_DOCUMENTS_DIR%\excel   workbooks, read-only
 #
 # EVA_DOCUMENTS_DIR below is the fallback when the variable is not set, and
-# matches the Eva working tree: copy the repo's eva\ folder to C:\Eva and the
+# matches the Eva working tree: copy the repo's eva\ folder to H:\Eva and the
 # folder exists. There are NO folder command-line flags - configuration is
 # environment variables only, so two settings can never disagree about a path.
 # To point the workbook folder somewhere else on an endpoint whose layout
 # differs, set EXCEL_DOCS_DIR to a full path; it beats the suite-wide root.
 SUBFOLDER = "excel"                # this server's sub-folder in each root
-EVA_DOCUMENTS_DIR = r"C:\Eva\documents"
+EVA_DOCUMENTS_DIR = r"H:\Eva\documents"
 
 # REQUIRED: folder containing the .xlsx workbooks the model is allowed to read,
 # resolved from the environment in main(); the literal here is what a stock
-# C:\Eva install resolves to. The server only ever reads files inside this
+# H:\Eva install resolves to. The server only ever reads files inside this
 # folder (symlinks that resolve outside it are excluded) and REFUSES TO START
 # if it is missing. NOTE this server lists only the TOP LEVEL of the folder
 # (unlike word.py, which searches recursively), so workbooks must sit directly
 # in it - see eva\documents\excel\README.md.
-DOCS_DIR = r"C:\Eva\documents\excel"
+DOCS_DIR = r"H:\Eva\documents\excel"
 
 # File extensions treated as readable workbooks (lower-case, incl. dot).
 ALLOWED_EXTENSIONS = (".xlsx", ".xlsm")
@@ -1410,7 +1410,7 @@ def main(argv=None):
         else:
             log("       That is the built-in default. Create the folder, set "
                 "EVA_DOCUMENTS_DIR to your own document root, or copy the "
-                "repo's eva\\ folder to C:\\Eva to lay out the whole tree.")
+                "repo's eva\\ folder to H:\\Eva to lay out the whole tree.")
         return 2
 
     if args.list:

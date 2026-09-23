@@ -46,7 +46,7 @@ printing.
 
 ## Printing a day planner
 
-`outlook_print_calendar` writes an A4 landscape PDF into `C:\Eva\documents\pdf`
+`outlook_print_calendar` writes an A4 landscape PDF into `H:\Eva\documents\pdf`
 and reports the path plus what is on the page. It is a bifold: the day on an
 hour-by-hour timeline down the left half, the following days summarised on the
 right. By default the page uses the top four fifths of the sheet, so the blank
@@ -86,7 +86,7 @@ page), and how the reply says to fold it.
 Reading an email does **not** save it. `outlook_get_email` takes `save_to_kb`,
 false by default; set it to true **only when the user asks for that message to
 be kept** — "save this email to the knowledge base", "add that thread to the
-KB". The file lands in `C:\Eva\knowledge\email` and the tool reports the path.
+KB". The file lands in `H:\Eva\knowledge\email` and the tool reports the path.
 
 - **Never set it while researching.** Mail you open to answer a question is not
   the user's filing decision. This is correspondence: saving it makes it

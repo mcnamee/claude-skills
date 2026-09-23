@@ -39,7 +39,7 @@ See [`skills/README.md`](../README.md) for the general install notes.
 ```
 /exemplar-writer write the Q3 status report for the migration programme
 /exemplar-writer draft a file note from these meeting notes, same format as last time
-/exemplar-writer write this proposal following C:\Eva\documents\word\Proposal - Managed Service.docx
+/exemplar-writer write this proposal following H:\Eva\documents\word\Proposal - Managed Service.docx
 ```
 
 Or just describe what you want and name the document to follow - the skill
@@ -90,7 +90,7 @@ naming, formats and the index worth keeping.
 exemplar needs the `word`, `powerpoint` or `pdf-to-md` server, and each is
 confined to its own documents folder - which a skill folder under
 `%USERPROFILE%\.claude\skills\` is not inside. Keep a `.md` copy beside the
-original, or keep the original in `C:\Eva\documents\word` and point at it there.
+original, or keep the original in `H:\Eva\documents\word` and point at it there.
 
 Nothing in `exemplars\` is committed to this repo (see its
 [`.gitignore`](exemplars/.gitignore)) because these are usually your real
@@ -98,13 +98,13 @@ documents and this repo is public.
 
 ## Why exemplars don't go in the knowledge base
 
-Deliberately kept out of `C:\Eva\knowledge`, which is the only folder the RAG
+Deliberately kept out of `H:\Eva\knowledge`, which is the only folder the RAG
 index reads. Add a board paper to the indexed corpus and its phrasing comes back
 with the same authority as a policy: `kb_ask` starts citing house style as fact,
 and a two-year-old example as current practice.
 
 If you want a document to be **both** - a genuine reference as well as a model
-to write like - put its content in `C:\Eva\knowledge\notes\` and keep the
+to write like - put its content in `H:\Eva\knowledge\notes\` and keep the
 formatted copy here. Same document, two jobs, no confusion about which is being
 cited.
 
@@ -119,7 +119,7 @@ fixed.
 
 Ask at the end and it will hand the draft to the [`word`](../../plugins/word) or
 [`powerpoint`](../../plugins/powerpoint) plugin to build a real `.docx` or
-`.pptx` from one of your blanks in `C:\Eva\templates\`. It won't write files
+`.pptx` from one of your blanks in `H:\Eva\templates\`. It won't write files
 otherwise.
 
 ## With the other writing skills

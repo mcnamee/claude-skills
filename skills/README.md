@@ -118,7 +118,7 @@ like.
 A skill folder sits outside every MCP server's sandbox, so a `.docx`, `.pptx` or
 `.pdf` exemplar in there may not be readable at all. Say so in the folder's
 `README.md`, and point at the two fixes: keep a `.md` copy beside the original,
-or keep the original in `C:\Eva\documents\<type>` and name it in the prompt.
+or keep the original in `H:\Eva\documents\<type>` and name it in the prompt.
 
 Skills here are unversioned — they are prose, not an interface anything else
 depends on, so there is no version to keep in sync. (The MCP servers under

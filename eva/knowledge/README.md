@@ -7,7 +7,7 @@ is Markdown or plain text, gets split into chunks, embedded and searched by
 | | |
 |---|---|
 | **Setting** | `EVA_KNOWLEDGE_DIR` — one environment variable, shared by every plugin |
-| **Default** | `C:\Eva\knowledge` |
+| **Default** | `H:\Eva\knowledge` |
 | **Must exist?** | **yes**, along with the sub-folder of each plugin you use |
 | **Indexed extensions** | `.md`, `.markdown`, `.txt` — recursively, all sub-folders |
 | **Skipped** | anything else, plus files and folders whose name starts with `.` |

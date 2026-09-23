@@ -5,7 +5,7 @@ native Word styles, and filling out templates.
 
 | | |
 |---|---|
-| **Server** | `word.py` v8.0.0 |
+| **Server** | `word.py` v9.0.0 |
 | **pip install** | `python-docx` (pulls in `lxml` and `typing_extensions`) |
 | **Platform** | any (Word itself is not required) |
 | **Writes to disk** | yes — the only write-capable server in the suite |
@@ -30,15 +30,15 @@ there are no folder prompts at install time and no folder command-line flags.
 | Variable | Purpose | Default |
 |---|---|---|
 | `EVA_PYTHON` | The `python.exe` every server runs under - the same one you installed the pip dependencies into | *(none - you must set it)* |
-| `EVA_DOCUMENTS_DIR` | Root of the document library | `C:\Eva\documents` |
-| `EVA_TEMPLATES_DIR` | Root of the template library | `C:\Eva\templates` |
-| `EVA_KNOWLEDGE_DIR` | Root of the RAG corpus - the one folder the index reads | `C:\Eva\knowledge` |
+| `EVA_DOCUMENTS_DIR` | Root of the document library | `H:\Eva\documents` |
+| `EVA_TEMPLATES_DIR` | Root of the template library | `H:\Eva\templates` |
+| `EVA_KNOWLEDGE_DIR` | Root of the RAG corpus - the one folder the index reads | `H:\Eva\knowledge` |
 
 ```powershell
 [Environment]::SetEnvironmentVariable("EVA_PYTHON",        "C:\Python311\python.exe",     "User")
-[Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "C:\Eva\documents",             "User")
-[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\templates",   "User")
-[Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "C:\Eva\knowledge",             "User")
+[Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "H:\Eva\documents",             "User")
+[Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "H:\Eva\templates",   "User")
+[Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "H:\Eva\knowledge",             "User")
 ```
 
 `setx NAME "value"` does the same thing from `cmd`. Neither affects processes
@@ -48,7 +48,7 @@ that are already running, so quit and reopen your editor afterwards.
 
 Every server works in its **own sub-folder** of those roots, named after
 the plugin. This one uses `word`, and **each folder below must exist** -
-create them, or copy the repo's [`eva/`](../../eva) folder to `C:\Eva` and
+create them, or copy the repo's [`eva/`](../../eva) folder to `H:\Eva` and
 they all do.
 
 | Folder | What it is for | Missing? |
@@ -205,7 +205,7 @@ the resolved `template` so you can confirm the right one was used. `.docx`
 templates only (Word's `.dotx` is not supported — save the template as `.docx`).
 
 **A templates folder of its own.** `%EVA_TEMPLATES_DIR%\word` (by default
-`C:\Eva\templates\word`) stops templates being ordinary documents that
+`H:\Eva\templates\word`) stops templates being ordinary documents that
 happen to live in the docs folder. The folder is a
 **read-only** second root: `msword_list_documents` reports each file's `location`
 (`docs` / `templates`) and takes a `location: "templates"` filter to

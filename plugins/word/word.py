@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r"""
-word.py (v8.0.0) - A single-file MCP (Model Context Protocol) stdio server
+word.py (v9.0.0) - A single-file MCP (Model Context Protocol) stdio server
 that gives an AI agent read/search/edit/generate access to Word .docx files.
 
 It follows a simple open -> edit -> save workflow (msword_open ... msword_save),
@@ -21,7 +21,7 @@ WHAT IT CAN DO
       boilerplate are inherited and the template file is left untouched.
     - Keep those blank templates in a folder of their own - the "word"
       sub-folder of the suite's template root, by default
-      C:\Eva\templates\word. It is a READ-ONLY second root:
+      H:\Eva\templates\word. It is a READ-ONLY second root:
       its .docx files can be listed, opened and used as the base for
       msword_create, but every attempt to SAVE over one is refused, so a
       template cannot be turned into someone's half-finished report.
@@ -31,7 +31,7 @@ WHAT IT CAN DO
       tables are converted; files are named 'Word - <name>.md' and overwritten
       each time. Mirroring on save is what puts a document you WROTE into the
       knowledge base, without anyone having to re-open it. On by default,
-      writing to C:\Eva\knowledge\word.
+      writing to H:\Eva\knowledge\word.
     - Read full content (linear text, or a structured block list).
     - Search text (body paragraphs and table cells).
     - Replace text, correctly handling matches that span multiple runs.
@@ -186,9 +186,9 @@ WHAT IT CANNOT DO
 
         EVA_PYTHON          full path to the python.exe that has the
                             dependencies installed, e.g. C:\Python311\python.exe
-        EVA_DOCUMENTS_DIR   root of the document library (C:\Eva\documents)
-        EVA_TEMPLATES_DIR   root of the template library (C:\Eva\templates)
-        EVA_KNOWLEDGE_DIR   root of the RAG corpus       (C:\Eva\knowledge)
+        EVA_DOCUMENTS_DIR   root of the document library (H:\Eva\documents)
+        EVA_TEMPLATES_DIR   root of the template library (H:\Eva\templates)
+        EVA_KNOWLEDGE_DIR   root of the RAG corpus       (H:\Eva\knowledge)
 
     This server works in the "word" sub-folder of each root. ALL THREE FOLDERS
     MUST EXIST:
@@ -208,11 +208,11 @@ WHAT IT CANNOT DO
     To set them permanently for your account (PowerShell, one-off):
 
         [Environment]::SetEnvironmentVariable("EVA_PYTHON", "C:\Python311\python.exe", "User")
-        [Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "C:\Eva\documents", "User")
-        [Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "C:\Eva\templates", "User")
-        [Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "C:\Eva\knowledge", "User")
+        [Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "H:\Eva\documents", "User")
+        [Environment]::SetEnvironmentVariable("EVA_TEMPLATES_DIR", "H:\Eva\templates", "User")
+        [Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "H:\Eva\knowledge", "User")
 
-    Copy the repo's eva\ folder to C:\Eva and every folder above exists,
+    Copy the repo's eva\ folder to H:\Eva and every folder above exists,
     correctly related to the others - see eva\README.md.
 
     Server-specific settings, all optional:
@@ -270,7 +270,7 @@ failed transfer" rule):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "8.0.0"
+__version__ = "9.0.0"
 
 # =============================================================================
 # CONFIGURATION  (all user-editable settings live here, nothing scattered below)
@@ -293,7 +293,7 @@ PROTOCOL_VERSION_FALLBACK = "2024-11-05"  # used if the client sends none
 #   EVA_KNOWLEDGE_DIR   -> %EVA_KNOWLEDGE_DIR%\word  Markdown for the RAG index
 #
 # The three roots below are the fallback when a variable is not set, and match
-# the Eva working tree: copy the repo's eva\ folder to C:\Eva and every folder
+# the Eva working tree: copy the repo's eva\ folder to H:\Eva and every folder
 # exists. There are NO folder command-line flags - configuration is environment
 # variables only, so two settings can never disagree about a path.
 #
@@ -303,12 +303,12 @@ PROTOCOL_VERSION_FALLBACK = "2024-11-05"  # used if the client sends none
 # "off" (any of the DISABLE_KEYWORDS) to switch that feature off entirely.
 # -----------------------------------------------------------------------------
 SUBFOLDER = "word"                 # this server's sub-folder in each root
-EVA_DOCUMENTS_DIR = r"C:\Eva\documents"
-EVA_TEMPLATES_DIR = r"C:\Eva\templates"
-EVA_KNOWLEDGE_DIR = r"C:\Eva\knowledge"
+EVA_DOCUMENTS_DIR = r"H:\Eva\documents"
+EVA_TEMPLATES_DIR = r"H:\Eva\templates"
+EVA_KNOWLEDGE_DIR = r"H:\Eva\knowledge"
 
 # Resolved from the environment in main(); the literals here are what a stock
-# C:\Eva install resolves to.
+# H:\Eva install resolves to.
 #
 # DOCS_DIR is the REQUIRED path sandbox. The server refuses to open or save any
 # file outside this directory tree, and REFUSES TO START if the folder is
@@ -324,7 +324,7 @@ EVA_KNOWLEDGE_DIR = r"C:\Eva\knowledge"
 # Related caution: only open .docx files from trusted sources - a maliciously
 # crafted file could use XML entity tricks to pull local file contents into
 # the document text that the model then reads.
-DOCS_DIR = r"C:\Eva\documents\word"
+DOCS_DIR = r"H:\Eva\documents\word"
 
 # TEMPLATES_DIR holds blank .docx TEMPLATES (letterhead, report layout,
 # contract boilerplate ...) - the eva\templates\word folder that ships with
@@ -339,7 +339,7 @@ DOCS_DIR = r"C:\Eva\documents\word"
 # of blanks that the model can start from but can never edit in place. The
 # server also refuses to start if this folder IS - or contains - DOCS_DIR,
 # because that arrangement would refuse every save.
-TEMPLATES_DIR = r"C:\Eva\templates\word"
+TEMPLATES_DIR = r"H:\Eva\templates\word"
 
 # KB_DIR is the knowledge-base (RAG) folder: EVERY document opened, created or
 # saved is ALSO written out as a Markdown file into it, the same way
@@ -347,8 +347,8 @@ TEMPLATES_DIR = r"C:\Eva\templates\word"
 # files are named 'Word - <name>.md' and overwritten each time. The server
 # writes there itself (the model never chooses the path), so it does not need
 # to sit inside DOCS_DIR - but it MUST stay inside the knowledge-base plugin's
-# corpus (C:\Eva\knowledge) or the mirrored Markdown is never indexed.
-KB_DIR = r"C:\Eva\knowledge\word"
+# corpus (H:\Eva\knowledge) or the mirrored Markdown is never indexed.
+KB_DIR = r"H:\Eva\knowledge\word"
 
 MAX_SESSIONS = 32                    # guard against runaway open() calls
 SEARCH_CONTEXT_CHARS = 40            # chars of context either side of a match
@@ -5434,7 +5434,7 @@ def main():
         else:
             log("       That is the built-in default. Create the folder, set "
                 "EVA_DOCUMENTS_DIR to your own document root, or copy the "
-                "repo's eva\\ folder to C:\\Eva to lay out the whole tree.")
+                "repo's eva\\ folder to H:\\Eva to lay out the whole tree.")
         sys.exit(2)
 
     # The templates folder is optional. A path the USER chose and got wrong
@@ -5453,7 +5453,7 @@ def main():
         # refusing to start over a feature nobody asked for.
         log("WARNING: the default templates folder does not exist, so "
             "templates are disabled: {}".format(TEMPLATES_DIR))
-        log("         Create it (copying the repo's eva\\ folder to C:\\Eva "
+        log("         Create it (copying the repo's eva\\ folder to H:\\Eva "
             "lays out the whole tree) to create documents from a template.")
         TEMPLATES_DIR = None
 
