@@ -7,7 +7,7 @@ day planner for any day.
 
 | | |
 |---|---|
-| **Server** | `outlook.py` v10.0.0 |
+| **Server** | `outlook.py` v10.1.0 |
 | **pip install** | `pywin32` |
 | **Platform** | **Windows only** — requires classic Win32 Outlook (not "New Outlook") installed, running, and logged into a profile |
 | **Sends** | **never.** Not an email, not a reply, not a meeting invitation. It cannot accept, move or delete anything either |
@@ -32,6 +32,7 @@ variables in [Configuration](#configuration).
 | Printed day hours | `OUTLOOK_CALENDAR_HOURS` | Working day the printed planner's timeline starts from, e.g. `7-19` (default `8-18`) |
 | Printed page fill | `OUTLOOK_CALENDAR_PAGE_FILL` | How much of the sheet's height the planner uses: `0.8` (default), `80`, or `off` for the whole sheet |
 | Calendar category colours | `OUTLOOK_CALENDAR_COLOURS` | Usually leave blank — the planner already uses your Outlook category colours. Only overrules one, e.g. `Leadership=purple` |
+| Hidden calendar categories | `OUTLOOK_CALENDAR_HIDE_CATEGORIES` | Comma-separated Outlook categories to leave off the printed planner, e.g. `Birthdays` |
 | Meeting booking hours | `OUTLOOK_MEETING_HOURS` | Hours a meeting may be *suggested* in, e.g. `8-18` (default `9-17`) |
 | Allow meeting drafts | `OUTLOOK_ALLOW_DRAFTS` | `false` removes `outlook_draft_meeting`, leaving the mailbox read-only |
 | Directory scan cap | `OUTLOOK_GAL_SCAN_CAP` | Entries one fuzzy name search may read (default `20000`) |
@@ -200,6 +201,13 @@ because the model's idea of today was stale.
   and the legend across the top names whichever of these are on the page.
 - **Tentative or free-marked time is drawn hollow**, the way a diary pencils
   something in.
+- **Categories you don't want on paper can be left off.** Set
+  `OUTLOOK_CALENDAR_HIDE_CATEGORIES="Birthdays"` (comma-separate several) and
+  any appointment carrying one of those categories is not printed in either
+  panel, does not stretch the timeline, and does not make a day count as busy.
+  Names match Outlook's category names, ignoring case. The tool's reply says
+  how many were left off. Printing only: `outlook_get_calendar` still shows
+  them.
 - **Empty days are skipped** in the right-hand panel, so a Friday sheet shows
   the week ahead instead of two blank weekend panels. Ask for the literal next
   four days and it passes `skip_empty_days: false`.
@@ -407,6 +415,7 @@ only when an endpoint's layout really differs.
 | `OUTLOOK_CALENDAR_HOURS` | The working day the printed timeline starts from, e.g. `7-19` (default `8-18`). It always stretches to fit anything scheduled outside it |
 | `OUTLOOK_CALENDAR_PAGE_FILL` | How much of the sheet's **height** the printed planner uses: a fraction (`0.8`, the default), a percentage (`80` or `80%`), or `off` (`none`, `no`, `false`, `disabled`) for the whole sheet with nothing left to fold. Accepts `0.5` to `1.0`; anything else is refused with a warning and the default kept |
 | `OUTLOOK_CALENDAR_COLOURS` | Overrules the colour Outlook already holds against a category, e.g. `Leadership=purple,Client=green` — see [Category colours](#category-colours). An unknown colour name is ignored with a warning |
+| `OUTLOOK_CALENDAR_HIDE_CATEGORIES` | Comma-separated Outlook categories to leave **off** the printed planner, e.g. `Birthdays,Public Holidays`. Case-insensitive, whole category name. Printing only — `outlook_get_calendar` is unaffected |
 | `OUTLOOK_KB_AUTOSAVE=true` | Save **every** email read, without being asked (default false). Needs a save folder to be on |
 | `OUTLOOK_SEARCH_FOLDERS` | Comma-separated folder names used as the **default** set for `outlook_search_recent`, overriding the `SEARCH_ALL_FOLDERS` value in the file (e.g. `"Inbox,Sent Items,Archive"`). A per-call `folders` argument still takes priority |
 | `OUTLOOK_BLACKLIST_FILE` | Path to a file of extra content-blacklist terms (one per line, `#` for comments), added to the built-in list |
@@ -460,6 +469,7 @@ top of `outlook.py` directly (there are no CLI flags/env vars for these):
 | `CALENDAR_DAY_START_HOUR` / `CALENDAR_DAY_END_HOUR` | Working day the printed planner's timeline starts from — `OUTLOOK_CALENDAR_HOURS` overrides both |
 | `CALENDAR_LOOKAHEAD_DAYS` | How many following days the planner's right-hand panel lists by default (4); a per-call `lookahead_days` still takes priority |
 | `CALENDAR_CATEGORY_COLOURS` | Category → colour overrides in the file itself, merged with (and beaten by) `OUTLOOK_CALENDAR_COLOURS`. Both sit on top of the colours read from Outlook |
+| `CALENDAR_HIDDEN_CATEGORIES` | Categories left off the printed planner, in the file itself. Added to `OUTLOOK_CALENDAR_HIDE_CATEGORIES` |
 | `PLANNER_COLOURS` / `OL_CATEGORY_COLOURS` | The bold palette, and which Outlook category colour maps to which name |
 | `PLANNER_TITLE_PT` | The one type size every event subject on the page is set at (7pt) |
 | `PLANNER_CONTENT_FRACTION` | Default for how much of the sheet's height the planner prints on (`0.8` — the top four fifths, leaving the bottom fifth blank to fold up). `OUTLOOK_CALENDAR_PAGE_FILL` overrides it, so the file rarely needs editing |

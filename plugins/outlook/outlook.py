@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-outlook.py (v10.0.0)
+outlook.py (v10.1.0)
 ======================
 
 A single-file MCP (Model Context Protocol) server giving an LLM near-read-only
@@ -257,6 +257,12 @@ What ends up on the page:
   nobody is invited at all (Personal). Nothing is guessed from the subject line.
   There is no colour legend across the top: a printed page is looked at, not
   decoded, and the header reads better given back to the date.
+- Whole categories can be left OFF the page: set
+  OUTLOOK_CALENDAR_HIDE_CATEGORIES="Birthdays,Holidays" and any appointment
+  carrying one of them is not printed at all, in either panel, and does not
+  stretch the timeline or count as a busy day. Names match Outlook's category
+  names case-insensitively. Only the printed planner honours this;
+  outlook_get_calendar still shows everything the blacklist allows.
 - Type on a block goes white or dark automatically, by how bright the fill is,
   so a yellow category is readable rather than white-on-yellow. Every subject
   on the page is set at ONE size (PLANNER_TITLE_PT, 7pt) whatever the block it
@@ -342,9 +348,11 @@ just below this docstring. Edit them there; nothing else needs changing.
 
 3b. Day-planner defaults (CALENDAR_DAY_START_HOUR / CALENDAR_DAY_END_HOUR /
     CALENDAR_LOOKAHEAD_DAYS / CALENDAR_CATEGORY_COLOURS /
+    CALENDAR_HIDDEN_CATEGORIES /
     PLANNER_CONTENT_FRACTION, which OUTLOOK_CALENDAR_PAGE_FILL overrides)
    The working day the printed timeline covers, how many following days the
-   right-hand panel lists, the Outlook category -> colour map, and how much of
+   right-hand panel lists, the Outlook category -> colour map, the categories
+   left off the page altogether, and how much of
    the sheet's height the page uses. All of them have an environment variable
    so a plugin install never needs the file edited.
 
@@ -447,6 +455,13 @@ Server-specific settings, all optional and all environment variables:
                                 green, teal, olive, blue, purple, maroon.
                                 Normally unnecessary - the colours come from
                                 Outlook on their own.
+    OUTLOOK_CALENDAR_HIDE_CATEGORIES
+                                comma-separated Outlook categories to leave
+                                OFF the printed planner, e.g.
+                                "Birthdays,Public Holidays". Matched
+                                case-insensitively against the whole category
+                                name. Printing only - outlook_get_calendar is
+                                unaffected.
     OUTLOOK_SEARCH_FOLDERS      comma-separated folder names for
                                 outlook_search_recent, e.g.
                                 "Inbox,Sent Items,Archive".
@@ -509,7 +524,7 @@ IMPORTANT (stdio-on-Windows pitfalls)
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "10.0.0"
+__version__ = "10.1.0"
 
 import os
 import re
@@ -617,6 +632,16 @@ CALENDAR_LOOKAHEAD_DAYS = 4
 #        meeting (Internal), or nobody is invited at all (Personal).
 CALENDAR_CATEGORY_COLOURS = {
 }
+
+#        Outlook CATEGORIES to leave OFF the printed planner altogether, e.g.
+#        ["Birthdays"]. An appointment carrying ANY of them is not drawn in
+#        either panel, does not stretch the timeline and does not make a day
+#        count as busy. Matched case-insensitively against the whole category
+#        name. Merged with OUTLOOK_CALENDAR_HIDE_CATEGORIES (comma-separated).
+#        Only the printed planner honours this - outlook_get_calendar still
+#        reports everything the blacklist allows.
+CALENDAR_HIDDEN_CATEGORIES = [
+]
 
 # --- 6. KB_AUTOSAVE. Whether reading an email saves it WITHOUT being asked.
 #        False means a message is saved only when the call passes
@@ -770,6 +795,16 @@ def parse_category_colours(raw):
     return mapping
 
 
+def parse_category_list(raw):
+    """
+    Parse OUTLOOK_CALENDAR_HIDE_CATEGORIES ("Birthdays, Public Holidays") into a
+    set of lower-cased category names. Blank entries are skipped, so a trailing
+    comma is harmless.
+    """
+    return set(part.strip().lower() for part in (raw or "").split(",")
+               if part.strip())
+
+
 def parse_page_fill(raw):
     """
     OUTLOOK_CALENDAR_PAGE_FILL -> the fraction of the sheet's height to use.
@@ -848,6 +883,10 @@ _BLACKLIST_RE = None
 # Outlook category -> planner colour, from CALENDAR_CATEGORY_COLOURS and then
 # OUTLOOK_CALENDAR_COLOURS. Keys are lower-cased category names.
 _CATEGORY_COLOURS = {}
+
+# Lower-cased Outlook categories left off the printed planner, from
+# CALENDAR_HIDDEN_CATEGORIES and OUTLOOK_CALENDAR_HIDE_CATEGORIES.
+_HIDDEN_CATEGORIES = set()
 
 # Effective default folder set for outlook_search_recent. Initialised from
 # SEARCH_ALL_FOLDERS; may be replaced by OUTLOOK_SEARCH_FOLDERS. A per-call
@@ -3466,6 +3505,11 @@ def _collect_planner_events(start_date, end_date):
     applied to the fields the reply is built from - the appointment's Body is
     never read at all on this path, so nothing in it can leak either way. Each
     event carries "show_to_ai": False means printed, but not named in the reply.
+
+    The one thing that IS left off is an appointment in a category the user
+    chose to hide (OUTLOOK_CALENDAR_HIDE_CATEGORIES) - dropped here, before
+    layout, so it cannot stretch the timeline or make an empty day look busy.
+    Returns (by_date, hidden_by_date), the second counting those per day.
     """
     start_dt = datetime.datetime.combine(start_date, datetime.time(0, 0))
     end_dt = datetime.datetime.combine(end_date, datetime.time(23, 59, 59))
@@ -3478,6 +3522,7 @@ def _collect_planner_events(start_date, end_date):
     identity = current_user_identity(get_namespace())
 
     by_date = {}
+    hidden_by_date = {}
     for item_start, item in matches:
         day = item_start.date()
         # Only the printed day needs its recipients read: that is the only
@@ -3486,6 +3531,13 @@ def _collect_planner_events(start_date, end_date):
         event = _appointment_to_event(
             item, item_start, identity, want_people=(day == start_date))
         if event is None:
+            continue
+        # A category the user asked to keep off paper (birthdays, say). Tested
+        # before the blacklist so a hidden item is not logged as printed.
+        if _HIDDEN_CATEGORIES and any(
+                category.lower() in _HIDDEN_CATEGORIES
+                for category in event["categories"]):
+            hidden_by_date[day] = hidden_by_date.get(day, 0) + 1
             continue
         # The blacklist decides what the AI is told about, not what is printed.
         # Only the fields the reply is built from are tested, because they are
@@ -3499,7 +3551,7 @@ def _collect_planner_events(start_date, end_date):
 
     for events in by_date.values():
         events.sort(key=lambda event: (not event["all_day"], event["start"]))
-    return by_date
+    return by_date, hidden_by_date
 
 
 def _planner_ahead_days(by_date, day, wanted, skip_empty):
@@ -3554,7 +3606,7 @@ def tool_print_calendar(args):
     horizon = day + datetime.timedelta(
         days=PLANNER_SCAN_HORIZON_DAYS if skip_empty else wanted)
     try:
-        by_date = _collect_planner_events(day, horizon)
+        by_date, hidden_by_date = _collect_planner_events(day, horizon)
     except RuntimeError as exc:
         return "Error: {0}.".format(exc)
 
@@ -3652,6 +3704,13 @@ def tool_print_calendar(args):
     lines.append("Following days on the page: " + (", ".join(
         "{0} ({1} item(s))".format(_fmt_day_short(other), len(events))
         for other, events in ahead) or "none"))
+    # Only the days actually on the sheet: the scan reaches further ahead than
+    # the right-hand panel shows.
+    hidden = sum(hidden_by_date.get(when, 0)
+                 for when in [day] + [other for other, _events in ahead])
+    if hidden:
+        lines.append("{0} event(s) in a hidden category (OUTLOOK_CALENDAR_HIDE_"
+                     "CATEGORIES) were left off the page.".format(hidden))
     if withheld:
         lines.append("[{0} event(s) matched the content blacklist. They ARE on "
                      "the printed page - only their subjects are withheld from "
@@ -5599,6 +5658,9 @@ def run_check():
             log("Planner colours     : {0}".format(", ".join(
                 "{0}={1}".format(key, value)
                 for key, value in sorted(_CATEGORY_COLOURS.items()))))
+        if _HIDDEN_CATEGORIES:
+            log("Planner hides       : {0}".format(
+                ", ".join(sorted(_HIDDEN_CATEGORIES))))
         if KB_DIR:
             log("KB save folder      : {0} ({1})".format(
                 KB_DIR,
@@ -5627,7 +5689,7 @@ def run_check():
 
 
 def main():
-    global KB_DIR, KB_AUTOSAVE, PDF_DIR, _CATEGORY_COLOURS
+    global KB_DIR, KB_AUTOSAVE, PDF_DIR, _CATEGORY_COLOURS, _HIDDEN_CATEGORIES
     global CALENDAR_DAY_START_HOUR, CALENDAR_DAY_END_HOUR
     global PLANNER_CONTENT_FRACTION
     global _MEETING_START_HOUR, _MEETING_END_HOUR, _GAL_SCAN_CAP, _ALLOW_DRAFTS
@@ -5716,6 +5778,14 @@ def main():
     _CATEGORY_COLOURS = {key.lower(): value.lower()
                          for key, value in CALENDAR_CATEGORY_COLOURS.items()}
     _CATEGORY_COLOURS.update(parse_category_colours(env("OUTLOOK_CALENDAR_COLOURS")))
+
+    # Categories kept off the printed planner: the file's list plus the
+    # environment's. Both add - neither can un-hide what the other hides.
+    _HIDDEN_CATEGORIES = set(str(name).strip().lower()
+                             for name in CALENDAR_HIDDEN_CATEGORIES
+                             if str(name).strip())
+    _HIDDEN_CATEGORIES |= parse_category_list(
+        env("OUTLOOK_CALENDAR_HIDE_CATEGORIES"))
 
     # Working-day window for the printed timeline, e.g. OUTLOOK_CALENDAR_HOURS="7-19".
     hours_raw = env("OUTLOOK_CALENDAR_HOURS")

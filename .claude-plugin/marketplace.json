@@ -46,7 +46,7 @@
       "name": "outlook",
       "source": "./plugins/outlook",
       "description": "Read local classic Outlook mail and calendar via COM, schedule a meeting (fuzzy directory search, free/busy, and an unsent draft you send yourself), and print a day as a PDF planner in your own category colours. Windows only; requires pywin32.",
-      "version": "10.0.0",
+      "version": "10.1.0",
       "keywords": [
         "outlook",
         "email",
