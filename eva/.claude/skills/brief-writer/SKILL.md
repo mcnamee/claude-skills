@@ -67,11 +67,11 @@ Exemplars live in the **`exemplars/` folder beside this `SKILL.md`**. Once the
 skill is installed that is:
 
 ```
-%USERPROFILE%\.claude\skills\brief-writer\exemplars\
+H:\Eva\.claude\skills\brief-writer\exemplars\
 ```
 
-or, for a project-scoped install, `.claude\skills\brief-writer\exemplars\`
-inside the project. Glob that folder first, every time. Do not guess at what is
+or `%USERPROFILE%\.claude\skills\brief-writer\exemplars\` if it was installed for
+the whole account. Glob that folder first, every time. Do not guess at what is
 in it, and do not substitute a different exemplars folder for it.
 
 **Match on the leading words of the filename.** Exemplars are named with the

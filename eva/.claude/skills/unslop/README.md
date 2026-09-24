@@ -9,19 +9,13 @@ configuration, so it works anywhere — including on an airgapped machine.
 
 ## Install
 
-Copy this folder into your Claude skills directory. From the root of this
-repo, in **PowerShell**:
+Nothing extra: it ships in the `eva\` scaffold at `eva\.claude\skills\unslop\`,
+so copying `eva\` to `H:\Eva` installs it at `H:\Eva\.claude\skills\unslop\`
+for Claude Code (and OpenCode) opened in `H:\Eva`.
 
-```powershell
-$dest = "$env:USERPROFILE\.claude\skills"
-New-Item -ItemType Directory -Force -Path $dest | Out-Null
-Copy-Item -Recurse -Force .\skills\unslop $dest
-```
-
-For one project only, copy it to `.claude\skills\unslop\` inside that project
-instead. Run `/doctor` or restart Claude Code if it doesn't show up.
-
-See [`skills/README.md`](../README.md) for the general install notes.
+Run `/doctor` or restart Claude Code if it doesn't show up. See
+[`skills/README.md`](../README.md) for updating, removing, and installing for
+your whole account instead.
 
 ## Use
 

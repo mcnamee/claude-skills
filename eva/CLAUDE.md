@@ -219,9 +219,9 @@ Folder discipline, which the servers enforce and Eva should not fight:
   ([`templates\word`](templates/word), [`templates\powerpoint`](templates/powerpoint)).
   A new document is built from a template and saved into `documents\`. Every
   save into a templates folder is refused, so the blanks stay blank.
-- **Exemplars are not in this tree.** A finished document read for its shape
-  lives in the `exemplars\` folder of the skill that reads it, under
-  `%USERPROFILE%\.claude\skills\`: `exemplar-writer` for documents generally,
+- **Exemplars are not in `templates\` or `knowledge\`.** A finished document
+  read for its shape lives in the `exemplars\` folder of the skill that reads
+  it, under `H:\Eva\.claude\skills\`: `exemplar-writer` for documents generally,
   `brief-writer` for briefs, `email-writer` for email. An exemplar shows the
   **shape** of a document and never supplies content.
 - [`knowledge\`](knowledge) is the only indexed root, and holds Markdown only.

@@ -13,22 +13,19 @@ which should be installed alongside it.
 
 ## Install
 
-Copy this folder into your Claude skills directory. From the root of this repo,
-in **PowerShell**:
+Nothing extra: it ships in the `eva\` scaffold at `eva\.claude\skills\email-writer\`,
+so copying `eva\` to `H:\Eva` installs it at `H:\Eva\.claude\skills\email-writer\`
+for Claude Code (and OpenCode) opened in `H:\Eva`. It needs `/unslop` beside it, which
+arrives in the same copy.
 
-```powershell
-$dest = "$env:USERPROFILE\.claude\skills"
-New-Item -ItemType Directory -Force -Path $dest | Out-Null
-Copy-Item -Recurse -Force .\skills\email-writer $dest
-Copy-Item -Recurse -Force .\skills\unslop $dest
-```
+The `exemplars\` folder travels with it, so put your emails into
+`eva\.claude\skills\email-writer\exemplars\` before you copy and they land on the
+endpoint with the skill - or drop them straight into
+`H:\Eva\.claude\skills\email-writer\exemplars\` on the endpoint.
 
-The `exemplars\` folder travels with it, so put your emails in before you copy
-and they land on the endpoint with the skill. For one project only, copy it to
-`.claude\skills\email-writer\` inside that project instead. Run `/doctor` or
-restart Claude Code if it doesn't show up.
-
-See [`skills/README.md`](../README.md) for the general install notes.
+Run `/doctor` or restart Claude Code if it doesn't show up. See
+[`skills/README.md`](../README.md) for updating, removing, and installing for
+your whole account instead.
 
 ## Use
 

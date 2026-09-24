@@ -83,10 +83,11 @@ In this order. Stop at the first that yields a file.
    installed that is:
 
    ```
-   %USERPROFILE%\.claude\skills\exemplar-writer\exemplars\
+   H:\Eva\.claude\skills\exemplar-writer\exemplars\
    ```
 
-   or `.claude\skills\exemplar-writer\exemplars\` for a project-scoped install.
+   or `%USERPROFILE%\.claude\skills\exemplar-writer\exemplars\` if it was
+   installed for the whole account.
    Glob it, every time. Do not guess at what is in it.
 3. **Nothing.** Say so in one line, write from the strongest conventions for
    that kind of document, and offer at the end to keep the approved version as

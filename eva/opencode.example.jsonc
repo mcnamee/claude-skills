@@ -47,7 +47,8 @@
   // Every plugin's skill, read straight from your clone, so a `git pull` is
   // all it takes to update them. Adds to OpenCode's usual skill folders
   // (H:\Eva\.claude\skills, ~/.claude/skills, ~/.config/opencode/skills) -
-  // it does not replace them.
+  // it does not replace them. The standalone skills need no entry: they
+  // arrive with the eva folder in H:\Eva\.claude\skills.
   "skills": {
     "paths": ["H:/Claude-Skills/plugins"]
   },

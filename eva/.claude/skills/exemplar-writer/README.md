@@ -17,22 +17,19 @@ which should be installed alongside it.
 
 ## Install
 
-Copy this folder into your Claude skills directory. From the root of this repo,
-in **PowerShell**:
+Nothing extra: it ships in the `eva\` scaffold at `eva\.claude\skills\exemplar-writer\`,
+so copying `eva\` to `H:\Eva` installs it at `H:\Eva\.claude\skills\exemplar-writer\`
+for Claude Code (and OpenCode) opened in `H:\Eva`. It needs `/unslop` beside it, which
+arrives in the same copy.
 
-```powershell
-$dest = "$env:USERPROFILE\.claude\skills"
-New-Item -ItemType Directory -Force -Path $dest | Out-Null
-Copy-Item -Recurse -Force .\skills\exemplar-writer $dest
-Copy-Item -Recurse -Force .\skills\unslop $dest
-```
+The `exemplars\` folder travels with it, so put your documents into
+`eva\.claude\skills\exemplar-writer\exemplars\` before you copy and they land on the
+endpoint with the skill - or drop them straight into
+`H:\Eva\.claude\skills\exemplar-writer\exemplars\` on the endpoint.
 
-The `exemplars\` folder travels with it, so put your documents in before you
-copy and they land on the endpoint with the skill. For one project only, copy it
-to `.claude\skills\exemplar-writer\` inside that project instead. Run `/doctor`
-or restart Claude Code if it doesn't show up.
-
-See [`skills/README.md`](../README.md) for the general install notes.
+Run `/doctor` or restart Claude Code if it doesn't show up. See
+[`skills/README.md`](../README.md) for updating, removing, and installing for
+your whole account instead.
 
 ## Use
 
@@ -89,7 +86,7 @@ naming, formats and the index worth keeping.
 **`.md` is the format that always works.** A `.docx`, `.pptx` or `.pdf`
 exemplar needs the `word`, `powerpoint` or `pdf-to-md` server, and each is
 confined to its own documents folder - which a skill folder under
-`%USERPROFILE%\.claude\skills\` is not inside. Keep a `.md` copy beside the
+`H:\Eva\.claude\skills\` is not inside. Keep a `.md` copy beside the
 original, or keep the original in `H:\Eva\documents\word` and point at it there.
 
 Nothing in `exemplars\` is committed to this repo (see its
@@ -117,8 +114,8 @@ section your material wouldn't support, a proportion it deliberately broke.
 Then iterate. Each round returns the whole document again with the shape held
 fixed.
 
-Ask at the end and it will hand the draft to the [`word`](../../plugins/word) or
-[`powerpoint`](../../plugins/powerpoint) plugin to build a real `.docx` or
+Ask at the end and it will hand the draft to the [`word`](../../../../plugins/word) or
+[`powerpoint`](../../../../plugins/powerpoint) plugin to build a real `.docx` or
 `.pptx` from one of your blanks in `H:\Eva\templates\`. It won't write files
 otherwise.
 

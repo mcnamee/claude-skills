@@ -16,7 +16,7 @@ variables to set:
 | Plugin install prompts, and secrets as environment variables | each server's `environment` block in the config |
 | Skills come with each plugin | the config's `skills.paths` reads them straight from your clone |
 | `CLAUDE.md` loads by convention | named in the config's `instructions` |
-| Agents (`agents/`) | not provided for OpenCode |
+| Standalone skills and agents arrive in `H:\Eva\.claude\` | skills read from there too; agents are Claude Code only |
 
 Because the config sits on `H:` with the rest of `H:\Eva`, it survives a
 change of endpoint. (OpenCode's global config, under `%USERPROFILE%\.config`,
@@ -113,20 +113,17 @@ Nothing to install for the plugin skills. The config points OpenCode's
 `skills.paths` at `H:/Claude-Skills/plugins`, so it reads every plugin's skill
 straight from your clone, and a `git pull` is all it takes to update them.
 
-This adds to OpenCode's usual skill folders rather than replacing them, so your
-own skills keep working from any of:
+Nothing to install for the **standalone skills** either (`brief-writer`,
+`email-writer`, `exemplar-writer`, `polish`, `unslop`). They are part of the
+`eva\` copy from step 1, at `H:\Eva\.claude\skills`, which OpenCode reads when
+it is opened in `H:\Eva` - so open it there.
 
-- `H:\Eva\.claude\skills` (when OpenCode is opened in `H:\Eva`) - the one that
-  survives a change of endpoint
+`skills.paths` adds to OpenCode's usual skill folders rather than replacing
+them, so your own skills keep working from any of:
+
+- `H:\Eva\.claude\skills` - the one that survives a change of endpoint
 - `%USERPROFILE%\.claude\skills`
 - `%USERPROFILE%\.config\opencode\skills`
-
-To add a **standalone skill** (`skills\`), copy it into `H:\Eva\.claude\skills`:
-
-```powershell
-New-Item -ItemType Directory -Force H:\Eva\.claude\skills | Out-Null
-Copy-Item -Recurse H:\Claude-Skills\skills\brief-writer H:\Eva\.claude\skills\
-```
 
 Give your own skills names that don't clash with a plugin skill (`word`,
 `outlook`, `slide-deck` and so on). With two skills of the same name, OpenCode
@@ -155,7 +152,9 @@ Then open `H:\Eva` in VS Code, open the integrated terminal and run `opencode`
   names, which the model maps without trouble.
 - **Skills are loaded by the model**, through OpenCode's `skill` tool, rather
   than as `/word:word`-style slash commands.
-- **No agents.** `agents/researcher.md` is Claude Code only.
+- **No agents.** `H:\Eva\.claude\agents\researcher.md` is Claude Code only:
+  OpenCode never reads `.claude\agents\`, and its own agents use a different
+  format.
 - **Timeouts.** OpenCode's default MCP timeout is 5 seconds. The config sets 5
   minutes per server, and 15 for `knowledge-base`, whose first index over a
   large corpus can run for minutes.

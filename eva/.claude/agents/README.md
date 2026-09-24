@@ -5,17 +5,19 @@ dependencies. Each one is a single Markdown file: YAML frontmatter that says
 when Claude should hand work to it, then the instructions it follows.
 
 ```
-agents/
+eva\.claude\agents\      (H:\Eva\.claude\agents\ on the endpoint)
   <agent-name>.md      ← the agent
   README.md            ← this file
 ```
 
-That layout is deliberately identical to the one Claude Code expects in
-`%USERPROFILE%\.claude\agents\`, so installing an agent is a straight file
-copy. Every command below is **PowerShell**.
+They live inside the [`eva\`](../..) scaffold, in its `.claude\agents\`
+folder - the place Claude Code looks for a project's own agents - so copying
+`eva\` to `H:\Eva` installs them, scoped to your working folder rather than
+your whole account. Every command below is **PowerShell**.
 
-The other two folders in this repo: [`plugins/`](../plugins) holds MCP servers,
-which give Claude new *tools*; [`skills/`](../skills) holds standalone skills,
+The other two parts of this repo: [`plugins/`](../../../plugins) holds MCP
+servers, which give Claude new *tools*; [`skills\`](../skills) beside this
+folder holds standalone skills,
 which give Claude new *instructions*. An agent is the third thing — a separate
 context with its own instructions and its own conversation, that the main
 session hands a whole job to and gets a finished result back from. The
@@ -38,39 +40,31 @@ writing actually gets done.
 
 ## Install
 
-Copy the agent's file into your Claude agents directory. From the root of this
-repo:
+Nothing extra: they arrive with the `eva\` copy described in the
+[main README](../../../README.md#install), at `H:\Eva\.claude\agents\`.
+Claude Code loads a project's agents from `.claude\agents\` in the folder it is
+opened in, so start it in `H:\Eva`. Run `/agents` to confirm it picked them up,
+or `/doctor` if one doesn't appear.
+
+**Claude Code only.** OpenCode never reads `.claude\agents\`, and its agents
+use a different format - see [`OPENCODE.md`](../../../OPENCODE.md).
+
+To update one without re-copying the whole tree:
 
 ```powershell
-$dest = "$env:USERPROFILE\.claude\agents"
-New-Item -ItemType Directory -Force -Path $dest | Out-Null
-Copy-Item -Force .\agents\researcher.md $dest
+Copy-Item -Force C:\path\to\claude-skills\eva\.claude\agents\researcher.md H:\Eva\.claude\agents\
 ```
 
-`New-Item -Force` is there so the first install works before `~\.claude\agents`
-exists.
-
-**For one project only** — copy it to `.claude\agents\` inside that project
-instead:
+To remove one:
 
 ```powershell
-$dest = ".\.claude\agents"
-New-Item -ItemType Directory -Force -Path $dest | Out-Null
-Copy-Item -Force C:\path\to\claude-skills\agents\researcher.md $dest
+Remove-Item -Force H:\Eva\.claude\agents\researcher.md
 ```
 
-Useful when the agent should travel with the code, or when you want to edit it
-for that project without touching the global copy. A project agent wins over a
-user one of the same name.
-
-Run `/agents` to confirm Claude Code picked them up, or `/doctor` if one
-doesn't appear.
-
-To update, run the same `Copy-Item` again — `-Force` overwrites. To remove one:
-
-```powershell
-Remove-Item -Force "$env:USERPROFILE\.claude\agents\researcher.md"
-```
+**Want an agent everywhere, not just in `H:\Eva`?** Copy it to
+`%USERPROFILE%\.claude\agents\` instead. A project agent wins over a user one
+of the same name, so an old copy there is shadowed rather than harmful - but
+keep one or the other.
 
 ## Use
 
@@ -98,7 +92,7 @@ a server that isn't there.
 
 | Agent | Assumes | Optional |
 |---|---|---|
-| `researcher` | [`knowledge-base`](../plugins/knowledge-base) and [`confluence`](../plugins/confluence) plugins | Files you point it at |
+| `researcher` | [`knowledge-base`](../../../plugins/knowledge-base) and [`confluence`](../../../plugins/confluence) plugins | Files you point it at |
 
 It searches both sources on every question — the knowledge base holds the
 settled documents, Confluence holds the working knowledge that never became one.
@@ -131,7 +125,7 @@ has its own exemplars folder for the shape and the voice to follow.
 
 ## Adding an agent
 
-1. Create `agents/<name>.md` with YAML frontmatter:
+1. Create `eva/.claude/agents/<name>.md` with YAML frontmatter:
    ```yaml
    ---
    name: <name>
@@ -144,7 +138,8 @@ has its own exemplars folder for the shape and the voice to follow.
    importantly, *not* on the wrong ones.
 2. Write the instructions below the frontmatter. They are the agent's whole
    system prompt — it has no other context.
-3. Add a row to the table above.
+3. Add a row to the table above, and to the Agents table in the root
+   [README](../../../README.md).
 
 The agent here does not set `tools:`, so it inherits everything the session has.
 That is deliberate: naming MCP tools explicitly means an agent silently loses
@@ -154,4 +149,4 @@ without it, an agent inherits the session's model.
 
 Agents here are unversioned — they are prose, not an interface anything else
 depends on. (The MCP servers under `plugins/` are versioned; see the root
-[README](../README.md#versioning).)
+[README](../../../README.md#versioning).)
