@@ -12,7 +12,7 @@ figure, date, name or dollar amount is ever carried across from one.
 |---|---|
 | **Formats** | `.md`, `.txt` always; `.docx`, `.pptx`, `.pdf` with a caveat (below) |
 | **Committed to git?** | no (see [`.gitignore`](.gitignore)) |
-| **Where it lands** | `%USERPROFILE%\.claude\skills\exemplar-writer\exemplars\` |
+| **Where it lands** | `H:\Eva\.claude\skills\exemplar-writer\exemplars\` |
 
 ## Naming
 
@@ -59,7 +59,7 @@ skill's. It will say the markings are there rather than filing it for you.
   folder, and its own structure for them.
 - **Emails** - same, [`/email-writer`](../../email-writer).
 - **Reference data to answer questions from** - that is what the
-  [`knowledge-base`](../../../plugins/knowledge-base) plugin indexes, out of
+  [`knowledge-base`](../../../../../plugins/knowledge-base) plugin indexes, out of
   `H:\Eva\knowledge`. See below for why exemplars deliberately are not indexed.
 - **Twelve near-identical reports.** The extras only make the match harder.
 
@@ -77,11 +77,11 @@ pick the right exemplar without opening all of them.
 `.md` and `.txt` are read directly, always work, and are the easiest to review
 and diff.
 
-`.docx`, `.pptx` and `.pdf` exemplars need the [`word`](../../../plugins/word),
-[`powerpoint`](../../../plugins/powerpoint) or
-[`pdf-to-md`](../../../plugins/pdf-to-md) server to read them, and each server
+`.docx`, `.pptx` and `.pdf` exemplars need the [`word`](../../../../../plugins/word),
+[`powerpoint`](../../../../../plugins/powerpoint) or
+[`pdf-to-md`](../../../../../plugins/pdf-to-md) server to read them, and each server
 is confined to its own documents folder. This folder sits under
-`%USERPROFILE%\.claude\skills\`, which is outside all of them, so a binary
+`H:\Eva\.claude\skills\`, which is outside all of them, so a binary
 exemplar here may not be readable at all.
 
 Two fixes, either is fine:

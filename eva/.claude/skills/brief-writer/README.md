@@ -14,22 +14,19 @@ which should be installed alongside it.
 
 ## Install
 
-Copy this folder into your Claude skills directory. From the root of this repo,
-in **PowerShell**:
+Nothing extra: it ships in the `eva\` scaffold at `eva\.claude\skills\brief-writer\`,
+so copying `eva\` to `H:\Eva` installs it at `H:\Eva\.claude\skills\brief-writer\`
+for Claude Code (and OpenCode) opened in `H:\Eva`. It needs `/polish` beside it, which
+arrives in the same copy.
 
-```powershell
-$dest = "$env:USERPROFILE\.claude\skills"
-New-Item -ItemType Directory -Force -Path $dest | Out-Null
-Copy-Item -Recurse -Force .\skills\brief-writer $dest
-Copy-Item -Recurse -Force .\skills\polish $dest
-```
+The `exemplars\` folder travels with it, so put your exemplars into
+`eva\.claude\skills\brief-writer\exemplars\` before you copy and they land on the
+endpoint with the skill - or drop them straight into
+`H:\Eva\.claude\skills\brief-writer\exemplars\` on the endpoint.
 
-The `exemplars\` folder travels with it, so put your exemplars in before you
-copy and they land on the endpoint with the skill. For one project only, copy it
-to `.claude\skills\brief-writer\` inside that project instead. Run `/doctor` or
-restart Claude Code if it doesn't show up.
-
-See [`skills/README.md`](../README.md) for the general install notes.
+Run `/doctor` or restart Claude Code if it doesn't show up. See
+[`skills/README.md`](../README.md) for updating, removing, and installing for
+your whole account instead.
 
 ## Use
 
@@ -73,7 +70,7 @@ Ministerial Brief - Senate Estimates Hearing.pdf
 
 Ask for a decision brief and only the `Decision Brief - *` files are read. `.md`
 is cheapest and always readable; `.docx` and `.pdf` need the
-[`word`](../../plugins/word) or [`pdf-to-md`](../../plugins/pdf-to-md) server
+[`word`](../../../../plugins/word) or [`pdf-to-md`](../../../../plugins/pdf-to-md) server
 and may sit outside its sandbox, so a `.md` copy beside the original is worth
 keeping. Nothing in the folder is committed to git except its README, so your
 real briefs stay yours.
@@ -103,7 +100,7 @@ held stable, and only the changed text goes back through `/polish`.
 ## Turning it into a Word document
 
 Ask, once you're happy with it, and the finished Markdown goes to the
-[`/word:word`](../../plugins/word) skill, which builds the `.docx` with native
+[`/word:word`](../../../../plugins/word) skill, which builds the `.docx` with native
 Word styles or from a blank in `H:\Eva\templates\word`. Writing and
 formatting stay two jobs on purpose: a wording change shouldn't mean rebuilding
 the document.

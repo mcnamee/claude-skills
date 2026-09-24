@@ -12,6 +12,11 @@
 # part of the scaffold, not your material, so they travel with the repo the
 # same way the READMEs do. Your filled-in opencode.json is never committed.
 #
+# So are the standalone skills and agents under .claude\ - each skill's
+# SKILL.md and each agent's .md. Anything else you put in .claude\ (your own
+# settings.local.json, say) stays ignored, and each skill's exemplars\ folder
+# carries its own .gitignore so the documents you drop there never are.
+#
 # To commit one file deliberately (a genuinely generic template, say):
 #     git add -f eva/templates/word/"Report Template.docx"
 #
@@ -23,4 +28,6 @@
 !README.md
 !/CLAUDE.md
 !/opencode.example.jsonc
+!/.claude/skills/*/SKILL.md
+!/.claude/agents/*.md
 !.gitignore

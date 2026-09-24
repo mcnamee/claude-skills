@@ -38,6 +38,7 @@ The tree is organised by **what writes to a folder**, not by topic:
 ```
 H:\Eva\
 ├─ CLAUDE.md         who Eva is, and how she writes
+├─ .claude\         standalone skills (with their exemplars) and agents
 ├─ opencode.example.jsonc   OpenCode only: copy to opencode.json and fill in
 ├─ knowledge\        the indexed corpus (.md / .txt only)
 │  ├─ notes\           Markdown you write by hand
@@ -153,19 +154,25 @@ again after a space is restructured, with nothing you wrote yourself at risk.
 There used to be a `reference\` zone here holding both templates and
 **exemplars** — finished, good documents read for guidance so Claude can write
 something in the same shape. Templates stayed (as [`templates\`](templates));
-exemplars moved out of the tree entirely, into the `exemplars\` folder of the
-skill that reads them:
+exemplars moved into the `exemplars\` folder of the skill that reads them, and
+the skills themselves live in this tree's [`.claude\skills\`](.claude/skills):
 
 | Skill | Exemplars folder |
 |---|---|
-| [`/exemplar-writer`](../skills/exemplar-writer) | `%USERPROFILE%\.claude\skills\exemplar-writer\exemplars\` |
-| [`/brief-writer`](../skills/brief-writer) | `%USERPROFILE%\.claude\skills\brief-writer\exemplars\` |
-| [`/email-writer`](../skills/email-writer) | `%USERPROFILE%\.claude\skills\email-writer\exemplars\` |
+| [`/exemplar-writer`](./.claude/skills/exemplar-writer) | `H:\Eva\.claude\skills\exemplar-writer\exemplars\` |
+| [`/brief-writer`](./.claude/skills/brief-writer) | `H:\Eva\.claude\skills\brief-writer\exemplars\` |
+| [`/email-writer`](./.claude/skills/email-writer) | `H:\Eva\.claude\skills\email-writer\exemplars\` |
 
 The point is that they travel with the skill: fill the folder on a machine that
-has your documents, copy the skill folder to the endpoint, and it arrives
-already knowing what your writing looks like. A folder in this tree would have
-needed a separate copy and a path in every prompt.
+has your documents, copy `eva\` to the endpoint, and the skill arrives already
+knowing what your writing looks like. A zone of their own would have needed a
+path in every prompt.
+
+`.claude\` is also where Claude Code looks for a project's own skills and
+agents, so copying this tree installs them all ([`.claude\skills\`](.claude/skills),
+[`.claude\agents\`](.claude/agents)), scoped to `H:\Eva` rather than your whole
+account. Open Claude Code in `H:\Eva` to use them. `.claude\` is outside
+`knowledge\`, so none of it is indexed.
 
 Exemplars were never indexed and still are not, for the same reason: add a board
 paper to the RAG corpus and its phrasing comes back with the same authority as a
@@ -181,7 +188,7 @@ that now read them, and set the four environment variables:
 New-Item -ItemType Directory -Force H:\Eva\templates\word, H:\Eva\templates\powerpoint
 Move-Item H:\Eva\reference\templates\*.docx        H:\Eva\templates\word
 Move-Item H:\Eva\reference\templates\*.pptx,*.potx H:\Eva\templates\powerpoint
-Copy-Item H:\Eva\reference\exemplars\* "$env:USERPROFILE\.claude\skills\exemplar-writer\exemplars"
+Copy-Item H:\Eva\reference\exemplars\* H:\Eva\.claude\skills\exemplar-writer\exemplars
 Remove-Item -Recurse H:\Eva\reference
 
 [Environment]::SetEnvironmentVariable("EVA_PYTHON",        "C:\Python311\python.exe", "User")

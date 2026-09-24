@@ -12,7 +12,7 @@ figure, date, name or dollar amount is ever carried across from one.
 |---|---|
 | **Formats** | `.md`, `.txt`, `.pdf`, `.docx` |
 | **Committed to git?** | no (see [`.gitignore`](.gitignore)) |
-| **Where it lands** | `%USERPROFILE%\.claude\skills\brief-writer\exemplars\` |
+| **Where it lands** | `H:\Eva\.claude\skills\brief-writer\exemplars\` |
 
 ## Naming
 
@@ -56,10 +56,10 @@ pick the right exemplar without opening all of them.
 
 `.md` is the cheapest and the easiest to review, and it always works.
 
-`.docx` and `.pdf` exemplars need the [`word`](../../../plugins/word) or
-[`pdf-to-md`](../../../plugins/pdf-to-md) server to read them, and both servers
+`.docx` and `.pdf` exemplars need the [`word`](../../../../../plugins/word) or
+[`pdf-to-md`](../../../../../plugins/pdf-to-md) server to read them, and both servers
 are confined to their configured folders. This folder sits under
-`%USERPROFILE%\.claude\skills\`, which is usually outside those, so a `.docx`
+`H:\Eva\.claude\skills\`, which is usually outside those, so a `.docx`
 here may not be readable. The fix is a `.md` copy kept beside the original,
 which is the better arrangement anyway for an exemplar you reach for often.
 

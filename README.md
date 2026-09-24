@@ -6,13 +6,16 @@ Three things, all for Claude Code, all working **entirely offline**:
   things enterprise work actually lives in: Word documents, Excel workbooks,
   Outlook mail, Confluence, Jira, PDFs, plus a local RAG knowledge base to tie
   them together. This repo doubles as a plugin marketplace for them.
-- **[`skills/`](skills)** — standalone skills that need no server and no
-  install beyond a folder copy.
-- **[`agents/`](agents)** — subagents that take a whole job away and hand back
-  a finished result, built on top of the servers and skills above.
+- **[`eva/.claude/skills/`](eva/.claude/skills)** — standalone skills that
+  need no server and no install beyond the `eva/` copy below.
+- **[`eva/.claude/agents/`](eva/.claude/agents)** — subagents that take a whole
+  job away and hand back a finished result, built on top of the servers and
+  skills above.
 
 Plus **[`eva/`](eva)** — the working folder they all read, write and index,
-carried here as a scaffold you copy to `H:\Eva`. It holds the knowledge base,
+carried here as a scaffold you copy to `H:\Eva`. The skills and agents live in
+its `.claude\` folder, so they install with it and stay scoped to `H:\Eva`
+rather than your whole account. It holds the knowledge base,
 the document library, and the **templates** — the blank `.docx`/`.pptx` files
 new documents and decks are built from. It also carries
 [`eva/CLAUDE.md`](eva/CLAUDE.md), the standing instructions that make the
@@ -109,7 +112,9 @@ feature off. See [Folder layout](#folder-layout) for what goes where, and
 `eva/README.md` for each folder's own README.
 
 The copy brings [`eva/CLAUDE.md`](eva/CLAUDE.md) with it, which is what turns
-Claude into Eva when you run Claude Code in `H:\Eva`. Open it and fill in the
+Claude into Eva when you run Claude Code in `H:\Eva`, and `eva\.claude\`, which
+installs the [standalone skills](#skills) and [agents](#agents) for Claude Code
+opened there. Open it and fill in the
 **About me** block — your name, role, who you write to, how you sign off. See
 [The assistant's instructions](#the-assistants-instructions).
 
@@ -281,6 +286,7 @@ lays it out in one step and every default below is already correct.
 ```
 H:\Eva\
 ├─ CLAUDE.md         who Eva is, and how she writes
+├─ .claude\         standalone skills (with their exemplars) and agents
 ├─ knowledge\        the RAG corpus - Markdown only, the ONE indexed root
 │  ├─ notes\           Markdown you write by hand
 │  ├─ captures\        notes kb_capture writes back
@@ -398,34 +404,29 @@ tool, while the mechanics are about driving this server; the rule fires when
 someone asks for a deck at all, and reaches for the server's audit only when it
 is there.
 
-**[`skills/`](skills) holds standalone skills**, which need no server and no
-plugin. Install one by copying its folder:
+**[`eva/.claude/skills/`](eva/.claude/skills) holds standalone skills**, which
+need no server and no plugin. They install with the `eva\` copy in
+[step 1](#install), landing at `H:\Eva\.claude\skills\` - where Claude Code (and
+OpenCode) opened in `H:\Eva` loads them:
 
 | Skill | Invoke | What it does |
 |---|---|---|
-| [**brief-writer**](skills/brief-writer) | `/brief-writer` | Drafts a decision or noting brief for a senior executive, following the structure of an exemplar in its own `exemplars/` folder, and finishing with `/polish` |
-| [**email-writer**](skills/email-writer) | `/email-writer` | Drafts an email in your voice, classifying what the email is for and matching that intent to your own sent mail in its `exemplars/` folder, then running `/unslop` |
-| [**exemplar-writer**](skills/exemplar-writer) | `/exemplar-writer` | Writes a document in the shape of one you already have — pulls the structure, section order, proportions and register out of an exemplar, then writes your material to that shape |
-| [**polish**](skills/polish) | `/polish` | Rewrites a draft into Australian Public Service style — the Australian Government Style Manual — asking who the reader is and what the medium is, then picking the register from them |
-| [**unslop**](skills/unslop) | `/unslop` | Strips AI-slop markers from writing — padding, tell-tale vocabulary, stock LLM sentence shapes — leaving meaning and voice intact |
+| [**brief-writer**](eva/.claude/skills/brief-writer) | `/brief-writer` | Drafts a decision or noting brief for a senior executive, following the structure of an exemplar in its own `exemplars/` folder, and finishing with `/polish` |
+| [**email-writer**](eva/.claude/skills/email-writer) | `/email-writer` | Drafts an email in your voice, classifying what the email is for and matching that intent to your own sent mail in its `exemplars/` folder, then running `/unslop` |
+| [**exemplar-writer**](eva/.claude/skills/exemplar-writer) | `/exemplar-writer` | Writes a document in the shape of one you already have — pulls the structure, section order, proportions and register out of an exemplar, then writes your material to that shape |
+| [**polish**](eva/.claude/skills/polish) | `/polish` | Rewrites a draft into Australian Public Service style — the Australian Government Style Manual — asking who the reader is and what the medium is, then picking the register from them |
+| [**unslop**](eva/.claude/skills/unslop) | `/unslop` | Strips AI-slop markers from writing — padding, tell-tale vocabulary, stock LLM sentence shapes — leaving meaning and voice intact |
 
-```powershell
-$dest = "$env:USERPROFILE\.claude\skills"
-New-Item -ItemType Directory -Force -Path $dest | Out-Null
-Copy-Item -Recurse -Force .\skills\unslop $dest
-```
-
-Or copy it into `.claude\skills\` inside a project to scope it there. Run
-`/doctor` or restart Claude Code if a newly copied skill doesn't appear. See
-[`skills/README.md`](skills/README.md) for the details and for how to add
-another.
+Run `/doctor` or restart Claude Code if one doesn't appear. See
+[`eva/.claude/skills/README.md`](eva/.claude/skills/README.md) for updating one
+on its own, installing for your whole account instead, and adding another.
 
 The three writers stack on the other two: `brief-writer` finishes through
 `/polish`, `email-writer` and `exemplar-writer` through `/unslop`, so install
-the pair each one needs.
+the pair each one needs (the `eva\` copy brings all five).
 All three keep their own `exemplars/` folder inside the skill — your approved
-briefs, your sent mail, your finished reports — which is what makes the copy to
-an endpoint carry the house structure and your voice with it. Nothing in those
+briefs, your sent mail, your finished reports — which is what makes the `eva\`
+copy to an endpoint carry the house structure and your voice with it. Nothing in those
 folders is committed except their README.
 
 Note the difference in what they give Claude: a **plugin** adds *tools*, a
@@ -437,31 +438,25 @@ return a `session_id` and hold the file in memory until it is saved).
 
 ## Agents
 
-**[`agents/`](agents) holds standalone subagents** — a separate context with its
+**[`eva/.claude/agents/`](eva/.claude/agents) holds standalone subagents** — a separate context with its
 own instructions that the main session hands a whole job to, and gets a finished
 result back from. Where a skill steers the conversation you are already in, an
 agent goes away and does the work in its own.
 
 | Agent | Invoke | What it does |
 |---|---|---|
-| [**researcher**](agents/researcher.md) | `@agent-researcher` | Researches a topic across the local knowledge base and Confluence, corroborates what it finds, and returns a cited brief with confidence ratings and named gaps — then offers to capture the brief back into the knowledge base |
+| [**researcher**](eva/.claude/agents/researcher.md) | `@agent-researcher` | Researches a topic across the local knowledge base and Confluence, corroborates what it finds, and returns a cited brief with confidence ratings and named gaps — then offers to capture the brief back into the knowledge base |
 
-It is one Markdown file, so installing is a file copy:
-
-```powershell
-$dest = "$env:USERPROFILE\.claude\agents"
-New-Item -ItemType Directory -Force -Path $dest | Out-Null
-Copy-Item -Force .\agents\researcher.md $dest
-```
-
-Or into `.claude\agents\` inside a project to scope it there. It is written for
+It installs with the `eva\` copy in [step 1](#install), landing at
+`H:\Eva\.claude\agents\`, and Claude Code opened in `H:\Eva` picks it up
+(OpenCode does not read `.claude\agents\`). It is written for
 this suite rather than as a generic agent and assumes it is installed, searching
 `knowledge-base` and `confluence` on every question. What it produces is
-research, not a document: hand the brief to [`/brief-writer`](skills/brief-writer),
-[`/email-writer`](skills/email-writer) or
-[`/exemplar-writer`](skills/exemplar-writer) to write up, which keeps you in the
+research, not a document: hand the brief to [`/brief-writer`](eva/.claude/skills/brief-writer),
+[`/email-writer`](eva/.claude/skills/email-writer) or
+[`/exemplar-writer`](eva/.claude/skills/exemplar-writer) to write up, which keeps you in the
 conversation while the wording is settled. See
-[`agents/README.md`](agents/README.md) for the details.
+[`eva/.claude/agents/README.md`](eva/.claude/agents/README.md) for the details.
 
 ## Templates and exemplars
 
@@ -488,9 +483,9 @@ separate copy and a path in every prompt:
 
 | Skill | Its exemplars are |
 |---|---|
-| [`/exemplar-writer`](skills/exemplar-writer) | Any document that should follow the shape of one you already have — a report, proposal, file note, minutes |
-| [`/brief-writer`](skills/brief-writer) | Briefs, matched by kind (decision, noting, ministerial) |
-| [`/email-writer`](skills/email-writer) | Your own sent mail, matched by intent |
+| [`/exemplar-writer`](eva/.claude/skills/exemplar-writer) | Any document that should follow the shape of one you already have — a report, proposal, file note, minutes |
+| [`/brief-writer`](eva/.claude/skills/brief-writer) | Briefs, matched by kind (decision, noting, ministerial) |
+| [`/email-writer`](eva/.claude/skills/email-writer) | Your own sent mail, matched by intent |
 
 Name a file in the prompt and it beats the folder — including a document sitting
 in `documents\word`, which is the way to use a `.docx` exemplar that a skill
@@ -521,7 +516,7 @@ fixes the things you would otherwise correct in every reply:
   finer mechanics.
 - **No em dashes and no other AI tells** — the openers, the vocabulary, the
   "it's not X, it's Y" shapes. This is the always-on subset of
-  [`unslop`](skills/unslop); the full passes are still `/unslop` then
+  [`unslop`](eva/.claude/skills/unslop); the full passes are still `/unslop` then
   `/polish` before anything leaves your desk.
 - **Sourced or not stated** — on a network with no internet, an empty search is
   a finding to report rather than a gap to fill from memory, and every fact
@@ -549,5 +544,5 @@ Versions follow semver and are bumped on **every** change (see `CLAUDE.md`):
 A version appears in five places that must stay in sync: the server's
 `__version__`, its docstring title, its `plugin.json`, its own README header
 and the plugin table above (the marketplace manifest mirrors them too).
-Standalone skills under `skills/` and agents under `agents/` are unversioned —
+Standalone skills and agents under `eva/.claude/` are unversioned —
 they are prose, not an interface anything depends on.

@@ -11,7 +11,7 @@ sentence is carried across from one.
 |---|---|
 | **Formats** | `.md`, `.txt`, `.eml` (`.docx` and `.pdf` work, but see below) |
 | **Committed to git?** | no (see [`.gitignore`](.gitignore)) |
-| **Where it lands** | `%USERPROFILE%\.claude\skills\email-writer\exemplars\` |
+| **Where it lands** | `H:\Eva\.claude\skills\email-writer\exemplars\` |
 
 ## Naming
 
@@ -67,8 +67,8 @@ well as intent.
 Markdown, subject line on the first line and body underneath, is the cheapest
 and the easiest to redact.
 
-`.docx` and `.pdf` need the [`word`](../../../plugins/word) or
-[`pdf-to-md`](../../../plugins/pdf-to-md) server, and both are confined to their
-configured folders. This folder sits under `%USERPROFILE%\.claude\skills\`,
+`.docx` and `.pdf` need the [`word`](../../../../../plugins/word) or
+[`pdf-to-md`](../../../../../plugins/pdf-to-md) server, and both are confined to their
+configured folders. This folder sits under `H:\Eva\.claude\skills\`,
 usually outside those, so save your exemplars as plain text and skip the
 problem.

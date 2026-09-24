@@ -50,15 +50,15 @@ A template *is* the output's first draft. An **exemplar** is a finished document
 read for guidance that never becomes the output — a board paper you would hand a
 new starter and say *"write it like this"*.
 
-Exemplars no longer live in this tree. They belong to the skill that reads them,
-in its own `exemplars\` folder, so they travel with the skill when you copy it
-to an endpoint:
+Exemplars do not live in this folder. They belong to the skill that reads them,
+in its own `exemplars\` folder under `H:\Eva\.claude\skills\`, so they travel
+with the skill:
 
 | Skill | Exemplars folder |
 |---|---|
-| `/exemplar-writer` | `%USERPROFILE%\.claude\skills\exemplar-writer\exemplars\` |
-| `/brief-writer` | `%USERPROFILE%\.claude\skills\brief-writer\exemplars\` |
-| `/email-writer` | `%USERPROFILE%\.claude\skills\email-writer\exemplars\` |
+| `/exemplar-writer` | `H:\Eva\.claude\skills\exemplar-writer\exemplars\` |
+| `/brief-writer` | `H:\Eva\.claude\skills\brief-writer\exemplars\` |
+| `/email-writer` | `H:\Eva\.claude\skills\email-writer\exemplars\` |
 
 A finished board paper goes to `exemplar-writer`'s folder; the empty branded
 shell it was written in belongs here.
