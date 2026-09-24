@@ -1,7 +1,7 @@
 {
   "name": "outlook",
   "displayName": "Outlook (mail + calendar)",
-  "version": "10.0.0",
+  "version": "10.1.0",
   "description": "Read local classic Outlook mail and calendar via COM, schedule meetings (fuzzy directory search, free/busy, and an unsent meeting draft you send yourself), and print a day as a PDF planner. It can never send anything. Windows only; requires pywin32.",
   "author": {
     "name": "mcnamee"
@@ -42,6 +42,11 @@
       "title": "Calendar category colours",
       "description": "Optional, and usually unnecessary: the planner already reads the colour Outlook holds against each category and prints it at full strength. Set this only to overrule one, e.g. 'Leadership=purple,Client=green'. Names: red, orange, peach, yellow, amber, green, teal, olive, blue, purple, maroon, rose, steel, silver, slate, black, grey, each also with a 'dark-' prefix. Uncategorised events fall back to External / Internal / Personal."
     },
+    "calendar_hide_categories": {
+      "type": "string",
+      "title": "Hidden calendar categories",
+      "description": "Optional. Comma-separated Outlook categories to leave off the printed planner, e.g. 'Birthdays,Public Holidays'. Matched against the whole category name, ignoring case. Only printing is affected; reading the calendar still shows them."
+    },
     "meeting_hours": {
       "type": "string",
       "title": "Meeting booking hours",
@@ -72,6 +77,7 @@
         "OUTLOOK_CALENDAR_HOURS": "${user_config.calendar_hours}",
         "OUTLOOK_CALENDAR_PAGE_FILL": "${user_config.calendar_page_fill}",
         "OUTLOOK_CALENDAR_COLOURS": "${user_config.calendar_colours}",
+        "OUTLOOK_CALENDAR_HIDE_CATEGORIES": "${user_config.calendar_hide_categories}",
         "OUTLOOK_MEETING_HOURS": "${user_config.meeting_hours}",
         "OUTLOOK_ALLOW_DRAFTS": "${user_config.allow_drafts}",
         "OUTLOOK_GAL_SCAN_CAP": "${user_config.gal_scan_cap}"

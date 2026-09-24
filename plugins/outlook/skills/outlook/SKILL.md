@@ -77,6 +77,11 @@ page), and how the reply says to fold it.
   falling back to External / Internal / Personal, which the legend on the page
   names. Do not describe a colour as meaning anything else, and do not offer to
   "set up" colours: they are already the user's own.
+- Some categories may be **left off the page** by the endpoint
+  (`OUTLOOK_CALENDAR_HIDE_CATEGORIES`, e.g. birthdays). The reply says how many
+  were hidden; mention it if the user asks why something is missing, and do not
+  treat a hidden event as absent from the diary - `outlook_get_calendar` still
+  shows it.
 - Empty days in the right-hand panel are skipped by default, so a Friday sheet
   shows the week ahead. Pass `skip_empty_days: false` if the user wants the
   literal next four days.
