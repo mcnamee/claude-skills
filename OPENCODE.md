@@ -13,7 +13,7 @@ variables to set:
 |---|---|
 | `/plugin install` per plugin | one config registering all eight servers |
 | `EVA_PYTHON` and `${CLAUDE_PLUGIN_ROOT}` find each `.py` | the paths are written into the config |
-| Plugin install prompts, and secrets as environment variables | each server's `environment` block in the config |
+| Settings and secrets as environment variables (the `env` block of Claude Code's settings) | each server's `environment` block in the config |
 | Skills come with each plugin | the config's `skills.paths` reads them straight from your clone |
 | `CLAUDE.md` loads by convention | named in the config's `instructions` |
 | Standalone skills and agents arrive in `H:\Eva\.claude\` | skills read from there too; agents are Claude Code only |

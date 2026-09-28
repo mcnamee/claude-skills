@@ -5,7 +5,7 @@ native Word styles, and filling out templates.
 
 | | |
 |---|---|
-| **Server** | `word.py` v9.0.0 |
+| **Server** | `word.py` v10.0.0 |
 | **pip install** | `python-docx` (pulls in `lxml` and `typing_extensions`) |
 | **Platform** | any (Word itself is not required) |
 | **Writes to disk** | yes — the only write-capable server in the suite |
@@ -17,15 +17,18 @@ native Word styles, and filling out templates.
 /plugin install word@mcnamee-claude-skills
 ```
 
-The `/word:word` skill is installed with the server. The only thing Claude Code
-prompts for is the optional tracked-change author - every folder and the Python
-interpreter come from the shared environment variables below.
+The `/word:word` skill is installed with the server. The plugin prompts for
+nothing at install: the Python interpreter, every folder and the optional
+tracked-change author (`MSWORD_AUTHOR`) are environment variables the server
+inherits from Claude Code. Set them in the `env` block of Claude Code's
+`settings.json` ([Where to set a variable](../../README.md#where-to-set-a-variable)),
+or as Windows user environment variables, then fully restart Claude Code.
 
 ## Configuration
 
 **Four environment variables configure every plugin in this suite.** Set them
-once for your Windows account and this plugin has nothing else to configure -
-there are no folder prompts at install time and no folder command-line flags.
+once and this plugin has nothing else to configure - there are no install
+prompts and no folder command-line flags.
 
 | Variable | Purpose | Default |
 |---|---|---|
@@ -34,6 +37,22 @@ there are no folder prompts at install time and no folder command-line flags.
 | `EVA_TEMPLATES_DIR` | Root of the template library | `H:\Eva\templates` |
 | `EVA_KNOWLEDGE_DIR` | Root of the RAG corpus - the one folder the index reads | `H:\Eva\knowledge` |
 
+```json
+{
+  "env": {
+    "EVA_PYTHON":        "C:\\Python311\\python.exe",
+    "EVA_DOCUMENTS_DIR": "H:\\Eva\\documents",
+    "EVA_TEMPLATES_DIR": "H:\\Eva\\templates",
+    "EVA_KNOWLEDGE_DIR": "H:\\Eva\\knowledge",
+    "MSWORD_AUTHOR":     "Jane Citizen"
+  }
+}
+```
+
+That goes in `%USERPROFILE%\.claude\settings.json`, or in
+`H:\Eva\.claude\settings.local.json` to keep it on `H:` beside the working
+folder. Or set them as Windows user environment variables instead:
+
 ```powershell
 [Environment]::SetEnvironmentVariable("EVA_PYTHON",        "C:\Python311\python.exe",     "User")
 [Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "H:\Eva\documents",             "User")
@@ -41,8 +60,8 @@ there are no folder prompts at install time and no folder command-line flags.
 [Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "H:\Eva\knowledge",             "User")
 ```
 
-`setx NAME "value"` does the same thing from `cmd`. Neither affects processes
-that are already running, so quit and reopen your editor afterwards.
+`setx NAME "value"` does the same thing from `cmd`. None of these affects a
+Claude Code that is already running, so fully quit and reopen it afterwards.
 
 ### The folders this plugin uses
 
@@ -75,8 +94,8 @@ only when an endpoint's layout really differs.
 | `MSWORD_KB_DIR` | Full path to the mirror folder, instead of `%EVA_KNOWLEDGE_DIR%\word`. `off` disables mirroring |
 
 **Blank does not mean off.** A blank value means "not configured", so the shared
-root still applies - that is what an MCP client substitutes for a prompt left
-empty. To switch an optional folder off, set it to `off` (`none`, `no`, `false`
+root still applies - an empty value is treated exactly as if the variable
+were not set. To switch an optional folder off, set it to `off` (`none`, `no`, `false`
 and `disabled` work too). The documents folder cannot be switched off: the
 server has no sandbox without it.
 

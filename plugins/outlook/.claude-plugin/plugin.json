@@ -1,7 +1,7 @@
 {
   "name": "outlook",
   "displayName": "Outlook (mail + calendar)",
-  "version": "10.1.0",
+  "version": "11.0.0",
   "description": "Read local classic Outlook mail and calendar via COM, schedule meetings (fuzzy directory search, free/busy, and an unsent meeting draft you send yourself), and print a day as a PDF planner. It can never send anything. Windows only; requires pywin32.",
   "author": {
     "name": "mcnamee"
@@ -16,53 +16,6 @@
     "scheduling",
     "windows"
   ],
-  "userConfig": {
-    "search_folders": {
-      "type": "string",
-      "title": "Search folders",
-      "description": "Optional. Comma-separated folder names for outlook_search_recent, e.g. 'Inbox,Sent Items,Archive'. The Python interpreter and the folders this server writes to come from the suite-wide EVA_PYTHON, EVA_KNOWLEDGE_DIR (saved email goes to its 'email' sub-folder, which must exist) and EVA_DOCUMENTS_DIR (printed day planners go to its 'pdf' one) environment variables; see the plugin README."
-    },
-    "blacklist_file": {
-      "type": "string",
-      "title": "Blacklist file",
-      "description": "Optional. Path to a file of extra content-blacklist terms, one per line."
-    },
-    "calendar_hours": {
-      "type": "string",
-      "title": "Printed day hours",
-      "description": "Optional. The working day the printable planner's timeline starts from, e.g. '7-19'. Defaults to 8-18, and always stretches to fit anything scheduled outside it."
-    },
-    "calendar_page_fill": {
-      "type": "string",
-      "title": "Printed page fill",
-      "description": "Optional. How much of the sheet's height the printed planner uses: a fraction like '0.8' (the default), a percentage like '80', or 'off' for the whole sheet. Below 1 the rest of the page prints blank with a fold line, so you can turn it up behind the planner and it fits a diary. Accepts 0.5 to 1.0."
-    },
-    "calendar_colours": {
-      "type": "string",
-      "title": "Calendar category colours",
-      "description": "Optional, and usually unnecessary: the planner already reads the colour Outlook holds against each category and prints it at full strength. Set this only to overrule one, e.g. 'Leadership=purple,Client=green'. Names: red, orange, peach, yellow, amber, green, teal, olive, blue, purple, maroon, rose, steel, silver, slate, black, grey, each also with a 'dark-' prefix. Uncategorised events fall back to External / Internal / Personal."
-    },
-    "calendar_hide_categories": {
-      "type": "string",
-      "title": "Hidden calendar categories",
-      "description": "Optional. Comma-separated Outlook categories to leave off the printed planner, e.g. 'Birthdays,Public Holidays'. Matched against the whole category name, ignoring case. Only printing is affected; reading the calendar still shows them."
-    },
-    "meeting_hours": {
-      "type": "string",
-      "title": "Meeting booking hours",
-      "description": "Optional. The hours a meeting may be SUGGESTED in, e.g. '8-18'. Defaults to 9-17. Separate from the printed day hours above: what you want to see on a planner and when it is acceptable to book you are not the same window."
-    },
-    "allow_drafts": {
-      "type": "string",
-      "title": "Allow meeting drafts",
-      "description": "Optional. Set to 'false' to remove outlook_draft_meeting, leaving the server read-only on the mailbox. Left blank, drafting is on: it saves an UNSENT meeting into your calendar for you to review and send. Nothing in this server can ever send anything."
-    },
-    "gal_scan_cap": {
-      "type": "string",
-      "title": "Directory scan cap",
-      "description": "Optional. How many address-list entries one fuzzy name search may read before giving up (default 20000). Raise it on a very large Global Address List if people are not being found; a search that stops early says so."
-    }
-  },
   "mcpServers": {
     "outlook": {
       "type": "stdio",
@@ -71,16 +24,7 @@
         "${CLAUDE_PLUGIN_ROOT}/outlook.py"
       ],
       "env": {
-        "PYTHONUTF8": "1",
-        "OUTLOOK_SEARCH_FOLDERS": "${user_config.search_folders}",
-        "OUTLOOK_BLACKLIST_FILE": "${user_config.blacklist_file}",
-        "OUTLOOK_CALENDAR_HOURS": "${user_config.calendar_hours}",
-        "OUTLOOK_CALENDAR_PAGE_FILL": "${user_config.calendar_page_fill}",
-        "OUTLOOK_CALENDAR_COLOURS": "${user_config.calendar_colours}",
-        "OUTLOOK_CALENDAR_HIDE_CATEGORIES": "${user_config.calendar_hide_categories}",
-        "OUTLOOK_MEETING_HOURS": "${user_config.meeting_hours}",
-        "OUTLOOK_ALLOW_DRAFTS": "${user_config.allow_drafts}",
-        "OUTLOOK_GAL_SCAN_CAP": "${user_config.gal_scan_cap}"
+        "PYTHONUTF8": "1"
       }
     }
   }

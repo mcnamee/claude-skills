@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-knowledge-base.py (v5.0.0)
+knowledge-base.py (v6.0.0)
 ==========================
 
 A single-file MCP (Model Context Protocol) server providing true RAG
@@ -199,14 +199,30 @@ This server ships as the "knowledge-base" Claude Code plugin (its manifest is
     /plugin marketplace add C:\\path\\to\\claude-skills
     /plugin install knowledge-base@mcnamee-claude-skills
 
-Claude Code prompts for the embeddings URL and the model name; the interpreter
-and the corpus folder come from EVA_PYTHON and EVA_KNOWLEDGE_DIR.
-KB_EMBED_API_KEY is NOT stored in the plugin - set it as a Windows user
-environment variable before starting Claude Code, and the plugin picks it up
-from there:
+The plugin prompts for nothing at install. Every setting is an environment
+variable the server inherits from Claude Code: set them in the "env" block of
+Claude Code's settings.json (%USERPROFILE%\\.claude\\settings.json, or
+H:\\Eva\\.claude\\settings.local.json to keep it on H: beside the working
+folder), then fully restart Claude Code:
+
+    {
+      "env": {
+        "EVA_PYTHON":        "C:\\Python311\\python.exe",
+        "EVA_KNOWLEDGE_DIR": "H:\\Eva\\knowledge",
+        "KB_EMBED_URL":      "https://your-gateway/v1/embeddings",
+        "KB_EMBED_MODEL":    "...",
+        "KB_EMBED_API_KEY":  "..."
+      }
+    }
+
+KB_EMBED_URL is required; KB_EMBED_MODEL is optional (omit it if the
+endpoint fixes the model). A blank or missing value means "not set".
+Windows user environment variables work too, as the alternative (quit Claude
+Code / VS Code completely afterwards - setx does not reach running processes):
 
     setx EVA_PYTHON        "C:\\Python311\\python.exe"
     setx EVA_KNOWLEDGE_DIR "H:\\Eva\\knowledge"
+    setx KB_EMBED_URL      "https://..."
     setx KB_EMBED_API_KEY  "..."
 
 Every other setting is available as its KB_* environment variable. See
@@ -271,7 +287,7 @@ NOTES
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "5.0.0"
+__version__ = "6.0.0"
 
 import os
 import re

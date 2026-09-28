@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-jira.py (v2.0.0) - A single-file, READ-ONLY MCP (Model Context Protocol)
+jira.py (v3.0.0) - A single-file, READ-ONLY MCP (Model Context Protocol)
 server for querying Jira Data Center (v2 REST API) using only the Python 3
 standard library.
 
@@ -67,13 +67,30 @@ This server ships as the "jira" Claude Code plugin (its manifest is
     /plugin marketplace add C:\\path\\to\\claude-skills
     /plugin install jira@mcnamee-claude-skills
 
-Claude Code prompts for the base URL and the optional project allowlist; the
-interpreter comes from EVA_PYTHON. JIRA_TOKEN is NOT stored in the plugin - set
-it, like EVA_PYTHON, as a Windows user environment variable before starting
-Claude Code, and the plugin picks it up from there:
+The plugin prompts for nothing at install time: the server inherits every
+setting from the environment Claude Code runs in. Set the variables in the
+`env` block of Claude Code's settings.json (%USERPROFILE%\\.claude\\settings.json,
+or H:\\Eva\\.claude\\settings.local.json to keep it on H: beside the working
+folder), then fully restart Claude Code (quit it completely, a window reload
+is not enough):
+
+    {
+      "env": {
+        "JIRA_BASE_URL": "https://jira.internal.example.com",
+        "JIRA_TOKEN": "...",
+        "JIRA_PROJECTS": "ABC,DEF"
+      }
+    }
+
+Windows user environment variables work too, as the alternative to
+settings.json (then open a NEW window - setx does not affect processes that
+are already running). The interpreter always comes from EVA_PYTHON:
 
     setx EVA_PYTHON "C:\Python311\python.exe"
     setx JIRA_TOKEN "..."
+
+A blank or missing value means "not set" (JIRA_PROJECTS blank = no project
+restriction; JIRA_BASE_URL blank = the server refuses to start).
 
 See README.md next to this file for the full settings reference.
 
@@ -128,7 +145,7 @@ failed transfer" rule):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "2.0.0"
+__version__ = "3.0.0"
 
 import argparse
 import base64

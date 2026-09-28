@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-outlook.py (v10.1.0)
+outlook.py (v11.0.0)
 ======================
 
 A single-file MCP (Model Context Protocol) server giving an LLM near-read-only
@@ -389,7 +389,27 @@ never reduce it). Example file contents:
 CONFIGURATION  (environment variables, no folder flags)
 -------------------------------------------------------
 The whole plugin suite is configured by four environment variables, set once
-for your Windows account. This server uses three of them:
+for your account. The plugin prompts for nothing at install: every setting
+below is an environment variable the server inherits from Claude Code. Set
+them in the "env" block of Claude Code's settings.json
+(%USERPROFILE%\\.claude\\settings.json, or H:\\Eva\\.claude\\settings.local.json
+to keep it on H: beside the working folder), or as Windows user environment
+variables, then fully restart Claude Code. For example:
+
+    {
+      "env": {
+        "EVA_PYTHON": "C:\\Python311\\python.exe",
+        "EVA_KNOWLEDGE_DIR": "H:\\Eva\\knowledge",
+        "EVA_DOCUMENTS_DIR": "H:\\Eva\\documents",
+        "OUTLOOK_SEARCH_FOLDERS": "Inbox,Sent Items,Archive",
+        "OUTLOOK_MEETING_HOURS": "8-18"
+      }
+    }
+
+(Backslashes are doubled inside JSON.) A blank or missing value means "not
+set", and the default applies.
+
+This server uses three of the four suite-wide variables:
 
     EVA_PYTHON          full path to the python.exe that has pywin32
                         installed, e.g. C:\\Python311\\python.exe (read by the
@@ -414,7 +434,8 @@ This server works in one sub-folder of each:
                                 the server says so and disables printing, since
                                 mail must stay readable either way.
 
-To set them permanently for your account (PowerShell, one-off):
+Or, as Windows user environment variables instead of settings.json
+(PowerShell, one-off):
 
     [Environment]::SetEnvironmentVariable("EVA_PYTHON", "C:\\Python311\\python.exe", "User")
     [Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "H:\\Eva\\knowledge", "User")
@@ -493,9 +514,11 @@ This server ships as the "outlook" Claude Code plugin (its manifest is
     /plugin marketplace add C:\\path\\to\\claude-skills
     /plugin install outlook@mcnamee-claude-skills
 
-Claude Code prompts only for the optional search folders and blacklist file;
-the interpreter and the knowledge folder come from the environment variables
-above. PYTHONUTF8=1 is set for you by the manifest.
+The plugin prompts for nothing at install: the interpreter, the folders and
+every server-specific setting come from the environment variables above (the
+settings.json "env" block, or Windows user environment variables). Fully
+restart Claude Code after changing one. PYTHONUTF8=1 is set for you by the
+manifest.
 
 To register the server by hand instead (PowerShell):
 
@@ -524,7 +547,7 @@ IMPORTANT (stdio-on-Windows pitfalls)
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "10.1.0"
+__version__ = "11.0.0"
 
 import os
 import re

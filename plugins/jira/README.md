@@ -6,7 +6,7 @@ comments on, or deletes anything.
 
 | | |
 |---|---|
-| **Server** | `jira.py` v2.0.0 |
+| **Server** | `jira.py` v3.0.0 |
 | **pip install** | _none_ — standard library only (HTTP via stdlib `urllib`) |
 | **Platform** | any |
 | **Writes to disk** | no |
@@ -21,19 +21,34 @@ comments on, or deletes anything.
 /plugin install jira@mcnamee-claude-skills
 ```
 
-| Prompt | Required | Env var | Purpose |
-|---|---|---|---|
-| Jira base URL | **yes** | `JIRA_BASE_URL` | Base URL including any context path, no trailing slash |
-| Project allowlist | no | `JIRA_PROJECTS` | Comma-separated project keys, e.g. `ABC,DEF` |
+The plugin prompts for nothing at install time. Set these in the `env` block of
+Claude Code's settings.json ([Where to set a variable](../../README.md#where-to-set-a-variable))
+or as Windows user environment variables, then fully restart Claude Code. A
+blank or missing value means "not set".
 
-The Python interpreter is **not** prompted for: it comes from the shared
-`EVA_PYTHON` environment variable (see [Configuration](#configuration)).
+| Variable | Required | Purpose |
+|---|---|---|
+| `JIRA_BASE_URL` | **yes** | Base URL including any context path, no trailing slash |
+| `JIRA_TOKEN` | **yes** (or `JIRA_USER` + `JIRA_PASSWORD`) | Personal Access Token, sent as Bearer |
+| `JIRA_PROJECTS` | no | Comma-separated project keys, e.g. `ABC,DEF` |
 
-**Your token is not stored in the plugin.** Set `JIRA_TOKEN` as a Windows user
-environment variable before starting Claude Code — the plugin reads it from the
-ambient environment. Credentials are deliberately env-var only: there is no flag
-that could put a token in a command line, where other local users would see it
-in a process listing.
+```json
+{
+  "env": {
+    "JIRA_BASE_URL": "https://jira.internal.example.com",
+    "JIRA_TOKEN": "your-personal-access-token",
+    "JIRA_PROJECTS": "ABC,DEF"
+  }
+}
+```
+
+The Python interpreter comes from the shared `EVA_PYTHON` environment variable
+(see [Configuration](#configuration)).
+
+**Your token is never stored in the plugin.** Credentials are deliberately
+env-var only: there is no flag that could put a token in a command line, where
+other local users would see it in a process listing. As Windows user
+environment variables instead of settings.json:
 
 ```powershell
 setx EVA_PYTHON "C:\Python311\python.exe"
@@ -48,7 +63,7 @@ completely (a window reload is not enough) and reopen it. Check it took in a
 
 **Four environment variables configure every plugin in this suite.** Set them
 once for your Windows account and this plugin has nothing else to configure -
-there are no folder prompts at install time and no folder command-line flags.
+there are no install prompts and no folder command-line flags.
 
 | Variable | Purpose | Default |
 |---|---|---|

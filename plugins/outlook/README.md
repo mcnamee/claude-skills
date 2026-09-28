@@ -7,7 +7,7 @@ day planner for any day.
 
 | | |
 |---|---|
-| **Server** | `outlook.py` v10.1.0 |
+| **Server** | `outlook.py` v11.0.0 |
 | **pip install** | `pywin32` |
 | **Platform** | **Windows only** — requires classic Win32 Outlook (not "New Outlook") installed, running, and logged into a profile |
 | **Sends** | **never.** Not an email, not a reply, not a meeting invitation. It cannot accept, move or delete anything either |
@@ -21,21 +21,38 @@ day planner for any day.
 /plugin install outlook@mcnamee-claude-skills
 ```
 
-Claude Code prompts only for the two optional settings below; the Python
-interpreter and the folder saved email goes to come from the shared environment
-variables in [Configuration](#configuration).
+The plugin prompts for nothing at install. Every setting is an environment
+variable the server inherits: set it in the `env` block of Claude Code's
+`settings.json` (see [Where to set a variable](../../README.md#where-to-set-a-variable))
+or as a Windows user environment variable, then fully restart Claude Code. A
+blank or missing value means "not set", and the default applies. The Python
+interpreter and the folders this server writes to come from the shared
+variables in [Configuration](#configuration); these are the ones most people
+touch, all optional:
 
-| Prompt | Env var | Purpose |
+```json
+{
+  "env": {
+    "OUTLOOK_SEARCH_FOLDERS": "Inbox,Sent Items,Archive",
+    "OUTLOOK_MEETING_HOURS": "8-18"
+  }
+}
+```
+
+| Variable | Required | Purpose |
 |---|---|---|
-| Search folders | `OUTLOOK_SEARCH_FOLDERS` | Comma-separated default folder set for `outlook_search_recent`, e.g. `Inbox,Sent Items,Archive` |
-| Blacklist file | `OUTLOOK_BLACKLIST_FILE` | Path to a file of extra content-blacklist terms |
-| Printed day hours | `OUTLOOK_CALENDAR_HOURS` | Working day the printed planner's timeline starts from, e.g. `7-19` (default `8-18`) |
-| Printed page fill | `OUTLOOK_CALENDAR_PAGE_FILL` | How much of the sheet's height the planner uses: `0.8` (default), `80`, or `off` for the whole sheet |
-| Calendar category colours | `OUTLOOK_CALENDAR_COLOURS` | Usually leave blank — the planner already uses your Outlook category colours. Only overrules one, e.g. `Leadership=purple` |
-| Hidden calendar categories | `OUTLOOK_CALENDAR_HIDE_CATEGORIES` | Comma-separated Outlook categories to leave off the printed planner, e.g. `Birthdays` |
-| Meeting booking hours | `OUTLOOK_MEETING_HOURS` | Hours a meeting may be *suggested* in, e.g. `8-18` (default `9-17`) |
-| Allow meeting drafts | `OUTLOOK_ALLOW_DRAFTS` | `false` removes `outlook_draft_meeting`, leaving the mailbox read-only |
-| Directory scan cap | `OUTLOOK_GAL_SCAN_CAP` | Entries one fuzzy name search may read (default `20000`) |
+| `OUTLOOK_SEARCH_FOLDERS` | No | Comma-separated default folder set for `outlook_search_recent`, e.g. `Inbox,Sent Items,Archive` |
+| `OUTLOOK_BLACKLIST_FILE` | No | Path to a file of extra content-blacklist terms |
+| `OUTLOOK_CALENDAR_HOURS` | No | Working day the printed planner's timeline starts from, e.g. `7-19` (default `8-18`) |
+| `OUTLOOK_CALENDAR_PAGE_FILL` | No | How much of the sheet's height the planner uses: `0.8` (default), `80`, or `off` for the whole sheet |
+| `OUTLOOK_CALENDAR_COLOURS` | No | Usually leave unset — the planner already uses your Outlook category colours. Only overrules one, e.g. `Leadership=purple` |
+| `OUTLOOK_CALENDAR_HIDE_CATEGORIES` | No | Comma-separated Outlook categories to leave off the printed planner, e.g. `Birthdays` |
+| `OUTLOOK_MEETING_HOURS` | No | Hours a meeting may be *suggested* in, e.g. `8-18` (default `9-17`) |
+| `OUTLOOK_ALLOW_DRAFTS` | No | `false` removes `outlook_draft_meeting`, leaving the mailbox read-only |
+| `OUTLOOK_GAL_SCAN_CAP` | No | Entries one fuzzy name search may read (default `20000`) |
+
+The full list, including the folder overrides, is under
+[Overriding one folder, and this server's own settings](#overriding-one-folder-and-this-servers-own-settings).
 
 ## Scheduling a meeting
 
@@ -359,8 +376,9 @@ This plugin ships two, and installing it installs both:
 ## Configuration
 
 **Four environment variables configure every plugin in this suite.** Set them
-once for your Windows account and this plugin has nothing else to configure -
-there are no folder prompts at install time and no folder command-line flags.
+once for your account (in Claude Code's `settings.json` `env` block, or as
+Windows user environment variables) and this plugin has nothing else to
+configure - there are no install prompts and no folder command-line flags.
 
 | Variable | Purpose | Default |
 |---|---|---|
@@ -376,8 +394,10 @@ there are no folder prompts at install time and no folder command-line flags.
 [Environment]::SetEnvironmentVariable("EVA_KNOWLEDGE_DIR", "H:\Eva\knowledge",             "User")
 ```
 
-`setx NAME "value"` does the same thing from `cmd`. Neither affects processes
-that are already running, so quit and reopen your editor afterwards.
+That sets them as Windows user environment variables; `setx NAME "value"` does
+the same thing from `cmd`. Neither affects processes that are already running,
+so fully restart Claude Code afterwards. The `env` block of `settings.json`
+works just as well - see [Where to set a variable](../../README.md#where-to-set-a-variable).
 
 Of the four, this server uses three: `EVA_PYTHON`, `EVA_KNOWLEDGE_DIR` and
 `EVA_DOCUMENTS_DIR`. Mail comes from Outlook over COM, so it **reads** no local

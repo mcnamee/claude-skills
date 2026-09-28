@@ -39,9 +39,10 @@ source material with something invented.
   configuration. Each server works in its own sub-folder of those roots, named
   after the plugin, so there is nothing per-plugin to fill in, no folder prompts
   at install, and no folder flags to keep in step across a `.mcp.json`, a
-  `claude mcp add` line and eight plugin dialogs. `/plugin install` asks only
-  for what is genuinely one server's own — a Confluence URL, an embeddings
-  endpoint. The matching skill comes with the server.
+  `claude mcp add` line and eight plugin dialogs. `/plugin install` asks for
+  nothing: what is genuinely one server's own — a Confluence URL, an
+  embeddings endpoint — is an environment variable too, set in the same `env`
+  block. The matching skill comes with the server.
 - **Confined by default.** Every server that touches the filesystem is locked to
   its sub-folders, and refuses to start unconfined rather than falling back to
   "anywhere". `word` and `powerpoint` are the only ones that can change a file
@@ -77,13 +78,13 @@ source material with something invented.
 
 | Plugin | Version | What it does | pip install |
 |---|---|---|---|
-| [**word**](plugins/word) | 9.0.0 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
+| [**word**](plugins/word) | 10.0.0 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
 | [**powerpoint**](plugins/powerpoint) | 6.0.0 | Build sectioned `.pptx` decks that inherit your own template's layouts and theme, with formatted speaker notes, audited against the 10/20/30 rule | `python-pptx` |
 | [**excel**](plugins/excel) | 6.0.0 | Read and analyse workbooks; parses `.xlsx` directly, so Excel isn't needed | _none_ |
-| [**outlook**](plugins/outlook) | 10.1.0 | Read local Outlook mail and calendar via COM, with a content blacklist; schedules a meeting (fuzzy directory search, free/busy, and an **unsent** draft you send yourself); prints a day as an A4 PDF planner in your own category colours, and saves an email to the knowledge base when you ask | `pywin32` |
-| [**confluence**](plugins/confluence) | 6.0.0 | Search and read Confluence pages, across one or two instances, with macro content included; saves a page to the knowledge base when you ask | _none_ |
-| [**jira**](plugins/jira) | 2.0.0 | Query issues, sprints and projects (Jira Data Center v2 API) | _none_ |
-| [**knowledge-base**](plugins/knowledge-base) | 5.0.0 | True RAG over your own Markdown: local ChromaDB index + your embeddings API, and capture notes back into it | `chromadb` |
+| [**outlook**](plugins/outlook) | 11.0.0 | Read local Outlook mail and calendar via COM, with a content blacklist; schedules a meeting (fuzzy directory search, free/busy, and an **unsent** draft you send yourself); prints a day as an A4 PDF planner in your own category colours, and saves an email to the knowledge base when you ask | `pywin32` |
+| [**confluence**](plugins/confluence) | 7.0.0 | Search and read Confluence pages, across one or two instances, with macro content included; saves a page to the knowledge base when you ask | _none_ |
+| [**jira**](plugins/jira) | 3.0.0 | Query issues, sprints and projects (Jira Data Center v2 API) | _none_ |
+| [**knowledge-base**](plugins/knowledge-base) | 6.0.0 | True RAG over your own Markdown: local ChromaDB index + your embeddings API, and capture notes back into it | `chromadb` |
 | [**pdf-to-md**](plugins/pdf-to-md) | 7.0.0 | Convert PDFs to Markdown with tables preserved | `pymupdf pymupdf4llm` |
 
 Each plugin's README covers its settings, tools, file access and example
@@ -130,8 +131,23 @@ what the plugins you want need — see the table above.) `word.py`'s docstring
 walks through sideloading the wheels.
 
 **3. Set the four suite-wide environment variables.** This is the whole
-configuration story: every plugin reads these, and each works in its own
-sub-folder of the three roots, named after the plugin.
+folder story: every plugin reads these, and each works in its own sub-folder
+of the three roots, named after the plugin. Put them in the `env` block of
+Claude Code's settings (see [Where to set a variable](#where-to-set-a-variable)
+for which file):
+
+```json
+{
+  "env": {
+    "EVA_PYTHON":        "C:\\path\\to\\python.exe",
+    "EVA_DOCUMENTS_DIR": "H:\\Eva\\documents",
+    "EVA_TEMPLATES_DIR": "H:\\Eva\\templates",
+    "EVA_KNOWLEDGE_DIR": "H:\\Eva\\knowledge"
+  }
+}
+```
+
+Or as Windows user variables, which every plugin picks up just the same:
 
 ```powershell
 [Environment]::SetEnvironmentVariable("EVA_PYTHON",        "C:\path\to\python.exe",       "User")
@@ -156,17 +172,18 @@ These are slash commands, typed inside Claude Code — not shell commands:
 /plugin install excel@mcnamee-claude-skills
 ```
 
-There are **no folder prompts**: `word` asks only for an optional
-tracked-change author, `excel`, `powerpoint` and `pdf-to-md` ask for nothing at
-all, and the rest ask only for what is genuinely theirs (a Confluence or Jira
-URL, an embeddings endpoint). The plugins are independent, so a machine without
-`pywin32` simply doesn't install `outlook`.
+There are **no install prompts** for any plugin. What is genuinely one
+server's own (a Confluence or Jira URL, an embeddings endpoint, the
+tracked-change author) is an environment variable listed in that plugin's
+README, set in the same `env` block as step 3. The plugins are independent, so
+a machine without `pywin32` simply doesn't install `outlook`.
 
-`excel` is the simplest to start with: standard library only, no prompts.
+`excel` is the simplest to start with: standard library only, nothing to set.
 
-**5. Set your secrets** the same way, before starting Claude Code — they're read
-from the ambient environment, never stored in the plugin. Only needed for the
-plugins you actually install:
+**5. Set your secrets** the same way, before starting Claude Code — in the
+`env` block beside the others, or as Windows variables. They're read from the
+environment the server starts in, never stored in the plugin. Only needed for
+the plugins you actually install:
 
 ```powershell
 setx CONFLUENCE_TOKEN "your-personal-access-token"
@@ -188,6 +205,32 @@ through System Properties → Environment Variables instead.
 To check a variable took, in a **new** window: `$env:JIRA_TOKEN`. To set one for
 the current session only (handy for testing, gone when you close the window):
 `$env:JIRA_TOKEN = "..."`.
+
+### Where to set a variable
+
+Every setting in this suite is an environment variable the server inherits
+from Claude Code, so there are two places to put one:
+
+- **The `env` block of Claude Code's settings** (recommended). Either
+  `%USERPROFILE%\.claude\settings.json`, which applies in every folder, or
+  `H:\Eva\.claude\settings.local.json`, which applies when Claude Code is opened
+  in `H:\Eva` and, being on `H:`, survives a change of endpoint. Re-copying
+  `eva\` never overwrites `settings.local.json`. Backslashes in JSON are
+  doubled (`"H:\\Eva\\documents"`), or use forward slashes.
+- **Windows user environment variables** (`setx`, or
+  `[Environment]::SetEnvironmentVariable(..., "User")`), as above.
+
+A value in the settings `env` block beats a Windows variable of the same name.
+Either way, **quit Claude Code completely and reopen it** after a change: a
+running session keeps the environment it started with. **A blank value means
+"not set"**, so the server's default applies. OpenCode reads the same variable
+names from each server's `environment` block instead - see
+[OPENCODE.md](OPENCODE.md).
+
+> Plugins used to prompt for some of these at install. They no longer do,
+> because a blank prompt was passed to the server as an empty value that
+> overrode the same variable set anywhere else. If you filled one in under an
+> older version, move it into the `env` block.
 
 Useful commands: `/plugin` to browse and manage, `/mcp` to confirm a server
 connected, `claude mcp list` to spot an unresolved environment variable, and
@@ -227,7 +270,7 @@ a typo without reading anything else.
 ### Manual install, without plugins
 
 If you'd rather configure a server directly — or want one configured differently
-from what its plugin prompts for — register it with `claude mcp add --scope user`
+from the environment Claude Code gives it — register it with `claude mcp add --scope user`
 (available in every folder), or copy [`.mcp.json.example`](.mcp.json.example) to
 `.mcp.json` in the folder you open Claude Code in (config travels with the
 files). Keep `PYTHONUTF8=1`: without it, Windows' legacy codepage can corrupt the
@@ -251,7 +294,9 @@ The per-plugin READMEs list each server's actual settings.
    `--check`, `--version`, and `knowledge-base`'s `--reindex` / `--search` /
    `--ask` / `--debug`. One way to set a thing means two settings can never
    disagree about it, and nothing has to be re-passed in a `.mcp.json`, a
-   `claude mcp add` line and a plugin prompt at once.
+   `claude mcp add` line and a settings file at once. No plugin has install
+   options either: a blank option would be passed as an empty value and
+   override the same variable set in the environment.
 2. **Four variables configure the whole suite:** `EVA_PYTHON`,
    `EVA_DOCUMENTS_DIR`, `EVA_TEMPLATES_DIR`, `EVA_KNOWLEDGE_DIR`. Each server
    works in its own **sub-folder** of those roots, named after the plugin —
@@ -267,7 +312,7 @@ The per-plugin READMEs list each server's actual settings.
    that could put a token in a command line, where other local users can read
    it out of a process listing.
 5. **A blank value means "not configured"**, so the shared root still applies —
-   that is what an MCP client substitutes for a prompt left empty. To switch an
+   that is what an MCP client substitutes for a setting left empty. To switch an
    optional folder off, set it to `off` (`none`, `no`, `false` and `disabled`
    also work). A folder you named yourself that does not exist is a fatal
    error, because it is almost always a typo; a built-in default that does not

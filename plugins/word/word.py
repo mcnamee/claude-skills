@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r"""
-word.py (v9.0.0) - A single-file MCP (Model Context Protocol) stdio server
+word.py (v10.0.0) - A single-file MCP (Model Context Protocol) stdio server
 that gives an AI agent read/search/edit/generate access to Word .docx files.
 
 It follows a simple open -> edit -> save workflow (msword_open ... msword_save),
@@ -205,7 +205,19 @@ WHAT IT CANNOT DO
                                     created or saved, for the knowledge-base
                                     plugin to index.
 
-    To set them permanently for your account (PowerShell, one-off):
+    In Claude Code, set them in the "env" block of settings.json
+    (%USERPROFILE%\.claude\settings.json, or H:\Eva\.claude\settings.local.json
+    to keep it on H: beside the working folder), then fully restart Claude
+    Code. Backslashes are doubled inside JSON:
+
+        {"env": {"EVA_PYTHON": "C:\\Python311\\python.exe",
+                 "EVA_DOCUMENTS_DIR": "H:\\Eva\\documents",
+                 "EVA_TEMPLATES_DIR": "H:\\Eva\\templates",
+                 "EVA_KNOWLEDGE_DIR": "H:\\Eva\\knowledge",
+                 "MSWORD_AUTHOR": "Jane Citizen"}}
+
+    Or set them as Windows user environment variables instead (PowerShell,
+    one-off; quit and reopen Claude Code afterwards):
 
         [Environment]::SetEnvironmentVariable("EVA_PYTHON", "C:\Python311\python.exe", "User")
         [Environment]::SetEnvironmentVariable("EVA_DOCUMENTS_DIR", "H:\Eva\documents", "User")
@@ -218,7 +230,8 @@ WHAT IT CANNOT DO
     Server-specific settings, all optional:
 
         MSWORD_AUTHOR       name stamped on Word tracked changes (default
-                            "AI Assistant")
+                            "AI Assistant"). Set it like the four above -
+                            the plugin does not prompt for it.
         MSWORD_DOCS_DIR     override ONE folder with a full path of its own,
         MSWORD_TEMPLATES_DIR  for an endpoint whose layout differs. Set an
         MSWORD_KB_DIR       optional one to "off" to switch that feature off
@@ -237,8 +250,10 @@ WHAT IT CANNOT DO
         /plugin marketplace add C:\path\to\claude-skills
         /plugin install word@mcnamee-claude-skills
 
-    It prompts for nothing: the interpreter and all three folders come from the
-    environment variables above. PYTHONUTF8=1 (so Windows cp1252 cannot corrupt
+    It prompts for nothing at install: the interpreter, all three folders and
+    MSWORD_AUTHOR come from the environment variables above (settings.json
+    "env" block or Windows user environment variables), which the server
+    inherits from Claude Code. PYTHONUTF8=1 (so Windows cp1252 cannot corrupt
     the stdio JSON stream) is set for you by the manifest.
 
     To register the server by hand instead (PowerShell):
@@ -270,7 +285,7 @@ failed transfer" rule):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "9.0.0"
+__version__ = "10.0.0"
 
 # =============================================================================
 # CONFIGURATION  (all user-editable settings live here, nothing scattered below)
@@ -381,8 +396,9 @@ FUZZY_MIN_RATIO = 0.40
 FUZZY_AMBIGUITY_DELTA = 0.05
 
 # Default author name stamped on tracked changes (w:author). Override with the
-# MSWORD_AUTHOR environment variable (the plugin's "Tracked-change author"
-# prompt sets it). The date on each change is always the current date, computed
+# MSWORD_AUTHOR environment variable. The plugin prompts for nothing: set it in
+# the "env" block of Claude Code's settings.json (or as a Windows user
+# environment variable), then fully restart Claude Code. The date on each change is always the current date, computed
 # at edit time.
 TRACKED_CHANGE_AUTHOR = "AI Assistant"
 
