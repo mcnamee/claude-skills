@@ -1,7 +1,7 @@
 {
   "name": "knowledge-base",
   "displayName": "Knowledge base (RAG)",
-  "version": "5.0.0",
+  "version": "6.0.0",
   "description": "True RAG over your own Markdown docs: a local ChromaDB vector index plus your embeddings API. Captures new notes back into it. Requires chromadb.",
   "author": {
     "name": "mcnamee"
@@ -14,19 +14,6 @@
     "search",
     "embeddings"
   ],
-  "userConfig": {
-    "embed_url": {
-      "type": "string",
-      "title": "Embeddings endpoint URL",
-      "description": "Full URL of your embeddings API. REQUIRED. The Python interpreter and the indexed corpus come from the suite-wide EVA_PYTHON and EVA_KNOWLEDGE_DIR environment variables - this server indexes the WHOLE knowledge root, and captures notes into its 'captures' sub-folder. Both must exist; see the plugin README.",
-      "required": true
-    },
-    "embed_model": {
-      "type": "string",
-      "title": "Embeddings model",
-      "description": "Optional. Model name sent in embed requests; omit if the endpoint fixes one."
-    }
-  },
   "mcpServers": {
     "knowledge-base": {
       "type": "stdio",
@@ -35,10 +22,7 @@
         "${CLAUDE_PLUGIN_ROOT}/knowledge-base.py"
       ],
       "env": {
-        "PYTHONUTF8": "1",
-        "KB_EMBED_URL": "${user_config.embed_url}",
-        "KB_EMBED_MODEL": "${user_config.embed_model}",
-        "KB_EMBED_API_KEY": "${KB_EMBED_API_KEY}"
+        "PYTHONUTF8": "1"
       }
     }
   }

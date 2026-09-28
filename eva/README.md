@@ -79,7 +79,9 @@ something Eva has to ask about or guess at.
 
 ## Which setting points where
 
-Four environment variables, set once for your Windows account. Every folder
+Four environment variables, set once in the `env` block of Claude Code's
+settings (or as Windows user variables - see the main README's "Where to set a
+variable"). Every folder
 below is one of those roots plus the plugin's own name, so there is nothing
 per-plugin to configure and nothing that can drift out of step.
 

@@ -1,7 +1,7 @@
 {
   "name": "word",
   "displayName": "Word (.docx)",
-  "version": "9.0.0",
+  "version": "10.0.0",
   "description": "Read, edit and create Word .docx files - including Word tracked changes, native styles and filling out templates.",
   "author": {
     "name": "mcnamee"
@@ -14,13 +14,6 @@
     "tracked-changes",
     "documents"
   ],
-  "userConfig": {
-    "author": {
-      "type": "string",
-      "title": "Tracked-change author",
-      "description": "Optional. Name stamped on Word tracked changes, e.g. your own name. Every folder and the Python interpreter come from the suite-wide EVA_PYTHON, EVA_DOCUMENTS_DIR, EVA_TEMPLATES_DIR and EVA_KNOWLEDGE_DIR environment variables - this server uses the 'word' sub-folder of each. All three folders must exist; see the plugin README."
-    }
-  },
   "mcpServers": {
     "word": {
       "type": "stdio",
@@ -29,8 +22,7 @@
         "${CLAUDE_PLUGIN_ROOT}/word.py"
       ],
       "env": {
-        "PYTHONUTF8": "1",
-        "MSWORD_AUTHOR": "${user_config.author}"
+        "PYTHONUTF8": "1"
       }
     }
   }

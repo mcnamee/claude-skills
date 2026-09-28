@@ -6,7 +6,7 @@ feeds a local RAG knowledge base.
 
 | | |
 |---|---|
-| **Server** | `confluence.py` v6.0.0 |
+| **Server** | `confluence.py` v7.0.0 |
 | **pip install** | _none_ — standard library only (HTTP via stdlib `urllib`) |
 | **Platform** | any |
 | **Writes to disk** | only when you ask a page to be saved — then one Markdown file in `H:\Eva\knowledge\confluence` |
@@ -18,31 +18,47 @@ feeds a local RAG knowledge base.
 /plugin install confluence@mcnamee-claude-skills
 ```
 
-| Prompt | Required | Env var | Purpose |
-|---|---|---|---|
-| Confluence base URL | **yes** | `CONFLUENCE_BASE_URL` | Base URL including any context path, no trailing slash. This is the **default** server |
-| Name for this Confluence server | no | `CONFLUENCE_NAME` | e.g. `Green`. Only matters if you configure a second server; defaults to `Primary` |
-| Second Confluence base URL | no | `CONFLUENCE_BASE_URL_2` | Leave blank for a single-server setup |
-| Name for the second Confluence server | no | `CONFLUENCE_NAME_2` | e.g. `Blue` — say it in a prompt to query that server; defaults to `Secondary` |
+The plugin prompts for nothing at install. Every setting is an environment
+variable the server inherits from Claude Code: set these in the `env` block of
+Claude Code's settings.json ([Where to set a variable](../../README.md#where-to-set-a-variable))
+or as Windows user environment variables, then fully restart Claude Code. A
+blank or missing value means "not set".
 
-The Python interpreter and the folder saved pages go to are **not** prompted for:
-they come from the shared environment variables in
-[Configuration](#configuration).
+| Variable | Required | Purpose |
+|---|---|---|
+| `CONFLUENCE_BASE_URL` | **yes** | Base URL including any context path, no trailing slash. This is the **default** server |
+| `CONFLUENCE_TOKEN` | **yes**\* | Personal Access Token for that server (\*or `CONFLUENCE_USER` + `CONFLUENCE_PASSWORD`) |
+| `CONFLUENCE_NAME` | no | e.g. `Green`. Only matters if you configure a second server; defaults to `Primary` |
+| `CONFLUENCE_BASE_URL_2` | no | Leave unset for a single-server setup |
+| `CONFLUENCE_TOKEN_2` | with `_BASE_URL_2` | The second server's own token |
+| `CONFLUENCE_NAME_2` | no | e.g. `Blue` — say it in a prompt to query that server; defaults to `Secondary` |
 
-**Your tokens are not stored in the plugin.** Set them as Windows user
-environment variables before starting Claude Code — the plugin reads them from
-the ambient environment. Credentials are deliberately env-var only: there is no
-flag that could put a token in a command line, where other local users would see
-it in a process listing.
+The Python interpreter and the folder saved pages go to come from the shared
+environment variables in [Configuration](#configuration). Every other setting is
+listed under [This server's own settings](#this-servers-own-settings).
 
-```powershell
-setx CONFLUENCE_TOKEN   "token-for-the-first-server"
-setx CONFLUENCE_TOKEN_2 "token-for-the-second-server"   # only if you have two
+```json
+{
+  "env": {
+    "CONFLUENCE_BASE_URL": "https://confluence.internal.example.com",
+    "CONFLUENCE_TOKEN":    "token-for-the-first-server"
+  }
+}
 ```
 
-`setx` does not affect processes that are already running, so quit VS Code
-completely (a window reload is not enough) and reopen it. Check it took in a
-**new** window with `$env:CONFLUENCE_TOKEN`.
+**Credentials are env-var only**: there is no flag that could put a token in a
+command line, where other local users would see it in a process listing. As
+Windows user environment variables instead:
+
+```powershell
+setx CONFLUENCE_BASE_URL "https://confluence.internal.example.com"
+setx CONFLUENCE_TOKEN    "token-for-the-first-server"
+setx CONFLUENCE_TOKEN_2  "token-for-the-second-server"   # only if you have two
+```
+
+`setx` does not affect processes that are already running, so quit VS Code /
+Claude Code completely (a window reload is not enough) and reopen it. Check it
+took in a **new** window with `$env:CONFLUENCE_TOKEN`.
 
 ## Macros
 
@@ -161,8 +177,9 @@ second base URL and it warns, then runs with one server.
 ## Configuration
 
 **Four environment variables configure every plugin in this suite.** Set them
-once for your Windows account and this plugin has nothing else to configure -
-there are no folder prompts at install time and no folder command-line flags.
+once (in settings.json's `env` block or for your Windows account) and this
+plugin has nothing else to configure - it prompts for nothing at install and
+takes no folder command-line flags.
 
 | Variable | Purpose | Default |
 |---|---|---|

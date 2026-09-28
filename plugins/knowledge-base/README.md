@@ -5,7 +5,7 @@ local ChromaDB vector index plus your own embeddings API.
 
 | | |
 |---|---|
-| **Server** | `knowledge-base.py` v5.0.0 |
+| **Server** | `knowledge-base.py` v6.0.0 |
 | **pip install** | `chromadb` (HTTP to your endpoints is stdlib `urllib` — no `requests`) |
 | **Platform** | any |
 | **Writes to disk** | yes — the vector index folder (`H:\Eva\index`), plus captured notes under `H:\Eva\knowledge\captures` |
@@ -40,29 +40,46 @@ local ChromaDB vector index plus your own embeddings API.
 /plugin install knowledge-base@mcnamee-claude-skills
 ```
 
-Claude Code prompts only for the two endpoint settings below; the Python
-interpreter and every folder come from the shared environment variables in
-[Configuration](#configuration).
+The plugin prompts for nothing at install. Every setting is an environment
+variable the server inherits: set these in the `env` block of Claude Code's
+`settings.json` ([Where to set a variable](../../README.md#where-to-set-a-variable))
+or as Windows user environment variables, then fully restart Claude Code. The
+Python interpreter and every folder come from the shared environment variables
+in [Configuration](#configuration). A blank or missing value means "not set".
 
-| Prompt | Required | Env var | Purpose |
-|---|---|---|---|
-| Embeddings endpoint URL | **yes** | `KB_EMBED_URL` | Full URL of your embeddings API |
-| Embeddings model | no | `KB_EMBED_MODEL` | Model name sent in embed requests; omit if the endpoint fixes one |
+| Variable | Required | Purpose |
+|---|---|---|
+| `KB_EMBED_URL` | **yes** | Full URL of your embeddings API |
+| `KB_EMBED_MODEL` | no | Model name sent in embed requests; omit if the endpoint fixes one |
+| `KB_EMBED_API_KEY` | if your endpoint needs one | API key for the embeddings endpoint |
 
-**Your API key is not stored in the plugin.** Set `KB_EMBED_API_KEY` as a
-Windows user environment variable before starting Claude Code. API keys are
-deliberately env-var only: there is no flag that could put a key in a command
-line, where other local users would see it in a process listing.
+```json
+{
+  "env": {
+    "EVA_PYTHON":        "C:\\Python311\\python.exe",
+    "EVA_KNOWLEDGE_DIR": "H:\\Eva\\knowledge",
+    "KB_EMBED_URL":      "https://your-gateway/v1/embeddings",
+    "KB_EMBED_MODEL":    "your-embedding-model",
+    "KB_EMBED_API_KEY":  "your-api-key"
+  }
+}
+```
+
+API keys are deliberately env-var only: there is no flag that could put a key
+in a command line, where other local users would see it in a process listing.
+
+As Windows user environment variables instead:
 
 ```powershell
 setx EVA_PYTHON        "C:\Python311\python.exe"
 setx EVA_KNOWLEDGE_DIR "H:\Eva\knowledge"
+setx KB_EMBED_URL      "https://your-gateway/v1/embeddings"
 setx KB_EMBED_API_KEY  "your-api-key"
 ```
 
-`setx` does not affect processes that are already running, so quit VS Code
-completely (a window reload is not enough) and reopen it. Check it took in a
-**new** window with `$env:KB_EMBED_API_KEY`.
+`setx` does not affect processes that are already running, so quit Claude Code
+and VS Code completely (a window reload is not enough) and reopen it. Check it
+took in a **new** window with `$env:KB_EMBED_API_KEY`.
 
 Everything else in the reference below is set with the matching `KB_*`
 environment variable.
@@ -100,7 +117,7 @@ differ between models.
 
 **Four environment variables configure every plugin in this suite.** Set them
 once for your Windows account and this plugin has nothing else to configure -
-there are no folder prompts at install time and no folder command-line flags.
+the plugin prompts for nothing at install and there are no folder command-line flags.
 
 | Variable | Purpose | Default |
 |---|---|---|

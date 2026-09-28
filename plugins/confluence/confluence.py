@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-confluence.py (v6.0.0) - A single-file MCP (Model Context Protocol) server
+confluence.py (v7.0.0) - A single-file MCP (Model Context Protocol) server
 for querying ONE OR TWO Confluence Data Center instances (tested against the
 9.x v1 REST API) using only the Python 3 standard library.
 
@@ -164,19 +164,37 @@ This server ships as the "confluence" Claude Code plugin (its manifest is
     /plugin marketplace add C:\path\to\claude-skills
     /plugin install confluence@mcnamee-claude-skills
 
-Claude Code prompts for each server's name and base URL; the interpreter and
-the knowledge folder come from the shared variables above. Tokens are NOT
-stored in the plugin - set them as Windows user environment variables before
-starting Claude Code, and the plugin picks them up from there:
+The plugin prompts for nothing at install. Every setting above is an
+environment variable the server inherits from Claude Code, so set them in the
+`env` block of Claude Code's settings.json - %USERPROFILE%\.claude\settings.json,
+or H:\Eva\.claude\settings.local.json to keep them on H: beside the working
+folder - then fully restart Claude Code:
 
-    setx EVA_PYTHON         "C:\Python311\python.exe"
-    setx EVA_KNOWLEDGE_DIR  "H:\Eva\knowledge"
-    setx CONFLUENCE_TOKEN   "token-for-the-first-server"
-    setx CONFLUENCE_TOKEN_2 "token-for-the-second-server"
+    {
+      "env": {
+        "EVA_PYTHON":            "C:\\Python311\\python.exe",
+        "EVA_KNOWLEDGE_DIR":     "H:\\Eva\\knowledge",
+        "CONFLUENCE_BASE_URL":   "https://confluence.internal.example.com",
+        "CONFLUENCE_TOKEN":      "token-for-the-first-server",
+        "CONFLUENCE_NAME_2":     "Blue",
+        "CONFLUENCE_BASE_URL_2": "https://blue.confluence.example.com",
+        "CONFLUENCE_TOKEN_2":    "token-for-the-second-server"
+      }
+    }
 
-(`setx` does not affect processes that are already running - quit VS Code
-completely and reopen it.) See README.md next to this file for the full
-settings reference.
+(Backslashes are doubled because settings.json is JSON.) A blank or missing
+value means "not set", so leave out anything you do not use. Windows user
+environment variables work too, as the alternative:
+
+    setx EVA_PYTHON            "C:\Python311\python.exe"
+    setx EVA_KNOWLEDGE_DIR     "H:\Eva\knowledge"
+    setx CONFLUENCE_BASE_URL   "https://confluence.internal.example.com"
+    setx CONFLUENCE_TOKEN      "token-for-the-first-server"
+    setx CONFLUENCE_TOKEN_2    "token-for-the-second-server"
+
+(`setx` does not affect processes that are already running - quit VS Code /
+Claude Code completely and reopen it.) See README.md next to this file for the
+full settings reference.
 
 TESTING
 -------
@@ -209,7 +227,7 @@ config (every setting, tokens included, goes in the environment):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "6.0.0"
+__version__ = "7.0.0"
 
 import argparse
 import base64
@@ -2020,9 +2038,9 @@ def env_str(name):
     """
     Read an environment variable, treating blank as unset.
 
-    A blank value is what an MCP client substitutes for an optional setting the
-    user left empty (e.g. "${user_config.base_url_2}" with no second server), so
-    it must mean "not configured" rather than "configured as empty". An
+    A blank value is what a settings file or MCP client passes for a setting
+    the user left empty (e.g. "CONFLUENCE_BASE_URL_2": "" with no second
+    server), so it must mean "not configured" rather than "configured as empty". An
     unexpanded "${...}" placeholder - what a client leaves behind when the
     variable it refers to does not exist - means the same thing.
     """
