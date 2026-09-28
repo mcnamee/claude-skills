@@ -8,9 +8,10 @@
 # README.
 #
 # The other exceptions are CLAUDE.md and opencode.example.jsonc at the top of
-# the tree: Eva's operating instructions and the OpenCode config template are
-# part of the scaffold, not your material, so they travel with the repo the
-# same way the READMEs do. Your filled-in opencode.json is never committed.
+# the tree, and .claude\settings.example.json: Eva's operating instructions and
+# the two config templates are part of the scaffold, not your material, so they
+# travel with the repo the same way the READMEs do. Your filled-in
+# opencode.json and .claude\settings.local.json are never committed.
 #
 # So are the standalone skills and agents under .claude\ - each skill's
 # SKILL.md and each agent's .md. Anything else you put in .claude\ (your own
@@ -28,6 +29,7 @@
 !README.md
 !/CLAUDE.md
 !/opencode.example.jsonc
+!/.claude/settings.example.json
 !/.claude/skills/*/SKILL.md
 !/.claude/agents/*.md
 !.gitignore

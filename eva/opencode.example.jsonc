@@ -44,13 +44,16 @@
     }
   },
 
-  // Every plugin's skill, read straight from your clone, so a `git pull` is
-  // all it takes to update them. Adds to OpenCode's usual skill folders
-  // (H:\Eva\.claude\skills, ~/.claude/skills, ~/.config/opencode/skills) -
-  // it does not replace them. The standalone skills need no entry: they
-  // arrive with the eva folder in H:\Eva\.claude\skills.
+  // Every skill. The first path is the plugin skills, read straight from your
+  // clone, so a `git pull` is all it takes to update them. The second is the
+  // standalone skills (brief-writer, email-writer, exemplar-writer, polish,
+  // unslop), which arrive with the eva folder. OpenCode also looks in
+  // .claude\skills of the folder it is opened in, but naming the folder here
+  // means they load wherever you start it. These add to OpenCode's usual skill
+  // folders (~/.claude/skills, ~/.config/opencode/skills) rather than
+  // replacing them.
   "skills": {
-    "paths": ["H:/Claude-Skills/plugins"]
+    "paths": ["H:/Claude-Skills/plugins", "H:/Eva/.claude/skills"]
   },
 
   // One entry per plugin, named as in Claude Code so the tool names match.
@@ -58,9 +61,12 @@
   // dependencies for. "timeout" (ms) covers start-up and every tool call;
   // OpenCode's 5-second default is too short for these servers.
   //
-  // Folders default to H:\Eva (documents, templates, knowledge), so none are
-  // listed. To move one, add its variable to that server's "environment",
-  // e.g. "MSWORD_DOCS_DIR": "D:/Work/Word" - see the plugin's README.
+  // Each "environment" block lists EVERY variable that server reads, blank, in
+  // three groups: its main settings, optional tuning, and folder overrides.
+  // Fill in only what you need. Folders default to their place in H:\Eva, so
+  // the overrides are for an endpoint whose layout differs, e.g.
+  // "MSWORD_DOCS_DIR": "D:/Work/Word". What each variable accepts is in the
+  // plugin's README.
   "mcp": {
     "word": {
       "type": "local",
@@ -68,7 +74,12 @@
       "environment": {
         "PYTHONUTF8": "1",
         // Name stamped on Word tracked changes, e.g. your own name.
-        "MSWORD_AUTHOR": ""
+        "MSWORD_AUTHOR": "",
+        // Folder overrides (default H:/Eva/documents/word, templates/word,
+        // knowledge/word). MSWORD_KB_DIR also takes "off".
+        "MSWORD_DOCS_DIR": "",
+        "MSWORD_TEMPLATES_DIR": "",
+        "MSWORD_KB_DIR": ""
       },
       "enabled": true,
       "timeout": 300000
@@ -76,14 +87,26 @@
     "powerpoint": {
       "type": "local",
       "command": ["C:/path/to/python.exe", "H:/Claude-Skills/plugins/powerpoint/powerpoint.py"],
-      "environment": { "PYTHONUTF8": "1" },
+      "environment": {
+        "PYTHONUTF8": "1",
+        // Folder overrides (default H:/Eva/documents/powerpoint,
+        // templates/powerpoint, knowledge/powerpoint). POWERPOINT_KB_DIR also
+        // takes "off".
+        "POWERPOINT_DOCS_DIR": "",
+        "POWERPOINT_TEMPLATES_DIR": "",
+        "POWERPOINT_KB_DIR": ""
+      },
       "enabled": true,
       "timeout": 300000
     },
     "excel": {
       "type": "local",
       "command": ["C:/path/to/python.exe", "H:/Claude-Skills/plugins/excel/excel.py"],
-      "environment": { "PYTHONUTF8": "1" },
+      "environment": {
+        "PYTHONUTF8": "1",
+        // Folder override (default H:/Eva/documents/excel).
+        "EXCEL_DOCS_DIR": ""
+      },
       "enabled": true,
       "timeout": 300000
     },
@@ -101,7 +124,15 @@
         "OUTLOOK_CALENDAR_HIDE_CATEGORIES": "",
         "OUTLOOK_MEETING_HOURS": "",
         "OUTLOOK_ALLOW_DRAFTS": "",
-        "OUTLOOK_GAL_SCAN_CAP": ""
+        "OUTLOOK_GAL_SCAN_CAP": "",
+        // Tuning: "1" refuses to start without a blacklist file; "true" saves
+        // every email read to the knowledge base, not just the ones you ask for.
+        "OUTLOOK_REQUIRE_BLACKLIST": "",
+        "OUTLOOK_KB_AUTOSAVE": "",
+        // Folder overrides (default H:/Eva/knowledge/email for saved email,
+        // H:/Eva/documents/pdf for printed planners). Both also take "off".
+        "OUTLOOK_KB_DIR": "",
+        "OUTLOOK_DOCS_DIR": ""
       },
       "enabled": true,
       "timeout": 300000
@@ -109,18 +140,33 @@
     "confluence": {
       "type": "local",
       "command": ["C:/path/to/python.exe", "H:/Claude-Skills/plugins/confluence/confluence.py"],
-      // BASE_URL and TOKEN are required; the _2 lines add a second instance.
-      // The rest are optional - see plugins/confluence/README.md.
+      // BASE_URL and TOKEN (or USER + PASSWORD) are required; the _2 lines add
+      // a second instance. The rest are optional - see
+      // plugins/confluence/README.md.
       "environment": {
         "PYTHONUTF8": "1",
         "CONFLUENCE_NAME": "",
         "CONFLUENCE_BASE_URL": "",
         "CONFLUENCE_TOKEN": "",
+        "CONFLUENCE_USER": "",
+        "CONFLUENCE_PASSWORD": "",
+        "CONFLUENCE_CA_CERT": "",
+        "CONFLUENCE_VERIFY_SSL": "",
+        // Second instance (leave all blank for one).
         "CONFLUENCE_NAME_2": "",
         "CONFLUENCE_BASE_URL_2": "",
         "CONFLUENCE_TOKEN_2": "",
+        "CONFLUENCE_USER_2": "",
+        "CONFLUENCE_PASSWORD_2": "",
+        "CONFLUENCE_CA_CERT_2": "",
+        "CONFLUENCE_VERIFY_SSL_2": "",
+        // Tuning.
         "CONFLUENCE_KB_AUTOSAVE": "",
-        "CONFLUENCE_BODY_FORMAT": ""
+        "CONFLUENCE_BODY_FORMAT": "",
+        "CONFLUENCE_TIMEOUT": "",
+        "CONFLUENCE_MAX_BODY": "",
+        // Folder override (default H:/Eva/knowledge/confluence); also takes "off".
+        "CONFLUENCE_KB_DIR": ""
       },
       "enabled": true,
       "timeout": 300000
@@ -128,12 +174,20 @@
     "jira": {
       "type": "local",
       "command": ["C:/path/to/python.exe", "H:/Claude-Skills/plugins/jira/jira.py"],
-      // BASE_URL and TOKEN are required; PROJECTS is an optional allowlist.
+      // BASE_URL and TOKEN (or USER + PASSWORD) are required; PROJECTS is an
+      // optional allowlist. The rest are optional - see plugins/jira/README.md.
       "environment": {
         "PYTHONUTF8": "1",
         "JIRA_BASE_URL": "",
         "JIRA_PROJECTS": "",
-        "JIRA_TOKEN": ""
+        "JIRA_TOKEN": "",
+        "JIRA_USER": "",
+        "JIRA_PASSWORD": "",
+        "JIRA_CA_CERT": "",
+        "JIRA_VERIFY_SSL": "",
+        // Tuning.
+        "JIRA_TIMEOUT": "",
+        "JIRA_MAX_BODY": ""
       },
       "enabled": true,
       "timeout": 300000
@@ -141,12 +195,50 @@
     "knowledge-base": {
       "type": "local",
       "command": ["C:/path/to/python.exe", "H:/Claude-Skills/plugins/knowledge-base/knowledge-base.py"],
-      // Your embeddings endpoint - see plugins/knowledge-base/README.md.
+      // Your embeddings endpoint (KB_EMBED_URL is required). Everything after
+      // the first three is optional - see plugins/knowledge-base/README.md.
       "environment": {
         "PYTHONUTF8": "1",
         "KB_EMBED_URL": "",
         "KB_EMBED_MODEL": "",
-        "KB_EMBED_API_KEY": ""
+        "KB_EMBED_API_KEY": "",
+        // Matching an unusual embeddings endpoint.
+        "KB_EMBED_AUTH_HEADER": "",
+        "KB_EMBED_STYLE": "",
+        "KB_EMBED_TENSOR_NAME": "",
+        "KB_EMBED_JSON_KEY": "",
+        "KB_EMBED_TEMPLATE": "",
+        "KB_EMBED_RESPONSE_PATH": "",
+        "KB_EMBED_BATCH": "",
+        "KB_EMBED_QUERY_PREFIX": "",
+        "KB_EMBED_DOC_PREFIX": "",
+        "KB_EMBED_EXTRA_HEADERS": "",
+        // Optional chat endpoint, for the generate step of kb_ask.
+        "KB_CHAT_URL": "",
+        "KB_CHAT_MODEL": "",
+        "KB_CHAT_API_KEY": "",
+        "KB_CHAT_AUTH_HEADER": "",
+        "KB_CHAT_MAX_TOKENS": "",
+        "KB_CHAT_EXTRA_HEADERS": "",
+        // TLS: an internal CA, a client certificate (mTLS), or "false" to
+        // switch verification off.
+        "KB_CA_CERT": "",
+        "KB_CLIENT_CERT": "",
+        "KB_CLIENT_KEY": "",
+        "KB_CLIENT_KEY_PASSWORD": "",
+        "KB_VERIFY_SSL": "",
+        // Tuning.
+        "KB_COLLECTION": "",
+        "KB_TIMEOUT": "",
+        "KB_CHUNK_CHARS": "",
+        "KB_CHUNK_OVERLAP": "",
+        "KB_TOP_K": "",
+        "KB_DEBUG": "",
+        // Folder overrides (default: the corpus is H:/Eva/knowledge, the index
+        // H:/Eva/index, captures H:/Eva/knowledge/captures).
+        "KB_DOCS_DIR": "",
+        "KB_INDEX_DIR": "",
+        "KB_OUTPUT_DIR": ""
       },
       "enabled": true,
       // Longer: a first kb_index over a large corpus can run for minutes.
@@ -155,7 +247,16 @@
     "pdf2md": {
       "type": "local",
       "command": ["C:/path/to/python.exe", "H:/Claude-Skills/plugins/pdf-to-md/pdf-to-md.py"],
-      "environment": { "PYTHONUTF8": "1" },
+      "environment": {
+        "PYTHONUTF8": "1",
+        // Tuning: "1" converts PDFs in sub-folders too; "1" keeps image
+        // references in the Markdown.
+        "PDF2MD_RECURSIVE": "",
+        "PDF2MD_KEEP_IMAGE_REFS": "",
+        // Folder overrides (default H:/Eva/documents/pdf, knowledge/pdf).
+        "PDF2MD_DOCS_DIR": "",
+        "PDF2MD_KB_DIR": ""
+      },
       "enabled": true,
       "timeout": 300000
     }

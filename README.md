@@ -83,7 +83,7 @@ source material with something invented.
 | [**excel**](plugins/excel) | 6.0.0 | Read and analyse workbooks; parses `.xlsx` directly, so Excel isn't needed | _none_ |
 | [**outlook**](plugins/outlook) | 11.0.0 | Read local Outlook mail and calendar via COM, with a content blacklist; schedules a meeting (fuzzy directory search, free/busy, and an **unsent** draft you send yourself); prints a day as an A4 PDF planner in your own category colours, and saves an email to the knowledge base when you ask | `pywin32` |
 | [**confluence**](plugins/confluence) | 7.0.0 | Search and read Confluence pages, across one or two instances, with macro content included; saves a page to the knowledge base when you ask | _none_ |
-| [**jira**](plugins/jira) | 3.0.0 | Query issues, sprints and projects (Jira Data Center v2 API) | _none_ |
+| [**jira**](plugins/jira) | 3.0.1 | Query issues, sprints and projects (Jira Data Center v2 API) | _none_ |
 | [**knowledge-base**](plugins/knowledge-base) | 6.0.0 | True RAG over your own Markdown: local ChromaDB index + your embeddings API, and capture notes back into it | `chromadb` |
 | [**pdf-to-md**](plugins/pdf-to-md) | 7.0.0 | Convert PDFs to Markdown with tables preserved | `pymupdf pymupdf4llm` |
 
@@ -92,6 +92,15 @@ prompts. Every server also carries a semantic version in `__version__`, printed
 by `--version` and reported to the MCP client in `serverInfo`.
 
 ## Install
+
+> **Shortcut:** steps 3 to 5 can be one file.
+> [`eva/.claude/settings.example.json`](eva/.claude/settings.example.json)
+> registers the marketplace, enables all eight plugins (so their skills come
+> too) and lists every environment variable the suite reads, blank. Copy it to
+> `H:\Eva\.claude\settings.local.json`, fill it in, and open Claude Code in
+> `H:\Eva` - [`eva/.claude/README.md`](eva/.claude/README.md#settingsexamplejson)
+> has the details. The steps below are the long way round, and what to do if
+> you'd rather set things globally.
 
 Everything below is **Windows / PowerShell**, which is what this suite targets.
 Two things to know if you're pasting from elsewhere: a quoted path at the start
@@ -215,7 +224,9 @@ from Claude Code, so there are two places to put one:
   `%USERPROFILE%\.claude\settings.json`, which applies in every folder, or
   `H:\Eva\.claude\settings.local.json`, which applies when Claude Code is opened
   in `H:\Eva` and, being on `H:`, survives a change of endpoint. Re-copying
-  `eva\` never overwrites `settings.local.json`. Backslashes in JSON are
+  `eva\` never overwrites `settings.local.json`; start it from
+  [`eva/.claude/settings.example.json`](eva/.claude/settings.example.json),
+  which lists every variable. Backslashes in JSON are
   doubled (`"H:\\Eva\\documents"`), or use forward slashes.
 - **Windows user environment variables** (`setx`, or
   `[Environment]::SetEnvironmentVariable(..., "User")`), as above.
@@ -273,7 +284,8 @@ If you'd rather configure a server directly — or want one configured different
 from the environment Claude Code gives it — register it with `claude mcp add --scope user`
 (available in every folder), or copy [`.mcp.json.example`](.mcp.json.example) to
 `.mcp.json` in the folder you open Claude Code in (config travels with the
-files). Keep `PYTHONUTF8=1`: without it, Windows' legacy codepage can corrupt the
+files). This route registers the servers only: the plugin skills come with the
+plugins, so without them you get the tools but not `/word:word` and the rest. Keep `PYTHONUTF8=1`: without it, Windows' legacy codepage can corrupt the
 stdio JSON stream on non-ASCII content. Pass secrets with `-e` / the `env` block,
 never as flags.
 
