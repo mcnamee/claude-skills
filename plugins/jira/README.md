@@ -6,7 +6,7 @@ comments on, or deletes anything.
 
 | | |
 |---|---|
-| **Server** | `jira.py` v3.0.0 |
+| **Server** | `jira.py` v3.0.1 |
 | **pip install** | _none_ — standard library only (HTTP via stdlib `urllib`) |
 | **Platform** | any |
 | **Writes to disk** | no |

@@ -72,7 +72,7 @@
       "name": "jira",
       "source": "./plugins/jira",
       "description": "Query Jira issues, sprints and projects. Read-only (Jira Data Center v2 REST API).",
-      "version": "3.0.0",
+      "version": "3.0.1",
       "keywords": [
         "jira",
         "issues",

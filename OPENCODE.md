@@ -16,7 +16,7 @@ variables to set:
 | Settings and secrets as environment variables (the `env` block of Claude Code's settings) | each server's `environment` block in the config |
 | Skills come with each plugin | the config's `skills.paths` reads them straight from your clone |
 | `CLAUDE.md` loads by convention | named in the config's `instructions` |
-| Standalone skills and agents arrive in `H:\Eva\.claude\` | skills read from there too; agents are Claude Code only |
+| Standalone skills and agents arrive in `H:\Eva\.claude\` | `skills.paths` names that skills folder too; agents are Claude Code only |
 
 Because the config sits on `H:` with the rest of `H:\Eva`, it survives a
 change of endpoint. (OpenCode's global config, under `%USERPROFILE%\.config`,
@@ -67,10 +67,13 @@ plugin's README.
 
 ## 4. Fill in each plugin's settings
 
-Each server's `environment` block lists its settings with blank values. Fill in
-the ones you need. **A blank value means "not set"**, so the server's default
-applies and there is nothing to delete. What each one accepts is in that
-plugin's README.
+Each server's `environment` block lists **every** variable that server reads,
+with blank values, in three groups: its main settings, optional tuning (TLS,
+timeouts, endpoint shapes and so on), and its folder overrides. Fill in the ones
+you need. **A blank value means "not set"**, so the server's default applies and
+there is nothing to delete. What each one accepts is in that plugin's README.
+
+The main settings, which are the ones most people fill in:
 
 | Plugin | Settings | Required |
 |---|---|---|
@@ -109,14 +112,16 @@ Every server starts enabled. For any plugin whose pip dependencies you skipped
 
 ## 7. Skills
 
-Nothing to install for the plugin skills. The config points OpenCode's
-`skills.paths` at `H:/Claude-Skills/plugins`, so it reads every plugin's skill
-straight from your clone, and a `git pull` is all it takes to update them.
+Nothing to install. The config's `skills.paths` names both skill folders:
 
-Nothing to install for the **standalone skills** either (`brief-writer`,
-`email-writer`, `exemplar-writer`, `polish`, `unslop`). They are part of the
-`eva\` copy from step 1, at `H:\Eva\.claude\skills`, which OpenCode reads when
-it is opened in `H:\Eva` - so open it there.
+- `H:/Claude-Skills/plugins` - every plugin's skill, read straight from your
+  clone, so a `git pull` is all it takes to update them
+- `H:/Eva/.claude/skills` - the **standalone skills** (`brief-writer`,
+  `email-writer`, `exemplar-writer`, `polish`, `unslop`), which arrive with the
+  `eva\` copy from step 1
+
+OpenCode would also find the standalone skills on its own when opened in
+`H:\Eva`; naming the folder means they load wherever you start it.
 
 `skills.paths` adds to OpenCode's usual skill folders rather than replacing
 them, so your own skills keep working from any of:
@@ -168,3 +173,4 @@ Then open `H:\Eva` in VS Code, open the integrated terminal and run `opencode`
 | A server shows as failed | Run its `--check` (step 8); usually a wrong Python path, a missing pip package, or a required setting left blank |
 | A Windows variable seems ignored | The config has a line for it, which wins even when blank - delete the line |
 | A plugin skill is missing | The `skills.paths` entry doesn't match your clone - OpenCode skips a folder that doesn't exist |
+| A standalone skill is missing | The `H:/Eva/.claude/skills` entry in `skills.paths` doesn't match where you copied `eva\` |

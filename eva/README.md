@@ -38,7 +38,8 @@ The tree is organised by **what writes to a folder**, not by topic:
 ```
 H:\Eva\
 ├─ CLAUDE.md         who Eva is, and how she writes
-├─ .claude\         standalone skills (with their exemplars) and agents
+├─ .claude\         standalone skills (with their exemplars) and agents, plus
+│                    settings.example.json - copy to settings.local.json and fill in
 ├─ opencode.example.jsonc   OpenCode only: copy to opencode.json and fill in
 ├─ knowledge\        the indexed corpus (.md / .txt only)
 │  ├─ notes\           Markdown you write by hand

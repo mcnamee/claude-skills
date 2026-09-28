@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-jira.py (v3.0.0) - A single-file, READ-ONLY MCP (Model Context Protocol)
+jira.py (v3.0.1) - A single-file, READ-ONLY MCP (Model Context Protocol)
 server for querying Jira Data Center (v2 REST API) using only the Python 3
 standard library.
 
@@ -145,7 +145,7 @@ failed transfer" rule):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "3.0.0"
+__version__ = "3.0.1"
 
 import argparse
 import base64
@@ -934,10 +934,15 @@ def _write(obj):
 # Entry point / configuration
 # ---------------------------------------------------------------------------
 def env_bool(name, default=True):
-    val = os.environ.get(name)
+    """
+    Boolean env var. Blank (or an unexpanded placeholder) keeps the default:
+    a template that lists JIRA_VERIFY_SSL with an empty value must not turn
+    TLS verification off.
+    """
+    val = env_str(name)
     if val is None:
         return default
-    return val.strip().lower() not in ("0", "false", "no", "off", "")
+    return val.lower() not in ("0", "false", "no", "off")
 
 
 def env_str(name):
@@ -1022,9 +1027,9 @@ def main(argv=None):
 
     # Every setting comes from the environment - credentials because argv is
     # visible in process listings, the rest so nothing can disagree.
-    token = os.environ.get("JIRA_TOKEN")
-    user = os.environ.get("JIRA_USER")
-    password = os.environ.get("JIRA_PASSWORD")
+    token = env_str("JIRA_TOKEN")
+    user = env_str("JIRA_USER")
+    password = env_str("JIRA_PASSWORD")
     base_url = env_str("JIRA_BASE_URL")
     projects = env_str("JIRA_PROJECTS")
     ca_cert = env_str("JIRA_CA_CERT")
