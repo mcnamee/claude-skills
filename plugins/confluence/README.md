@@ -154,8 +154,19 @@ not offered at all, and the server sends nothing but GET requests. With it on:
 | Tool | Does |
 |---|---|
 | `confluence_create_page` | A new page in a space, optionally under a parent (`parent_id` or `parent_title`) |
+| `confluence_update_section` | Changes **one section** — found by its heading text, or a panel/expand title — and sends the rest of the page back byte-for-byte. `mode`: `replace` (default), `append` or `prepend`. The right tool for "update the Director's notes on page 1234" |
 | `confluence_append_to_page` | Adds content to the **end** (or `position: "start"`) of a page, keeping everything already on it byte-for-byte — macros, layouts and all. The safe way to add minutes, actions or a new section |
-| `confluence_update_page` | **Replaces** a page's whole body and/or its title. Anything left out of the new body — including macros such as a task report — is gone from the page (Confluence keeps the old version in the page history) |
+| `confluence_update_page` | **Replaces** a page's whole body and/or its title. Anything left out of the new body — including macros such as a task report — is gone from the page (Confluence keeps the old version in the page history). For a full rewrite only |
+
+**What counts as a section.** A heading and everything under it — sub-headings
+included — up to the next heading of the same or a higher level, or the end of
+the layout column it sits in; or the body of an info / note / panel / expand
+macro whose title matches. Matching ignores case, a trailing colon and curly vs
+straight quotes, so `director's notes` finds **Director’s Notes:**. A name that
+matches nothing, or more than one section, is refused with the list of sections
+the page has. If the section being replaced itself contains a macro (say a Jira
+table under **Risks**), the call is refused and names it, unless
+`allow_macro_removal=true` — use `mode: "append"` to add beside it instead.
 
 Content is written in **Markdown** and converted to Confluence formatting:
 
@@ -367,6 +378,7 @@ Markdown). An existing file is never replaced unless the call says
 14. "Create a page under Team Home called 'Offsite 2026' with this agenda." → `confluence_create_page` with `parent_title` *(writing on)*
 15. "Add today's actions to the bottom of the project page." → `confluence_append_to_page`, with the actions as `- [ ]` tasks *(writing on)*
 16. "Rewrite the onboarding page with this new text." → `confluence_get_page`, then `confluence_update_page` with `expected_version` *(writing on)*
+17. "Update the Director's notes on page 1234 with this." → `confluence_update_section` with `section: "Director's notes"` — the task report and Jira tables elsewhere on the page are untouched *(writing on)*
 
 ## Troubleshooting
 

@@ -23,10 +23,11 @@ repo README) and to verify connectivity with `python confluence.py --check`.
 | `confluence_list_attachments` | The files attached to a page, and where each would download to |
 | `confluence_download_attachment` | Save one attachment into the folder the matching plugin reads |
 | `confluence_create_page` | New page in a space, optionally under a parent *(writing on)* |
+| `confluence_update_section` | Change one section (by heading or panel title), keeping the rest *(writing on)* |
 | `confluence_append_to_page` | Add content to the end/start of a page, keeping the rest *(writing on)* |
 | `confluence_update_page` | Replace a page's whole body and/or title *(writing on)* |
 
-The last three are only in the tool list when writing is switched on. If the
+The last four are only in the tool list when writing is switched on. If the
 user asks for a page to be created or changed and they are missing, say that
 Confluence writing is off on this endpoint and that `CONFLUENCE_ALLOW_WRITE=true`
 (in Claude Code's settings `env` block, then a restart) turns it on. Do not
@@ -151,9 +152,21 @@ Writing to a wiki publishes as the user, so:
    side effect of research, and never "tidy up" a page you were reading.
 2. **Show the content first** - draft it in the chat, get a yes, then write -
    unless the user has already given you the exact text or said to go ahead.
-3. **Prefer `confluence_append_to_page`** for adding to a page (minutes,
-   actions, a new section). It leaves every existing macro and layout
-   untouched.
+3. **Pick the narrowest tool.** "Update the X section / X notes / X panel on
+   page Y" → `confluence_update_section` with `section: "X"`: it changes only
+   that part and sends the rest of the page back untouched. Adding to the
+   bottom of a page (minutes, actions) → `confluence_append_to_page`. Only a
+   full rewrite or a title change needs `confluence_update_page`.
+   - `update_section` takes `mode`: `replace` (default), `append` (add to the
+     end of that section) or `prepend`. A heading's section runs to the next
+     heading of the same or higher level, so its sub-headings go with it on a
+     replace - if the user only meant the text directly under the heading and
+     there are sub-headings, check first.
+   - If `section` matches nothing or several, the error lists the page's
+     sections; pick the one the user meant, or ask.
+   - If it refuses because the section holds a macro, tell the user which one
+     and offer `mode: "append"`; pass `allow_macro_removal: true` only once
+     they have agreed to lose it.
 4. **`confluence_update_page` replaces the whole body.** Read the page first
    (`confluence_get_page` with `body_format: "storage"` shows what is really
    there), build the complete new body from it, and pass the version you read

@@ -22,9 +22,12 @@ Tools exposed (read / query):
 
 Tools exposed ONLY when CONFLUENCE_ALLOW_WRITE=true (see WRITING PAGES):
   - confluence_create_page      : create a page (optionally under a parent)
-  - confluence_update_page      : replace a page's content and/or title
+  - confluence_update_section   : replace (or add to) ONE section - the
+                                  content under a heading, or inside a titled
+                                  panel/expand - leaving the rest untouched
   - confluence_append_to_page   : add content to the end/start of a page,
                                   keeping everything already on it
+  - confluence_update_page      : replace a page's WHOLE content and/or title
 
 WRITING PAGES
 -------------
@@ -41,10 +44,19 @@ page), nested lists, tables, block quotes and rules, plus
 content_format="storage" passes raw storage-format XHTML through instead, for
 a macro Markdown cannot express.
 
-confluence_update_page REPLACES the whole body, so a macro left out of the new
-body is gone from the page (Confluence keeps the old version in the page
-history). confluence_append_to_page is the safe way to add to a page: the
-existing body is sent back byte-for-byte and only the new part is converted.
+Three ways to change an existing page, from safest to bluntest:
+  - confluence_update_section finds ONE part of the page by its heading text
+    (everything under it, sub-headings included, up to the next heading of the
+    same or a higher level, or the end of its layout column) or by a panel's
+    title (its body), and changes only that. The rest of the page goes back
+    byte-for-byte, so "update the Director's notes on page 1234" cannot touch
+    a task report or Jira table elsewhere on it. Replacing a section that
+    itself contains a macro is refused unless allow_macro_removal=true.
+  - confluence_append_to_page adds to the end (or start): the existing body
+    is sent back byte-for-byte and only the new part is converted.
+  - confluence_update_page REPLACES the whole body, so a macro left out of the
+    new body is gone from the page (Confluence keeps the old version in the
+    page history). For a full rewrite or a title change only.
 Every write saves a new page version; a version that moved on in the meantime
 is refused by Confluence (HTTP 409), and update_page's expected_version
 argument refuses it before anything is sent.
@@ -1534,6 +1546,191 @@ def next_task_id(storage):
     return (max(ids) + 1) if ids else 1
 
 
+# ---------------------------------------------------------------------------
+# Section editing: find one part of a storage body by its heading or title
+# ---------------------------------------------------------------------------
+# confluence_update_section changes ONE part of a page and sends everything
+# else back byte-for-byte, so the macros, layouts and tables elsewhere on the
+# page cannot be lost. A "section" is either
+#   - a HEADING and everything after it up to the next heading of the same or
+#     a higher level (or the end of the layout cell / page it sits in), or
+#   - a PANEL-LIKE MACRO (info, note, panel, expand...) whose title parameter
+#     matches: its rich-text body is the section.
+# Locating it needs the exact character offsets of each element, so the
+# storage body is indexed with the standard-library HTML parser rather than
+# converted to Markdown (which would lose exactly what this protects).
+
+_CDATA_RE = re.compile(r"<!\[CDATA\[.*?\]\]>", re.S)
+_TAG_RE = re.compile(r"<[^>]+>")
+_HEADING_TAGS = ("h1", "h2", "h3", "h4", "h5", "h6")
+
+
+def _mask_cdata(raw):
+    """
+    Blank out CDATA sections (code-macro bodies) with same-length filler, so
+    a '<' or '>' inside code cannot be mistaken for markup. Offsets are
+    unchanged, so positions found in the masked text apply to the original.
+    """
+    return _CDATA_RE.sub(lambda m: "x" * len(m.group(0)), raw)
+
+
+def _norm_label(text):
+    """Normalise a heading/title for matching: tags, entities, quotes, case."""
+    text = _TAG_RE.sub(" ", text or "")
+    text = html.unescape(text)
+    for curly, plain in (("\u2018", "'"), ("\u2019", "'"), ("\u201c", '"'),
+                         ("\u201d", '"'), ("\u00a0", " ")):
+        text = text.replace(curly, plain)
+    text = " ".join(text.split()).strip().rstrip(":").strip()
+    return text.casefold()
+
+
+class _StorageIndex(html.parser.HTMLParser):
+    """
+    Records where every element of a storage body starts and ends, as
+    character offsets: start (the '<' of the start tag), inner_start (just
+    after it), inner_end (the '<' of the end tag) and end (just after it).
+    """
+
+    def __init__(self, raw):
+        super().__init__(convert_charrefs=False)
+        self.raw = raw
+        self._line_starts = [0]
+        for index, char in enumerate(raw):
+            if char == "\n":
+                self._line_starts.append(index + 1)
+        self.elements = []
+        self._stack = []
+
+    def _offset(self):
+        line, col = self.getpos()
+        return self._line_starts[line - 1] + col
+
+    def _add(self, tag, attrs, closed):
+        start = self._offset()
+        text = self.get_starttag_text() or ""
+        inner = start + len(text)
+        self.elements.append({
+            "tag": tag, "attrs": {k.lower(): (v or "") for k, v in attrs},
+            "start": start, "inner_start": inner,
+            "inner_end": inner if closed else None,
+            "end": inner if closed else None,
+            "parent": self._stack[-1] if self._stack else None,
+        })
+        return len(self.elements) - 1
+
+    def handle_starttag(self, tag, attrs):
+        self._stack.append(self._add(tag, attrs, closed=False))
+
+    def handle_startendtag(self, tag, attrs):
+        self._add(tag, attrs, closed=True)
+
+    def handle_endtag(self, tag):
+        start = self._offset()
+        end = self.raw.find(">", start) + 1 or len(self.raw)
+        for depth in range(len(self._stack) - 1, -1, -1):
+            element = self.elements[self._stack[depth]]
+            if element["tag"] != tag:
+                continue
+            # Anything opened inside it and never closed ends here too.
+            for index in self._stack[depth + 1:]:
+                inner = self.elements[index]
+                inner["inner_end"] = inner["end"] = start
+            element["inner_end"], element["end"] = start, end
+            del self._stack[depth:]
+            return
+        # A stray end tag with no matching start: ignore it.
+
+    def finish(self):
+        self.close()
+        for index in self._stack:
+            element = self.elements[index]
+            element["inner_end"] = element["end"] = len(self.raw)
+        self._stack = []
+        return self.elements
+
+
+def _index_storage(raw):
+    parser = _StorageIndex(_mask_cdata(raw))
+    parser.feed(parser.raw)
+    return parser.finish()
+
+
+def storage_sections(raw):
+    """
+    Every editable section of a storage body, in page order, as dicts:
+    {kind, label, level, start, end} where [start, end) is the CONTENT to
+    replace (not the heading or the macro wrapper, which are kept).
+    """
+    masked = _mask_cdata(raw)
+    elements = _index_storage(raw)
+    sections = []
+    for index, el in enumerate(elements):
+        if el["tag"] in _HEADING_TAGS:
+            level = int(el["tag"][1])
+            end = None
+            for later in elements[index + 1:]:
+                if later["start"] < el["end"]:
+                    continue
+                if (later["parent"] == el["parent"] and later["tag"] in _HEADING_TAGS
+                        and int(later["tag"][1]) <= level):
+                    end = later["start"]
+                    break
+            if end is None:
+                parent = el["parent"]
+                end = elements[parent]["inner_end"] if parent is not None else len(raw)
+            sections.append({
+                "kind": "heading", "level": level,
+                "label": masked[el["inner_start"]:el["inner_end"]],
+                "start": el["end"], "end": end,
+            })
+        elif el["tag"] in ("ac:structured-macro", "ac:macro"):
+            children = [c for c in elements if c["parent"] == index]
+            title = next((c for c in children if c["tag"] == "ac:parameter"
+                          and c["attrs"].get("ac:name", "").lower() == "title"), None)
+            body = next((c for c in children if c["tag"] == "ac:rich-text-body"), None)
+            if title is None or body is None:
+                continue
+            sections.append({
+                "kind": "{} macro".format(el["attrs"].get("ac:name", "?")),
+                "level": None,
+                "label": masked[title["inner_start"]:title["inner_end"]],
+                "start": body["inner_start"], "end": body["inner_end"],
+            })
+    for section in sections:
+        section["display"] = " ".join(
+            html.unescape(_TAG_RE.sub(" ", section["label"])).split())
+    return sections
+
+
+def find_section(raw, wanted):
+    """
+    The one section whose heading/title matches `wanted` (exact after
+    normalising, else a unique partial match). Raises ConfluenceError naming
+    the sections that exist when there is no single match.
+    """
+    sections = storage_sections(raw)
+    want = _norm_label(wanted)
+    if not want:
+        raise ConfluenceError("'section' (the heading or panel title) is required.")
+    exact = [s for s in sections if _norm_label(s["label"]) == want]
+    matches = exact or [s for s in sections if want in _norm_label(s["label"])]
+
+    def listing(items):
+        return "; ".join("{!r} ({})".format(s["display"], s["kind"] if s["level"] is None
+                                            else "heading h{}".format(s["level"]))
+                         for s in items) or "none"
+    if not matches:
+        raise ConfluenceError(
+            "No heading or titled panel matching {!r} on this page. Sections: {}."
+            .format(wanted, listing(sections)))
+    if len(matches) > 1:
+        raise ConfluenceError(
+            "{!r} matches more than one section: {}. Use the full heading text."
+            .format(wanted, listing(matches)))
+    return matches[0]
+
+
 # Attachment types the download tool will fetch, by extension, and the plugin
 # folder each lands in so the plugin that opens that type can find it. The
 # documents library is organised by FILE TYPE, not by where a file came from,
@@ -2234,6 +2431,62 @@ class ConfluenceClient:
         return self._write_summary(
             "Added content to the {} of".format(where), saved)
 
+    def update_section(self, page_id=None, title=None, space=None, section=None,
+                       body=None, mode=None, content_format=None,
+                       allow_macro_removal=False, version_message=None,
+                       minor_edit=False):
+        """
+        Replace (or add to) ONE section of a page - the content under a
+        heading, or inside a titled panel/expand - sending the rest of the page
+        back byte-for-byte.
+        """
+        self._require_write()
+        if body is None or not str(body).strip():
+            raise ConfluenceError("'body' (the section's new content) is required.")
+        how = str(mode or "replace").strip().lower()
+        if how not in ("replace", "append", "prepend"):
+            raise ConfluenceError("'mode' must be 'replace' (default), 'append' or 'prepend'.")
+        target = self._target_page_id(page_id, title, space)
+        page = self._fetch_for_edit(target)
+        existing = ((page.get("body") or {}).get("storage") or {}).get("value") or ""
+        found = find_section(existing, section)
+        start, end = found["start"], found["end"]
+        old = existing[start:end]
+
+        # Replacing a section that itself holds a macro would delete that
+        # macro. Refuse unless the caller has confirmed it, naming what would go.
+        if how == "replace" and not allow_macro_removal:
+            doomed = sorted(set(storage_macro_names(old)))
+            if doomed:
+                raise ConfluenceError(
+                    "The {!r} section contains macro(s) that replacing it would "
+                    "delete: {}. Nothing was changed. Use mode='append' to add "
+                    "to the section instead, or pass allow_macro_removal=true "
+                    "once the user has agreed to lose them.".format(
+                        found["display"], ", ".join(doomed)))
+
+        addition = self._to_storage(body, content_format,
+                                    task_start=next_task_id(existing))
+        if how == "replace":
+            new_part = addition
+        elif how == "append":
+            new_part = old + addition
+        else:
+            new_part = addition + old
+        storage = existing[:start] + new_part + existing[end:]
+        saved = self._put_page(page, page.get("title"), storage,
+                               version_message, minor_edit)
+        log("{} section {!r} on page {} (version {})".format(
+            how, found["display"], target, (saved.get("version") or {}).get("number")))
+        verb = {"replace": "Replaced the content of", "append": "Added to the end of",
+                "prepend": "Added to the start of"}[how]
+        return (self._write_summary(
+            "{} the {!r} section ({}) on".format(
+                verb, found["display"],
+                found["kind"] if found["level"] is None
+                else "heading h{}".format(found["level"])), saved)
+            + "\nThe rest of the page was left exactly as it was.")
+
     # -- attachments -------------------------------------------------------
     def _fetch_attachments(self, page_id):
         """Every attachment on a page, each carrying an absolute download URL."""
@@ -2706,6 +2959,35 @@ def write_tool_definitions():
         "content_format": content_format_property(),
     })
     append_props.update(version_properties())
+    section_props = page_ref_properties()
+    section_props.update({
+        "section": {
+            "type": "string",
+            "description": (
+                "The heading text, or the panel/expand title, of the part to "
+                "change, e.g. \"Director's notes\" (case and punctuation "
+                "are ignored)."
+            ),
+        },
+        "body": {
+            "type": "string",
+            "description": "The new content for that section, in Markdown by default.",
+        },
+        "mode": {
+            "type": "string",
+            "enum": ["replace", "append", "prepend"],
+            "description": "'replace' the section's content (default), or add to its end/start.",
+        },
+        "allow_macro_removal": {
+            "type": "boolean",
+            "description": (
+                "Only with the user's agreement: let 'replace' delete macros "
+                "that sit inside the section (default false)."
+            ),
+        },
+        "content_format": content_format_property(),
+    })
+    section_props.update(version_properties())
     return [
         {
             "name": "confluence_create_page",
@@ -2727,15 +3009,37 @@ def write_tool_definitions():
         {
             "name": "confluence_update_page",
             "description": (
-                "Replace the content (and/or the title) of an existing "
+                "Replace the WHOLE content (and/or the title) of an existing "
                 "Confluence page, saving a new version. The new 'body' "
                 "REPLACES the whole page, so anything left out - including "
                 "macros such as task reports or Jira tables - is removed. To "
-                "add to a page, use confluence_append_to_page instead. Read "
-                "the page first, and pass the version you read as "
-                "'expected_version'."
+                "change one part of a page use confluence_update_section; to "
+                "add to it, confluence_append_to_page. Use this only for a "
+                "full rewrite or a title change. Read the page first, and "
+                "pass the version you read as 'expected_version'."
             ),
             "inputSchema": {"type": "object", "properties": update_props},
+        },
+        {
+            "name": "confluence_update_section",
+            "description": (
+                "Change ONE part of an existing Confluence page and leave "
+                "everything else on it - macros, tables, layouts - exactly as "
+                "it was. The part is found by 'section': a heading's text (the "
+                "content under it, up to the next heading of the same or "
+                "higher level, sub-headings included) or the title of a "
+                "panel/expand/info macro (its body)." mode 'replace' (default) swaps that content for "
+                "'body'; 'append' / 'prepend' add to it. Use this, not "
+                "confluence_update_page, for 'update the X section/notes on "
+                "page Y'. If the name matches nothing, the sections that exist "
+                "are listed. Replacing a section that itself contains a macro "
+                "is refused unless allow_macro_removal is true."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": section_props,
+                "required": ["section", "body"],
+            },
         },
         {
             "name": "confluence_append_to_page",
@@ -3049,6 +3353,18 @@ def call_tool(servers, name, arguments):
             version_message=arguments.get("version_message"),
             minor_edit=bool(arguments.get("minor_edit", False)),
             expected_version=arguments.get("expected_version"),
+        )
+
+    if name == "confluence_update_section":
+        return client.update_section(
+            arguments.get("page_id"), arguments.get("title"), arguments.get("space"),
+            section=arguments.get("section"),
+            body=arguments.get("body"),
+            mode=arguments.get("mode"),
+            content_format=arguments.get("content_format"),
+            allow_macro_removal=bool(arguments.get("allow_macro_removal", False)),
+            version_message=arguments.get("version_message"),
+            minor_edit=bool(arguments.get("minor_edit", False)),
         )
 
     if name == "confluence_append_to_page":
