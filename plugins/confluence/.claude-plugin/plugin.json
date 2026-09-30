@@ -1,8 +1,8 @@
 {
   "name": "confluence",
   "displayName": "Confluence",
-  "version": "7.2.0",
-  "description": "Search and read Confluence pages across one or two instances, with macro content (task reports, page properties, panels, inline tasks) included; edit the tables on a page in place (even inside table filter or column macros), and create, update and append to pages; download page attachments into the folder the matching plugin reads; save a page to the knowledge base when you ask - writing only when switched on.",
+  "version": "7.3.0",
+  "description": "Search and read Confluence pages across one or two instances, with macro content (task reports, page properties, panels, inline tasks) included; edit the tables on a page in place (even inside table filter or column macros), and create, update and append to pages, and upload attachments (replacing an image on a page); download page attachments into the folder the matching plugin reads; save a page to the knowledge base when you ask - writing only when switched on.",
   "author": {
     "name": "mcnamee"
   },

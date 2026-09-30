@@ -31,5 +31,6 @@
 !/opencode.example.jsonc
 !/.claude/settings.example.json
 !/.claude/skills/*/SKILL.md
+!/.claude/skills/org-chart/orgchart.py
 !/.claude/agents/*.md
 !.gitignore

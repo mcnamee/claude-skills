@@ -202,6 +202,8 @@ from memory.
 | Get a file attached to a wiki page | `confluence_list_attachments`, `confluence_download_attachment`, then the plugin for that file type on the name it reports |
 | Create a wiki page, or add to one | `confluence_create_page`, `confluence_append_to_page` (keeps the rest of the page). Only when I ask |
 | Change figures or text in a table on a wiki page | `confluence_list_tables`, then `confluence_update_table`: it edits the cells in place, so the table's formatting and any macro around it stay. Only when I ask |
+| Put a file on a wiki page, or replace an image on one | `confluence_upload_attachment` (from `documents\` or `knowledge\confluence` only); `overwrite: true` uploads a new version of the attachment of the same name, so the page shows it without an edit. Only when I ask |
+| Draw an org chart from staffing data | `/org-chart`: it writes the chart to `documents\images` as `.json` plus `.svg` |
 | Change one part of a wiki page | `confluence_update_section`, naming the heading or panel title; everything else on the page is left alone. `confluence_update_page` replaces the whole page, so only for a full rewrite. Only when I ask |
 | Project or sprint status | `jira_my_issues`, `jira_project_status`, `jira_search` |
 | Raise, update, comment on or move a ticket | `jira_create_issue`, `jira_update_issue`, `jira_add_comment`, `jira_transition_issue`. Only when I ask |
