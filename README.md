@@ -45,14 +45,14 @@ source material with something invented.
   block. The matching skill comes with the server.
 - **Confined by default.** Every server that touches the filesystem is locked to
   its sub-folders, and refuses to start unconfined rather than falling back to
-  "anywhere". `word` and `powerpoint` can change a file you already have, and
-  so can `excel` once you switch its writing on; the rest either read, or write
-  new files (Markdown, a downloaded attachment) into their own folders.
-- **Read-only until you say otherwise.** `confluence`, `jira` and `excel` can
-  write - create and edit pages, raise and move tickets, update workbooks and
-  build pivot tables - but each ships with writing **off**. One variable
-  (`CONFLUENCE_ALLOW_WRITE`, `JIRA_ALLOW_WRITE`, `EXCEL_ALLOW_WRITE`) turns it
-  on; until then the write tools are not even offered.
+  "anywhere". The office plugins - `word`, `powerpoint` and `excel` - can
+  change a file you already have in their folder; the rest either read, or
+  write new files (Markdown, a downloaded attachment) into their own folders.
+- **Shared systems are read-only until you say otherwise.** `confluence` and
+  `jira` can write - create and edit pages, raise and move tickets - but each
+  ships with writing **off**. One variable (`CONFLUENCE_ALLOW_WRITE`,
+  `JIRA_ALLOW_WRITE`) turns it on; until then the write tools are not even
+  offered.
 - **Secrets never hit the command line.** Tokens and API keys are environment
   variables only — argv is visible to other local users in process listings.
 - **Notes you can read at a lectern.** `powerpoint` formats the one surface
@@ -88,7 +88,7 @@ source material with something invented.
 |---|---|---|---|
 | [**word**](plugins/word) | 10.0.0 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
 | [**powerpoint**](plugins/powerpoint) | 6.0.0 | Build sectioned `.pptx` decks that inherit your own template's layouts and theme, with formatted speaker notes, audited against the 10/20/30 rule | `python-pptx` |
-| [**excel**](plugins/excel) | 6.1.0 | Read and analyse workbooks - sheets, Tables by name, pivot tables - by parsing `.xlsx` directly; when switched on, write cells and Table rows and create real PivotTables through Excel | _none_ (`pywin32` to write) |
+| [**excel**](plugins/excel) | 6.1.0 | Read and analyse workbooks - sheets, Tables by name, pivot tables - by parsing `.xlsx` directly; write cells and Table rows and create real PivotTables through Excel | _none_ (`pywin32` to write) |
 | [**outlook**](plugins/outlook) | 11.0.0 | Read local Outlook mail and calendar via COM, with a content blacklist; schedules a meeting (fuzzy directory search, free/busy, and an **unsent** draft you send yourself); prints a day as an A4 PDF planner in your own category colours, and saves an email to the knowledge base when you ask | `pywin32` |
 | [**confluence**](plugins/confluence) | 7.1.0 | Search and read Confluence pages, across one or two instances, with macro content included; download attachments into the folder the matching plugin reads; saves a page to the knowledge base when you ask; when switched on, create, update and append to pages | _none_ |
 | [**jira**](plugins/jira) | 3.1.0 | Query issues, sprints and projects; when switched on, create, edit, comment on and transition issues (Jira Data Center v2 API) | _none_ |
@@ -333,9 +333,10 @@ The per-plugin READMEs list each server's actual settings.
    (`excel\`, `word\`, ...), because those are the folders the other plugins
    read.
 4. **Writing to a shared system is opt-in:** `<PREFIX>_ALLOW_WRITE=true`
-   (`CONFLUENCE_`, `JIRA_`, `EXCEL_`). Blank or unset means read-only, and the
-   write tools are not offered at all, so updating a plugin never hands it new
-   power over a wiki, a tracker or your workbooks.
+   (`CONFLUENCE_`, `JIRA_`). Blank or unset means read-only, and the write
+   tools are not offered at all, so updating a plugin never hands it new power
+   over a wiki or a tracker. The office plugins (`word`, `powerpoint`,
+   `excel`) edit documents in their own folder by design, so need no switch.
 5. **Secrets are env-var only**, and always were — no flag has ever existed
    that could put a token in a command line, where other local users can read
    it out of a process listing.
@@ -437,7 +438,7 @@ three shared roots, and those folders are **required**:
 |---|---|
 | `word` | Read/write, confined to the one documents folder (where new documents are created too) plus the knowledge-base folder; the templates folder is read-only. Opening, creating and saving each mirror to the knowledge-base folder |
 | `powerpoint` | Read/write, confined to the one presentations folder (where new decks are created too) plus the knowledge-base folder; the templates folder is read-only. Opening, creating and saving each mirror to the knowledge-base folder |
-| `excel` | Read-only, confined to the workbook folder (top level only). With `EXCEL_ALLOW_WRITE=true` it also changes workbooks in that folder (or saves copies into it) through a private Excel instance |
+| `excel` | Read/write, confined to the workbook folder (top level only). Reads parse the file directly; writes change a workbook in that folder (or save a copy into it) through a private Excel instance |
 | `knowledge-base` | Reads the documents folder; writes its vector index (`H:\Eva\index`) and captured notes (`H:\Eva\knowledge\captures`, always inside the documents folder); never edits or deletes an existing document; network only to the endpoints you configure |
 | `pdf-to-md` | Reads the PDF folder, writes the output folder |
 | `confluence` | Writes the knowledge-base folder only for a page you asked to keep (`save_to_kb`) or a Markdown attachment you downloaded, and the per-type documents folders only for an attachment you asked it to download - never replacing a file already there unless told to. Reading a page saves nothing. Set `CONFLUENCE_KB_DIR` and `CONFLUENCE_DOCS_DIR` to `off` and the server touches no local file |

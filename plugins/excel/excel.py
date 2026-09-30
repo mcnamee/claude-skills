@@ -2,12 +2,11 @@
 # -*- coding: utf-8 -*-
 r"""
 excel.py (v6.1.0) -- Excel (.xlsx) MCP server: reads directly, writes
-through Excel when switched on.
+through Excel.
 
 PURPOSE
     A single-file MCP (Model Context Protocol) stdio server that lets a local
-    model query and ANALYSE Excel workbooks, and - only when
-    EXCEL_ALLOW_WRITE=true - change them. READING is standard library only: it
+    model query, ANALYSE and change Excel workbooks. READING is standard library only: it
     parses .xlsx directly (a .xlsx file is just a ZIP of XML), never opens
     Excel and never touches the network. WRITING drives the installed desktop
     Excel through COM (pywin32), because Excel is the only thing that keeps a
@@ -30,7 +29,7 @@ PURPOSE
                                    column / filter fields, value fields
       * excel_read_pivot_table  -- one pivot's layout plus the figures it shows
 
-    Tools exposed ONLY when EXCEL_ALLOW_WRITE=true (see WRITING):
+    Write tools (see WRITING - need Windows, desktop Excel and pywin32):
       * excel_write_cells        -- write a block of values/formulas into a
                                     sheet (tab), optionally adding the sheet
       * excel_add_table_rows     -- append rows to a Table by name
@@ -92,10 +91,11 @@ TABLES AND PIVOT TABLES (reading)
     of the pivot's last refresh-and-save - the reply says when that was, and a
     pivot whose source has changed since is stale until refreshed in Excel.
 
-WRITING  (EXCEL_ALLOW_WRITE=true; Windows + desktop Excel + pywin32)
-    Off by default, and then the four write tools are not offered at all:
-    the server behaves exactly as the read-only v6.0.0 did. With it on, each
-    write call:
+WRITING  (Windows + desktop Excel + pywin32)
+    Like the word and powerpoint plugins, editing documents in its folder is
+    this plugin's job, so the write tools are always offered; on an endpoint
+    without Excel or pywin32 they answer with what to install, and every read
+    tool keeps working. Each write call:
       1. refuses up front if the workbook is open elsewhere (its ~$ lock file
          exists, or the file is locked) - close it in Excel first;
       2. starts a PRIVATE, invisible Excel (DispatchEx - your own Excel window
@@ -112,9 +112,8 @@ WRITING  (EXCEL_ALLOW_WRITE=true; Windows + desktop Excel + pywin32)
     nothing beyond the standard library:
       & "C:\path\to\python.exe" -m pip install pywin32
     UNTESTED ON THIS REPO'S CI: the COM calls follow Excel's documented object
-    model but can only run on a Windows endpoint with Excel. Run --check with
-    EXCEL_ALLOW_WRITE=true (it starts and quits Excel to prove automation
-    works), then try excel_create_pivot_table with 'save_as' on a copy
+    model but can only run on a Windows endpoint with Excel. Run --check (it
+    starts and quits Excel to prove automation works), then try excel_create_pivot_table with 'save_as' on a copy
     before relying on it.
 
 STANDALONE TESTING (before wiring the server in)
@@ -154,7 +153,7 @@ CONFIGURATION  (environment variables, no folder flags)
     FOLDER MUST EXIST:
 
       %EVA_DOCUMENTS_DIR%\excel   REQUIRED. The .xlsx/.xlsm workbooks this
-                                  server may read (and, with writing on,
+                                  server may read (and the write tools
                                   change or save copies into) - top level
                                   only. The server refuses to start if it is
                                   missing.
@@ -169,9 +168,6 @@ CONFIGURATION  (environment variables, no folder flags)
 
     EXCEL_DOCS_DIR overrides the workbook folder with a full path of its own,
     for an endpoint whose layout differs.
-
-    EXCEL_ALLOW_WRITE=true offers the write tools (see WRITING). Blank or
-    unset means read-only.
 
     There are NO folder command-line flags: configuration is environment
     variables only, so two settings can never disagree about a path.
@@ -222,8 +218,8 @@ from datetime import datetime, timedelta
 # its OWN sub-folder of each root, named after the plugin. This server uses one
 # root, and its sub-folder is "excel":
 #
-#   EVA_DOCUMENTS_DIR   -> %EVA_DOCUMENTS_DIR%\excel   workbooks (written only
-#                                                  with EXCEL_ALLOW_WRITE=true)
+#   EVA_DOCUMENTS_DIR   -> %EVA_DOCUMENTS_DIR%\excel   workbooks (read, and
+#                                                  changed by the write tools)
 #
 # EVA_DOCUMENTS_DIR below is the fallback when the variable is not set, and
 # matches the Eva working tree: copy the repo's eva\ folder to H:\Eva and the
@@ -1653,7 +1649,7 @@ def _fmt_num(x):
 
 
 # ===========================================================================
-# Writing: driving the installed Excel through COM (EXCEL_ALLOW_WRITE=true)
+# Writing: driving the installed Excel through COM
 # ===========================================================================
 # Everything above reads the .xlsx file directly. Writing does NOT: a workbook
 # is a web of parts that must agree (shared strings, styles, the calc chain,
@@ -1684,11 +1680,6 @@ PIVOT_FUNCTIONS = {
 MAX_WRITE_CELLS = 20000          # cells one write call may set
 MAX_PIVOT_PREVIEW_ROWS = 60      # rows of a new pivot echoed back
 
-# Whether the write tools are offered at all. Off unless EXCEL_ALLOW_WRITE=
-# true: this server was read-only for its first six major versions, and an
-# endpoint that only ever read workbooks must not start changing them because
-# the plugin updated. Resolved from the environment in main().
-ALLOW_WRITE = False
 
 
 def _com_modules():
@@ -1965,12 +1956,6 @@ def _cell_matches(cell, wanted):
     return _values_equal(cell, wanted)
 
 
-def _require_write():
-    if not ALLOW_WRITE:
-        raise WorkbookError("Writing workbooks is switched off on this endpoint. "
-                            "Set EXCEL_ALLOW_WRITE=true and restart the client.")
-
-
 def _write_path(folder, args):
     """The workbook to change and the optional save-as target."""
     path = resolve_workbook_path(folder, args.get("workbook"))
@@ -1984,7 +1969,6 @@ def _saved_note(path, save_as):
 
 
 def tool_write_cells(folder, args):
-    _require_write()
     values = args.get("values")
     if not isinstance(values, list) or not values:
         raise WorkbookError("'values' must be a list of rows, e.g. "
@@ -2031,7 +2015,6 @@ def _header_index(headers, column, table_name):
 
 
 def tool_add_table_rows(folder, args):
-    _require_write()
     rows = args.get("rows")
     if not isinstance(rows, list) or not rows:
         raise WorkbookError("'rows' must be a list: each row an object of "
@@ -2069,7 +2052,6 @@ def tool_add_table_rows(folder, args):
 
 
 def tool_update_table_rows(folder, args):
-    _require_write()
     match = args.get("match")
     changes = args.get("set")
     if not isinstance(match, dict) or not match:
@@ -2121,7 +2103,6 @@ def _field_list(value, label):
 
 
 def tool_create_pivot_table(folder, args):
-    _require_write()
     rows = _field_list(args.get("rows"), "rows")
     cols = _field_list(args.get("columns"), "columns")
     filters = _field_list(args.get("filters"), "filters")
@@ -2449,8 +2430,8 @@ def _with_save_as(props):
     return merged
 
 
-# Offered only when EXCEL_ALLOW_WRITE=true. Each call starts a private,
-# invisible Excel, so it needs Windows, desktop Excel and pywin32.
+# Each call starts a private, invisible Excel, so these need Windows, desktop
+# Excel and pywin32; without them they say what to install.
 WRITE_TOOLS = {
     "excel_write_cells": {
         "handler": tool_write_cells,
@@ -2569,10 +2550,9 @@ WRITE_TOOLS = {
 
 
 def active_tools():
-    """The tools on offer: the read tools, plus the write tools when enabled."""
+    """Every tool on offer: the read tools, then the write tools."""
     tools = dict(TOOLS)
-    if ALLOW_WRITE:
-        tools.update(WRITE_TOOLS)
+    tools.update(WRITE_TOOLS)
     return tools
 
 
@@ -2717,14 +2697,6 @@ def env(name):
     return value
 
 
-def env_flag(name, default):
-    """A true/false environment variable; blank (or unset) keeps the default."""
-    value = env(name)
-    if value is None:
-        return default
-    return value.lower() in ("1", "true", "yes", "on")
-
-
 def resolve_docs_dir():
     """The workbook folder, from the environment.
 
@@ -2746,7 +2718,7 @@ def resolve_docs_dir():
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Excel (.xlsx) MCP server: reads workbooks directly, and "
-                    "with EXCEL_ALLOW_WRITE=true changes them through Excel. "
+                    "changes them through the installed Excel. "
                     "Configuration is environment variables only: "
                     "EVA_DOCUMENTS_DIR (this server works in its 'excel' "
                     "sub-folder), or EXCEL_DOCS_DIR to override that one "
@@ -2760,10 +2732,9 @@ def main(argv=None):
                         version="{0} {1}".format(SERVER_NAME, __version__))
     args = parser.parse_args(argv)
 
-    global DOCS_DIR, ALLOW_WRITE
+    global DOCS_DIR
     DOCS_DIR, folder_chosen = resolve_docs_dir()
     folder = DOCS_DIR
-    ALLOW_WRITE = env_flag("EXCEL_ALLOW_WRITE", ALLOW_WRITE)
 
     if args.check:
         print("excel_mcp environment check")
@@ -2782,13 +2753,10 @@ def main(argv=None):
                     print("      - %s" % f)
             except WorkbookError as exc:
                 print("  error listing     : %s" % exc)
-        print("  writing           : %s"
-              % ("ENABLED (EXCEL_ALLOW_WRITE=true)" if ALLOW_WRITE
-                 else "off (read-only; set EXCEL_ALLOW_WRITE=true to enable)"))
-        if ALLOW_WRITE:
-            # Starts (and quits) a private Excel, proving the write tools can
-            # run here before the model finds out the hard way.
-            print("  Excel automation  : %s" % _check_excel_automation())
+        # Starts (and quits) a private Excel, proving the write tools can run
+        # here before the model finds out the hard way.
+        print("  Excel automation  : %s (needed by the write tools only)"
+              % _check_excel_automation())
         tools = active_tools()
         print("  tools registered  : %d (%s)"
               % (len(tools), ", ".join(tools.keys())))
@@ -2816,12 +2784,6 @@ def main(argv=None):
             return 1
         return 0
 
-    if ALLOW_WRITE:
-        log("WRITE ENABLED: workbooks can be changed through Excel "
-            "(EXCEL_ALLOW_WRITE=true)")
-    else:
-        log("read-only: workbook writing is off (set EXCEL_ALLOW_WRITE=true "
-            "to enable it)")
     serve(folder)
     return 0
 

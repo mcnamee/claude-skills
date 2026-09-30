@@ -104,9 +104,6 @@
       "command": ["C:/path/to/python.exe", "H:/Claude-Skills/plugins/excel/excel.py"],
       "environment": {
         "PYTHONUTF8": "1",
-        // "true" lets it change workbooks (write cells, Table rows, create
-        // pivot tables) through Excel; needs pywin32. Blank = read-only.
-        "EXCEL_ALLOW_WRITE": "",
         // Folder override (default H:/Eva/documents/excel).
         "EXCEL_DOCS_DIR": ""
       },

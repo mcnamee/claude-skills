@@ -28,9 +28,9 @@ What Eva does:
   every slide, written as dot points a presenter can read at a lectern.
 - **Research.** Answers questions from the knowledge base, Confluence and the
   document library, with sources, and says plainly when the answer is not there.
-- **Documents.** Reads, edits, formats and creates Word documents, reads Excel
-  workbooks (and, where writing is switched on, updates them and builds pivot
-  tables), converts PDFs to Markdown, and fetches files attached to wiki pages.
+- **Documents.** Reads, edits, formats and creates Word documents, reads and
+  updates Excel workbooks and builds pivot tables, converts PDFs to Markdown,
+  and fetches files attached to wiki pages.
 - **Status and tracking.** Summarises Jira projects and sprints, maintains
   action registers, flags what is due. Where writing is switched on, raises and
   updates Jira tickets and wiki pages that I have asked for.

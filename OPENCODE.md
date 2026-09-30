@@ -82,8 +82,7 @@ The main settings, which are the ones most people fill in:
 | [confluence](plugins/confluence) | `CONFLUENCE_NAME`, `CONFLUENCE_BASE_URL`, `CONFLUENCE_TOKEN`; the `_2` versions for a second instance; `CONFLUENCE_ALLOW_WRITE` (page writing), `CONFLUENCE_KB_AUTOSAVE`, `CONFLUENCE_BODY_FORMAT` | `CONFLUENCE_BASE_URL`, `CONFLUENCE_TOKEN` |
 | [jira](plugins/jira) | `JIRA_BASE_URL`, `JIRA_PROJECTS`, `JIRA_TOKEN`, `JIRA_ALLOW_WRITE` (issue writing) | `JIRA_BASE_URL`, `JIRA_TOKEN` |
 | [knowledge-base](plugins/knowledge-base) | `KB_EMBED_URL`, `KB_EMBED_MODEL`, `KB_EMBED_API_KEY` | |
-| [excel](plugins/excel) | `EXCEL_ALLOW_WRITE` (workbook writing, needs `pywin32`) | |
-| [powerpoint](plugins/powerpoint), [pdf-to-md](plugins/pdf-to-md) | *(none)* | |
+| [excel](plugins/excel), [powerpoint](plugins/powerpoint), [pdf-to-md](plugins/pdf-to-md) | *(none)* | |
 
 Tokens and API keys go in here too. That keeps them in a plain-text file on
 `H:`, which is backed up - fine if the people who run the backups can already

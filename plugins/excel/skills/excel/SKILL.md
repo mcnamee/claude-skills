@@ -1,14 +1,12 @@
 ---
 name: excel
-description: Read and analyse Excel workbooks via the excel MCP server (.xlsx/.xlsm) - any sheet/tab, Excel Tables by name, and pivot tables - and, when writing is switched on, write cells into a tab, add or update Table rows, and create real PivotTables. Use when the user asks what's in a spreadsheet, wants data read, searched, filtered or summarised from Excel files, asks about a named Table or a pivot table, or asks to update a spreadsheet, add rows, or build a pivot table.
+description: Read and analyse Excel workbooks via the excel MCP server (.xlsx/.xlsm) - any sheet/tab, Excel Tables by name, and pivot tables - and write cells into a tab, add or update Table rows, and create real PivotTables. Use when the user asks what's in a spreadsheet, wants data read, searched, filtered or summarised from Excel files, asks about a named Table or a pivot table, or asks to update a spreadsheet, add rows, or build a pivot table.
 ---
 
 # Excel (via the `excel` MCP server)
 
 Requires the `excel.py` MCP server. Reading parses .xlsx directly (no Excel
-needed); the write tools exist only when the endpoint sets
-`EXCEL_ALLOW_WRITE=true`, and they drive the installed Excel (Windows,
-pywin32). If its tools are not available, tell the user to wire it in first
+needed); the write tools drive the installed Excel (Windows, pywin32). If its tools are not available, tell the user to wire it in first
 (see the repo README) and to verify with `python excel.py --check`.
 
 ## Tools
@@ -25,16 +23,14 @@ pywin32). If its tools are not available, tell the user to wire it in first
 | `excel_read_table` | A Table by name: columns, a filter, paging |
 | `excel_list_pivot_tables` | Every pivot table's layout |
 | `excel_read_pivot_table` | One pivot's layout plus the figures it shows |
-| `excel_write_cells` | Write values/formulas into a tab *(writing on)* |
-| `excel_add_table_rows` | Append rows to a Table *(writing on)* |
-| `excel_update_table_rows` | Change the Table row(s) matching a value *(writing on)* |
-| `excel_create_pivot_table` | Build a real PivotTable *(writing on)* |
+| `excel_write_cells` | Write values/formulas into a tab |
+| `excel_add_table_rows` | Append rows to a Table |
+| `excel_update_table_rows` | Change the Table row(s) matching a value |
+| `excel_create_pivot_table` | Build a real PivotTable |
 
-The last four are only in the tool list when writing is switched on. If the
-user asks for a change and they are missing, say that workbook writing is off
-on this endpoint and that `EXCEL_ALLOW_WRITE=true` (in Claude Code's settings
-`env` block, then a restart) turns it on - plus `pip install pywin32`. Do not
-work around it.
+If a write tool reports that pywin32 or Excel is missing, pass that on (the
+fix is `pip install pywin32` into the plugin's Python, on a Windows machine
+with desktop Excel). Do not work around it.
 
 ## Workflow
 
@@ -59,7 +55,7 @@ A file from Confluence: `confluence_download_attachment` puts a spreadsheet in
 this plugin's folder and reports its name - pass that name straight to these
 tools.
 
-## Changing a workbook (only when the write tools are present)
+## Changing a workbook
 
 1. **Only change what the user asked for.** Never write as a side effect of
    reading.
@@ -88,9 +84,7 @@ tools.
 
 ## Notes
 
-- Without `EXCEL_ALLOW_WRITE=true` it cannot write cells, create files or run
-  macros — never promise to update a spreadsheet then. Macros never run, even
-  when writing.
+- Macros never run, even when writing.
 - Reads are capped (rows/columns/search hits) to protect the context
   window; page through large ranges (or `offset` on a Table) rather than
   requesting everything.

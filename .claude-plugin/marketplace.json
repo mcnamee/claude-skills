@@ -34,7 +34,7 @@
     {
       "name": "excel",
       "source": "./plugins/excel",
-      "description": "Read and analyse Excel workbooks - sheets, Tables by name and pivot tables - by parsing .xlsx directly. When switched on, writes cells and Table rows and creates real PivotTables through the installed Excel (Windows, pywin32).",
+      "description": "Read and analyse Excel workbooks - sheets, Tables by name and pivot tables - by parsing .xlsx directly. Also writes cells and Table rows and creates real PivotTables through the installed Excel (Windows, pywin32).",
       "version": "6.1.0",
       "keywords": [
         "excel",

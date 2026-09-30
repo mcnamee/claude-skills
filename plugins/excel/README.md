@@ -2,8 +2,8 @@
 
 Read and analyse Excel workbooks — any sheet (tab), any **Table by name**, and
 **pivot tables** — by parsing `.xlsx` directly as a zip of XML, so reading
-needs neither Excel nor any pip package. Switch writing on and it can also
-**change** workbooks — write cells into a tab, add and update Table rows, and
+needs neither Excel nor any pip package. It can also **change** workbooks, like
+the `word` and `powerpoint` plugins do their documents — write cells into a tab, add and update Table rows, and
 build a real **PivotTable** — by driving the Excel installed on the endpoint.
 
 | | |
@@ -11,11 +11,11 @@ build a real **PivotTable** — by driving the Excel installed on the endpoint.
 | **Server** | `excel.py` v6.1.0 |
 | **pip install** | _none_ to read; `pywin32` to write |
 | **Platform** | any to read; Windows with desktop Excel to write |
-| **Writes to disk** | no — unless `EXCEL_ALLOW_WRITE=true`, and then only workbooks in its folder |
+| **Writes to disk** | only workbooks in its folder, when you ask for a change |
 
 ## What it can do
 
-| | Read | Write *(`EXCEL_ALLOW_WRITE=true`)* |
+| | Read | Write *(Windows + Excel + `pywin32`)* |
 |---|---|---|
 | **A sheet (tab)** | `excel_read_range`, `excel_get_headers`, `excel_search`, `excel_column_stats` — all take `sheet` | `excel_write_cells` — a block of values or formulas from any cell; `create_sheet` adds the tab |
 | **A Table by name** | `excel_list_tables`, `excel_read_table` — by name wherever it sits, with column pick, a filter and paging | `excel_add_table_rows`, `excel_update_table_rows` (find the row by a column value, set others) |
@@ -37,9 +37,9 @@ all - so it's a good one to install first if you're confirming the flow works.
 
 ## Writing
 
-**Off unless `EXCEL_ALLOW_WRITE=true`** — then the four write tools appear; until
-then they are not offered at all. Writing needs **Windows, desktop Excel and
-`pywin32`** in the same Python:
+The four write tools are always offered, as `word`'s and `powerpoint`'s are.
+They need **Windows, desktop Excel and `pywin32`** in the same Python; without
+them they say what to install, and every read tool still works:
 
 ```powershell
 & "C:\path\to\python.exe" -m pip install pywin32
@@ -67,8 +67,7 @@ calculated columns keep their formulas.
 
 > **Verify on the endpoint first.** The Excel automation follows Excel's
 > documented object model but cannot run in this repo's (Linux) test
-> environment. With writing on, `--check` starts and quits Excel to prove
-> automation works; then try `excel_create_pivot_table` with `save_as` on a
+> environment. `--check` starts and quits Excel to prove automation works; then try `excel_create_pivot_table` with `save_as` on a
 > copy before relying on it.
 
 ## Configuration
@@ -95,7 +94,7 @@ there are no folder prompts at install time and no folder command-line flags.
 that are already running, so quit and reopen your editor afterwards.
 
 Of the four, this server uses two: `EVA_PYTHON` and `EVA_DOCUMENTS_DIR`. It
-reads no templates, and writes nothing unless writing is switched on.
+reads no templates, and writes only when you ask for a change.
 
 ### The folders this plugin uses
 
@@ -123,7 +122,6 @@ only when an endpoint's layout really differs.
 | Variable | Purpose |
 |---|---|
 | `EXCEL_DOCS_DIR` | Full path to the workbook folder, instead of `%EVA_DOCUMENTS_DIR%\excel` |
-| `EXCEL_ALLOW_WRITE=true` | Offer the write tools — see [Writing](#writing). Default off: read-only |
 
 ### Command-line flags
 
@@ -132,7 +130,7 @@ flags are actions:
 
 | Flag | Purpose |
 |---|---|
-| `--check` | Print environment/config diagnostics and exit (no server). It reports which variable the folder came from, whether writing is on and, if it is, whether Excel can be started |
+| `--check` | Print environment/config diagnostics and exit (no server). It reports which variable the folder came from, and whether Excel can be started for the write tools |
 | `--list` | List readable workbooks in the folder and exit (no server) |
 | `--version` | Print version and exit |
 
@@ -150,9 +148,8 @@ stderr for audit.
 
 Reads only inside the workbook folder. Paths are resolved (symlinks included)
 before the containment check, so a symlink dropped inside the folder cannot
-reach files outside it. Nothing is written unless `EXCEL_ALLOW_WRITE=true`; then
-only a workbook in that folder is changed, and `save_as` is confined to the
-same folder (it never replaces an existing file unless `overwrite=true`).
+reach files outside it. Only a workbook in that folder is ever changed, and
+`save_as` is confined to the same folder (it never replaces an existing file unless `overwrite=true`).
 
 ## Usage examples
 
@@ -165,10 +162,10 @@ same folder (it never replaces an existing file unless `overwrite=true`).
 7. "What Tables are in the budget workbook?" → `excel_list_tables`
 8. "Show me the rows of tblProjects where Status is Red." → `excel_read_table` with `filter_column` / `filter_value`
 9. "What does the pivot on the Summary tab say?" → `excel_read_pivot_table`
-10. "Put these three totals into B2:B4 on the Summary tab." → `excel_write_cells` *(writing on)*
-11. "Add a row to tblProjects for the new CRM project, owner Jane, status Green." → `excel_add_table_rows` *(writing on)*
-12. "Set the status of project P-17 to Amber." → `excel_update_table_rows` with `match` / `set` *(writing on)*
-13. "Make a pivot of tblSales: regions down the side, products across, total Amount." → `excel_create_pivot_table` *(writing on)*
+10. "Put these three totals into B2:B4 on the Summary tab." → `excel_write_cells`
+11. "Add a row to tblProjects for the new CRM project, owner Jane, status Green." → `excel_add_table_rows`
+12. "Set the status of project P-17 to Amber." → `excel_update_table_rows` with `match` / `set`
+13. "Make a pivot of tblSales: regions down the side, products across, total Amount." → `excel_create_pivot_table`
 14. "Grab the budget spreadsheet off the FY26 Confluence page and pivot it by cost centre." → `confluence_download_attachment`, then `excel_list_tables` and `excel_create_pivot_table` on the downloaded file
 
 ## Troubleshooting
