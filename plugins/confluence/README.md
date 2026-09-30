@@ -8,7 +8,7 @@ add to pages.
 
 | | |
 |---|---|
-| **Server** | `confluence.py` v7.1.0 |
+| **Server** | `confluence.py` v7.2.0 |
 | **pip install** | _none_ — standard library only (HTTP via stdlib `urllib`) |
 | **Platform** | any |
 | **Writes to disk** | only when you ask: a saved page (Markdown, `H:\Eva\knowledge\confluence`) or a downloaded attachment (`H:\Eva\documents\<type>`) |
@@ -154,6 +154,7 @@ not offered at all, and the server sends nothing but GET requests. With it on:
 | Tool | Does |
 |---|---|
 | `confluence_create_page` | A new page in a space, optionally under a parent (`parent_id` or `parent_title`) |
+| `confluence_update_table` | Changes **cells of one table in place** — finds rows by a column value and sets other columns, and/or adds rows — so the table keeps its widths, colours and merged cells, and any macro it sits in (table filter, column, section, expand) is untouched. See [Tables](#tables) |
 | `confluence_update_section` | Changes **one section** — found by its heading text, or a panel/expand title — and sends the rest of the page back byte-for-byte. `mode`: `replace` (default), `append` or `prepend`. The right tool for "update the Director's notes on page 1234" |
 | `confluence_append_to_page` | Adds content to the **end** (or `position: "start"`) of a page, keeping everything already on it byte-for-byte — macros, layouts and all. The safe way to add minutes, actions or a new section |
 | `confluence_update_page` | **Replaces** a page's whole body and/or its title. Anything left out of the new body — including macros such as a task report — is gone from the page (Confluence keeps the old version in the page history). For a full rewrite only |
@@ -189,6 +190,59 @@ meantime, Confluence refuses the write (HTTP 409); `confluence_update_page`
 also takes `expected_version`, the version you read, and refuses before sending
 anything if the page has moved on. Confluence's own permissions still decide
 which spaces the account can edit.
+
+## Tables
+
+A table is often wrapped in a macro — a **table filter**, a **column** or
+**section** layout, an **expand** — and replacing the section around it would
+either delete that macro or rebuild the table from Markdown, losing its
+formatting. So tables have their own pair of tools:
+
+- **`confluence_list_tables`** (always available) lists every table stored on a
+  page, whatever it is nested in: its **number**, the **heading** above it, the
+  **macros around it**, its **column names** and its rows. Merged cells show as
+  `^`; a cell holding a macro (a status lozenge, a nested table) is marked
+  `[macro]`. Pass `table` to see one table with up to 200 rows.
+- **`confluence_update_table`** (writing on) edits one table **in place**. Only
+  the text inside the cells you name changes; every tag of the table and every
+  macro around it goes back exactly as it was. A cell's own formatting stays
+  too: `<strong>100</strong>` in a red-highlighted cell becomes
+  `<strong>120</strong>` in the same red cell.
+
+```json
+{
+  "page_id": "1234",
+  "table": "Budget",
+  "updates": [
+    {"match": {"Item": "Travel"}, "set": {"Q3": 120, "Q4": 95}},
+    {"match": {"Item": "Hotels"}, "set": {"Q3": "1,250"}}
+  ],
+  "add_rows": [{"Item": "Training", "Q3": 40, "Q4": 40}]
+}
+```
+
+- **Picking the table:** `table` is its number (from `confluence_list_tables`)
+  or the heading above it; leave it out when the page has one table. A table
+  nested in another's cell never wins a heading match over the outer table.
+- **Columns** are named by the header row. A two-row header — **FY26** spanning
+  **Q3** and **Q4** — gives `FY26 Q3` / `FY26 Q4`, and `Q3` alone works when
+  only one column has it. A 1-based column number works too.
+- **Rows** are found by `match` (every column given must match). Text matching
+  ignores case and spacing; numbers compare as numbers, so `1250` matches
+  `1,250`. More than one matching row is refused unless that update sets
+  `"all_matches": true`.
+- **All or nothing.** Every change is checked before any is made. An unknown
+  column, a row that matches nothing, an ambiguous match, a merged cell (it
+  would change two rows), or a cell holding a macro (unless
+  `allow_macro_removal: true`) stops the call, and the page is not saved.
+- **New rows** go at the bottom and copy the last row's cells, so they pick up
+  its formatting; a macro in that row is not copied. If the last row has merged
+  cells, a plain row is added instead.
+- Values may use inline Markdown (`**bold**`, `[link](url)`); `expected_version`
+  refuses the save if the page changed since you read it.
+- **Not editable:** a table that Confluence builds when the page is displayed —
+  Jira issues, a page properties report, a CSV macro. It has no stored cells;
+  `confluence_list_tables` names such macros so this is visible.
 
 ## Saving to the knowledge base
 
@@ -379,6 +433,7 @@ Markdown). An existing file is never replaced unless the call says
 15. "Add today's actions to the bottom of the project page." → `confluence_append_to_page`, with the actions as `- [ ]` tasks *(writing on)*
 16. "Rewrite the onboarding page with this new text." → `confluence_get_page`, then `confluence_update_page` with `expected_version` *(writing on)*
 17. "Update the Director's notes on page 1234 with this." → `confluence_update_section` with `section: "Director's notes"` — the task report and Jira tables elsewhere on the page are untouched *(writing on)*
+18. "Update the Q3 figures in the Budget table on page 1234: Travel 120, Hotels 1,250." → `confluence_list_tables`, then `confluence_update_table` — works even though the table sits inside a Table Filter macro *(writing on)*
 
 ## Troubleshooting
 

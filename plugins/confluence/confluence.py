@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-confluence.py (v7.1.0) - A single-file MCP (Model Context Protocol) server
+confluence.py (v7.2.0) - A single-file MCP (Model Context Protocol) server
 for querying - and, when switched on, writing to - ONE OR TWO Confluence Data
 Center instances (tested against the 9.x v1 REST API) using only the Python 3
 standard library.
@@ -15,6 +15,9 @@ Tools exposed (read / query):
   - confluence_get_page         : fetch one page by numeric ID (with body text)
   - confluence_get_page_by_title: fetch one page by exact title + space key
   - confluence_list_pages_under : list pages beneath a parent page
+  - confluence_list_tables      : the tables stored on a page - including ones
+                                  inside table filter, column or section
+                                  macros - with their columns and rows
   - confluence_list_attachments : the files attached to a page
   - confluence_download_attachment
                                 : save one attachment into the local folder
@@ -22,6 +25,10 @@ Tools exposed (read / query):
 
 Tools exposed ONLY when CONFLUENCE_ALLOW_WRITE=true (see WRITING PAGES):
   - confluence_create_page      : create a page (optionally under a parent)
+  - confluence_update_table     : change cells of one table IN PLACE (match a
+                                  row by a column value, set other columns),
+                                  and/or add rows, keeping its formatting and
+                                  every macro around it
   - confluence_update_section   : replace (or add to) ONE section - the
                                   content under a heading, or inside a titled
                                   panel/expand - leaving the rest untouched
@@ -44,7 +51,19 @@ page), nested lists, tables, block quotes and rules, plus
 content_format="storage" passes raw storage-format XHTML through instead, for
 a macro Markdown cannot express.
 
-Three ways to change an existing page, from safest to bluntest:
+Four ways to change an existing page, from safest to bluntest:
+  - confluence_update_table changes the TEXT inside the named cells of one
+    table and nothing else, so a table inside a table filter, column,
+    section or expand macro keeps the macro, and the table keeps its widths,
+    colours and merged cells. Columns are named by the header row; a two-row
+    header ("FY26" over "Q3" and "Q4") gives "FY26 Q3", and "Q3" alone works
+    when unambiguous. Rows are found by a column's value (numbers compare as
+    numbers, so "1,200" matches 1200). Every change is validated before any is
+    made: an ambiguous row, an unknown column, a merged cell or a cell holding
+    a macro stops the whole call and nothing is saved. New rows copy the last
+    row's cells, and so its formatting. A table Confluence builds at display
+    time (Jira issues, a page properties report, a CSV macro) has no stored
+    cells and cannot be edited this way.
   - confluence_update_section finds ONE part of the page by its heading text
     (everything under it, sub-headings included, up to the next heading of the
     same or a higher level, or the end of its layout column) or by a panel's
@@ -308,7 +327,7 @@ config (every setting, tokens included, goes in the environment):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "7.1.0"
+__version__ = "7.2.0"
 
 import argparse
 import base64
@@ -1731,6 +1750,303 @@ def find_section(raw, wanted):
     return matches[0]
 
 
+# ---------------------------------------------------------------------------
+# Table editing: change cells in place, wherever the table sits
+# ---------------------------------------------------------------------------
+# A table is often wrapped in a macro - a table filter, a column or section
+# layout, an expand - and replacing the section around it would either delete
+# that macro or rebuild the table from Markdown, losing its widths, colours and
+# merged cells. confluence_update_table instead rewrites the TEXT inside the
+# cells it is asked to change and nothing else: every tag of the table, and
+# every macro around it, is sent back as it was.
+#
+# Rows and columns are mapped onto a grid that honours colspan and rowspan, so
+# "the Q3 column" still means the right cell in a table with merged headers.
+# The first row is the header row; columns are named by its text.
+
+# Inline wrappers peeled off a cell before its text is replaced, so a figure
+# that was bold, coloured or in a paragraph stays that way.
+_CELL_WRAPPERS = ("p", "strong", "b", "em", "i", "u", "span", "code", "sub", "sup", "s")
+# Markup inside a cell that a text replacement would destroy.
+_CELL_RICH_RE = re.compile(r"<(ac:structured-macro|ac:macro|ac:task-list|ac:image|ac:link|"
+                           r"table|ul|ol|ri:)", re.I)
+
+
+def _plain(fragment):
+    """Visible text of a storage fragment, whitespace collapsed."""
+    return " ".join(html.unescape(_TAG_RE.sub(" ", fragment or "")).split())
+
+
+def _numeric(text):
+    """A cell or match value as a number, if it reads as one ('$1,200' -> 1200)."""
+    cleaned = str(text).strip().replace(",", "").replace("$", "").replace("%", "")
+    try:
+        return float(cleaned)
+    except ValueError:
+        return None
+
+
+def _cell_equal(cell_text, wanted):
+    """Loose equality for matching a row: numbers as numbers, else text."""
+    a, b = _numeric(cell_text), _numeric(wanted)
+    if a is not None and b is not None:
+        return a == b
+    return _norm_label(cell_text) == _norm_label(str(wanted))
+
+
+def storage_tables(raw):
+    """
+    Every table stored in a page body, in page order. Each is a dict:
+      number    1-based position on the page
+      start/end offsets of the <table> element
+      heading   the nearest heading above it ('' if none)
+      wrappers  names of the macros it sits inside, outermost first
+      rows      the table's own rows (not a nested table's), each a dict
+                {start, end, cells}, a cell being {tag, start, end, text,
+                rich, colspan, rowspan, row}
+      grid      rows x columns of cell references (None for a gap), with a
+                spanning cell repeated in every position it covers
+    """
+    masked = _mask_cdata(raw)
+    elements = _index_storage(raw)
+    children = [[] for _ in elements]
+    for index, el in enumerate(elements):
+        if el["parent"] is not None:
+            children[el["parent"]].append(index)
+
+    def own_rows(table_index):
+        """The table's own <tr>s, in order - never those of a nested table."""
+        found, todo = [], list(children[table_index])
+        while todo:
+            index = todo.pop(0)
+            tag = elements[index]["tag"]
+            if tag == "tr":
+                found.append(index)
+            elif tag != "table":
+                todo[0:0] = children[index]    # depth-first, keeps page order
+        return found
+
+    def span(cell_el, name):
+        try:
+            return max(1, int(cell_el["attrs"].get(name) or 1))
+        except ValueError:
+            return 1
+
+    tables = []
+    heading_text = ""
+    for index, el in enumerate(elements):
+        if el["tag"] in _HEADING_TAGS:
+            heading_text = _plain(masked[el["inner_start"]:el["inner_end"]])
+            continue
+        if el["tag"] != "table":
+            continue
+        wrappers = []
+        parent = el["parent"]
+        while parent is not None:
+            if elements[parent]["tag"] in ("ac:structured-macro", "ac:macro"):
+                wrappers.append(elements[parent]["attrs"].get("ac:name", "?"))
+            elif elements[parent]["tag"] == "table":
+                outer = next((t["number"] for t in tables
+                              if t["start"] == elements[parent]["start"]), "?")
+                wrappers.append("a cell of table {}".format(outer))
+            parent = elements[parent]["parent"]
+        rows = []
+        for r_index in own_rows(index):
+            row_el = elements[r_index]
+            cells = []
+            for c_index in children[r_index]:
+                cell_el = elements[c_index]
+                if cell_el["tag"] not in ("td", "th"):
+                    continue
+                inner = masked[cell_el["inner_start"]:cell_el["inner_end"]]
+                cells.append({
+                    "tag": cell_el["tag"],
+                    "start": cell_el["inner_start"], "end": cell_el["inner_end"],
+                    "text": _plain(inner),
+                    "rich": bool(_CELL_RICH_RE.search(inner)),
+                    "colspan": span(cell_el, "colspan"),
+                    "rowspan": span(cell_el, "rowspan"),
+                    "row": len(rows),
+                })
+            rows.append({"start": row_el["start"], "end": row_el["end"], "cells": cells})
+
+        # Lay the cells onto a grid, honouring colspan/rowspan.
+        grid = []
+        for r, row in enumerate(rows):
+            while len(grid) <= r:
+                grid.append([])
+            col = 0
+            for cell in row["cells"]:
+                while col < len(grid[r]) and grid[r][col] is not None:
+                    col += 1
+                for dr in range(cell["rowspan"]):
+                    while len(grid) <= r + dr:
+                        grid.append([])
+                    line = grid[r + dr]
+                    while len(line) < col + cell["colspan"]:
+                        line.append(None)
+                    for dc in range(cell["colspan"]):
+                        line[col + dc] = cell
+                col += cell["colspan"]
+        grid = grid[:len(rows)]
+        width = max([len(line) for line in grid] or [0])
+        grid = [line + [None] * (width - len(line)) for line in grid]
+
+        # Header rows: the leading rows made only of <th> cells (at least the
+        # first row, which is the header even in a table styled without <th>).
+        # A two-row header - "FY26" spanning "Q3" and "Q4" - names its columns
+        # "FY26 Q3" and "FY26 Q4", and either part can be used on its own.
+        header_rows = 1
+        while (header_rows < len(grid) and grid[header_rows]
+               and all(cell is None or cell["tag"] == "th" for cell in grid[header_rows])
+               and any(cell is not None for cell in grid[header_rows])):
+            header_rows += 1
+        if len(grid) <= 1:
+            header_rows = len(grid)
+        columns = []
+        for col in range(width):
+            parts = []
+            for r in range(header_rows):
+                cell = grid[r][col]
+                if cell is not None and cell["text"] and cell["text"] not in parts:
+                    parts.append(cell["text"])
+            columns.append({"name": " ".join(parts), "parts": parts})
+        tables.append({
+            "number": len(tables) + 1, "start": el["start"], "end": el["end"],
+            "heading": heading_text, "wrappers": list(reversed(wrappers)),
+            "rows": rows, "grid": grid, "width": width,
+            "header_rows": header_rows, "columns": columns,
+        })
+    return tables
+
+
+def table_headers(table):
+    """Column names (header rows combined, e.g. 'FY26 Q3')."""
+    return [col["name"] for col in table.get("columns") or []]
+
+
+def find_table(tables, wanted):
+    """
+    A table by number, by the heading it sits under, or - when the page has
+    only one - by omission. Raises ConfluenceError listing the tables.
+    """
+    def listing():
+        return "; ".join(
+            "{} (under {!r}{}; columns: {})".format(
+                t["number"], t["heading"] or "no heading",
+                ", inside " + " > ".join(t["wrappers"]) if t["wrappers"] else "",
+                ", ".join(h for h in table_headers(t) if h) or "?")
+            for t in tables) or "none"
+    if not tables:
+        raise ConfluenceError(
+            "This page has no stored tables. (A table produced by a macro at "
+            "display time - Jira issues, a page properties report, a CSV macro - "
+            "has no cells in the page to edit.)")
+    text = str(wanted or "").strip()
+    if not text:
+        if len(tables) == 1:
+            return tables[0]
+        raise ConfluenceError("This page has {} tables - say which with 'table' "
+                              "(its number or the heading above it): {}."
+                              .format(len(tables), listing()))
+    if text.isdigit():
+        number = int(text)
+        if 1 <= number <= len(tables):
+            return tables[number - 1]
+        raise ConfluenceError("There is no table {}. Tables: {}.".format(number, listing()))
+    want = _norm_label(text)
+    exact = [t for t in tables if _norm_label(t["heading"]) == want]
+    matches = exact or [t for t in tables if want and want in _norm_label(t["heading"])]
+    # A table nested in another table's cell shares its heading; the heading
+    # means the outer one unless the nested table is the only match.
+    outer = [t for t in matches
+             if not any(w.startswith("a cell of table") for w in t["wrappers"])]
+    if outer:
+        matches = outer
+    if len(matches) == 1:
+        return matches[0]
+    if not matches:
+        raise ConfluenceError("No table sits under a heading matching {!r}. Tables: {}."
+                              .format(text, listing()))
+    raise ConfluenceError("{} tables sit under {!r} - use the table number: {}."
+                          .format(len(matches), text, listing()))
+
+
+def _column_index(table, column):
+    """
+    A column by its full header name ('FY26 Q3'), by one unambiguous part of
+    a multi-row header ('Q3'), or by 1-based number.
+    """
+    columns = table["columns"]
+    text = str(column).strip()
+    if text.isdigit() and 1 <= int(text) <= len(columns):
+        return int(text) - 1
+    want = _norm_label(text)
+    full = [i for i, col in enumerate(columns) if _norm_label(col["name"]) == want]
+    if len(full) == 1:
+        return full[0]
+    part = [i for i, col in enumerate(columns)
+            if any(_norm_label(p) == want for p in col["parts"])]
+    if len(part) == 1:
+        return part[0]
+    names = ", ".join("{} {!r}".format(i + 1, col["name"]) for i, col in enumerate(columns))
+    if len(full) > 1 or len(part) > 1:
+        raise ConfluenceError("Column {!r} is ambiguous - use the full name or its "
+                              "number. Columns: {}.".format(column, names))
+    raise ConfluenceError("No column {!r}. Columns: {}.".format(column, names))
+
+
+def _replace_cell_text(inner, new_markup):
+    """
+    New content for a cell, keeping the single wrappers around its text: a
+    cell holding <p><strong>100</strong></p> becomes <p><strong>120</strong></p>.
+    """
+    prefix, suffix, core = "", "", inner
+    while True:
+        m = re.match(r"^(\s*<({})(\s[^>]*)?>)(.*)(</\2>\s*)$".format(
+            "|".join(_CELL_WRAPPERS)), core, re.S | re.I)
+        if not m or re.search(r"</?{}[\s>]".format(m.group(2)), m.group(4), re.I):
+            break
+        prefix, suffix, core = prefix + m.group(1), m.group(5) + suffix, m.group(4)
+    if not prefix:
+        # A bare cell: Confluence's own editor puts cell text in a paragraph.
+        return "<p>{}</p>".format(new_markup) if new_markup else ""
+    return prefix + new_markup + suffix
+
+
+def render_tables(tables, only=None, max_rows=50):
+    """Tables as text: where each sits, its columns, and its rows."""
+    out = []
+    for t in tables:
+        if only is not None and t is not only:
+            continue
+        head = "Table {} - under {!r}".format(t["number"], t["heading"] or "no heading")
+        if t["wrappers"]:
+            head += ", inside " + " > ".join(t["wrappers"])
+        head += " - {} row(s) x {} column(s)".format(len(t["rows"]), t["width"])
+        out.append(head)
+        out.append("Columns: " + " | ".join(
+            "{} {}".format(i + 1, col["name"] or "(blank)") for i, col in enumerate(t["columns"])))
+        shown = t["grid"][:max_rows + t["header_rows"]]
+        for r, line in enumerate(shown):
+            cells = []
+            for cell in line:
+                if cell is None:
+                    cells.append("")
+                elif cell["row"] != r:
+                    cells.append("^")          # covered by a cell spanning from above
+                else:
+                    cells.append(cell["text"] + (" [macro]" if cell["rich"] else ""))
+            out.append("| " + " | ".join(c.replace("|", "\\|") for c in cells) + " |")
+            if r == t["header_rows"] - 1:
+                out.append("|" + " --- |" * len(cells))
+        if len(t["grid"]) > len(shown):
+            out.append("[{} more row(s); read this table alone with 'table': {}.]".format(
+                len(t["grid"]) - len(shown), t["number"]))
+        out.append("")
+    return "\n".join(out).rstrip()
+
+
 # Attachment types the download tool will fetch, by extension, and the plugin
 # folder each lands in so the plugin that opens that type can find it. The
 # documents library is organised by FILE TYPE, not by where a file came from,
@@ -2460,9 +2776,11 @@ class ConfluenceClient:
             if doomed:
                 raise ConfluenceError(
                     "The {!r} section contains macro(s) that replacing it would "
-                    "delete: {}. Nothing was changed. Use mode='append' to add "
-                    "to the section instead, or pass allow_macro_removal=true "
-                    "once the user has agreed to lose them.".format(
+                    "delete: {}. Nothing was changed. To change figures in a "
+                    "table there, use confluence_update_table (it edits cells "
+                    "in place and keeps the macro); to add text, "
+                    "mode='append'; or pass allow_macro_removal=true once the "
+                    "user has agreed to lose them.".format(
                         found["display"], ", ".join(doomed)))
 
         addition = self._to_storage(body, content_format,
@@ -2486,6 +2804,186 @@ class ConfluenceClient:
                 found["kind"] if found["level"] is None
                 else "heading h{}".format(found["level"])), saved)
             + "\nThe rest of the page was left exactly as it was.")
+
+    # -- tables ------------------------------------------------------------
+    def list_tables(self, page_id=None, title=None, space=None, table=None):
+        target = self._target_page_id(page_id, title, space)
+        page = self._fetch_for_edit(target)
+        existing = ((page.get("body") or {}).get("storage") or {}).get("value") or ""
+        tables = storage_tables(existing)
+        head = "Page {} ({!r}){} has {} stored table(s).".format(
+            target, page.get("title", "?"), self._on_server(), len(tables))
+        generated = sorted(
+            name for name in storage_macro_names(existing)
+            if name in ("jira", "jiraissues", "detailssummary", "csv", "table-excerpt-include",
+                        "tasks-report-macro", "contentbylabel", "children"))
+        note = ""
+        if generated:
+            note = ("\nAlso on the page, built by Confluence when displayed and so "
+                    "NOT editable here: {}.".format(", ".join(generated)))
+        if not tables:
+            return head + note
+        if table is not None and str(table).strip():
+            chosen = find_table(tables, table)
+            body = render_tables(tables, only=chosen, max_rows=200)
+        else:
+            body = render_tables(tables)
+        return (head + note + "\n\n" + body + "\n\n'^' marks a cell merged "
+                "from the row above; '[macro]' a cell holding a macro or other rich "
+                "content, which confluence_update_table will not overwrite unless "
+                "allowed.")
+
+    @staticmethod
+    def _cell_markup(value):
+        """A tool's cell value as storage markup (inline Markdown allowed)."""
+        if value is None:
+            return ""
+        if isinstance(value, bool):
+            value = "Yes" if value else "No"
+        if isinstance(value, float) and value.is_integer():
+            value = int(value)
+        if isinstance(value, (dict, list)):
+            raise ConfluenceError("A cell value must be text or a number.")
+        return _inline_markdown(str(value).strip())
+
+    def update_table(self, page_id=None, title=None, space=None, table=None,
+                     updates=None, add_rows=None, allow_macro_removal=False,
+                     expected_version=None, version_message=None, minor_edit=False):
+        """
+        Change cells of one stored table in place, and/or add rows to it,
+        leaving every other byte of the page - including the macros the table
+        sits inside - as it was.
+        """
+        self._require_write()
+        updates = updates or []
+        add_rows = add_rows or []
+        if isinstance(updates, dict):
+            updates = [updates]
+        if isinstance(add_rows, dict):
+            add_rows = [add_rows]
+        if not isinstance(updates, list) or not isinstance(add_rows, list):
+            raise ConfluenceError("'updates' and 'add_rows' must be lists.")
+        if not updates and not add_rows:
+            raise ConfluenceError("Nothing to change: pass 'updates' and/or 'add_rows'.")
+
+        target = self._target_page_id(page_id, title, space)
+        page = self._fetch_for_edit(target)
+        current = (page.get("version") or {}).get("number")
+        if expected_version is not None and str(expected_version).strip():
+            if str(expected_version).strip() != str(current):
+                raise ConfluenceError(
+                    "Page {} is at version {}, not {} - it has changed since it "
+                    "was read, so nothing was updated.".format(target, current, expected_version))
+        existing = ((page.get("body") or {}).get("storage") or {}).get("value") or ""
+        chosen = find_table(storage_tables(existing), table)
+        grid, first_data = chosen["grid"], chosen["header_rows"]
+        label_col = 0
+
+        # Work out EVERY change before touching anything, so one bad column
+        # name in the fifth update cannot leave the first four half-applied.
+        edits = {}            # cell start offset -> (start, end, markup)
+        report = []
+        for n, update in enumerate(updates, 1):
+            if not isinstance(update, dict) or not isinstance(update.get("match"), dict) \
+                    or not isinstance(update.get("set"), dict) or not update["set"]:
+                raise ConfluenceError(
+                    "Update {} must be {{\"match\": {{column: value}}, \"set\": "
+                    "{{column: new value}}}}.".format(n))
+            match = [(_column_index(chosen, k), k, v) for k, v in update["match"].items()]
+            hits = [r for r in range(first_data, len(grid))
+                    if all(grid[r][ci] is not None and _cell_equal(grid[r][ci]["text"], v)
+                           for ci, _k, v in match)]
+            if not hits:
+                raise ConfluenceError(
+                    "Update {}: no row of table {} matches {}. Nothing was changed."
+                    .format(n, chosen["number"], json.dumps(update["match"], ensure_ascii=False)))
+            if len(hits) > 1 and not update.get("all_matches"):
+                raise ConfluenceError(
+                    "Update {}: {} rows match {}. Nothing was changed - narrow "
+                    "'match', or set \"all_matches\": true in that update."
+                    .format(n, len(hits), json.dumps(update["match"], ensure_ascii=False)))
+            for r in hits:
+                for key, value in update["set"].items():
+                    ci = _column_index(chosen, key)
+                    cell = grid[r][ci]
+                    if cell is None:
+                        raise ConfluenceError("Update {}: row {} has no cell in column {!r}."
+                                              .format(n, r + 1, key))
+                    if cell["row"] != r:
+                        raise ConfluenceError(
+                            "Update {}: the {!r} cell of that row is merged with the "
+                            "row above, so changing it would change both. Match the "
+                            "first row of the merged cell instead.".format(n, key))
+                    if cell["rich"] and not allow_macro_removal:
+                        raise ConfluenceError(
+                            "Update {}: the {!r} cell holds a macro or other rich "
+                            "content ({!r}) that would be replaced. Nothing was "
+                            "changed. Pass allow_macro_removal=true once the user "
+                            "agrees.".format(n, key, cell["text"]))
+                    markup = self._cell_markup(value)
+                    new_inner = _replace_cell_text(existing[cell["start"]:cell["end"]], markup)
+                    edits[cell["start"]] = (cell["start"], cell["end"], new_inner)
+                    row_label = grid[r][label_col]["text"] if grid[r][label_col] else "row {}".format(r + 1)
+                    report.append("{} / {}: {!r} -> {!r}".format(
+                        row_label, chosen["columns"][ci]["name"], cell["text"], _plain(markup)))
+
+        # New rows copy the last row's cells (and so its formatting); a last
+        # row with merged cells is no pattern to copy, so a plain row is built.
+        insert_at, new_rows = None, []
+        if add_rows:
+            if not chosen["rows"]:
+                raise ConfluenceError("Table {} has no rows to add after.".format(chosen["number"]))
+            last = chosen["rows"][-1]
+            plain = (len(chosen["rows"]) <= first_data
+                     or any(c["colspan"] > 1 or c["rowspan"] > 1 for c in last["cells"])
+                     or len(last["cells"]) != chosen["width"]
+                     or any(cell is None or cell["row"] != len(grid) - 1 for cell in grid[-1]))
+            for n, row in enumerate(add_rows, 1):
+                if isinstance(row, list):
+                    if len(row) > chosen["width"]:
+                        raise ConfluenceError("New row {} has {} values; the table has {} "
+                                              "columns.".format(n, len(row), chosen["width"]))
+                    values = {i: v for i, v in enumerate(row)}
+                elif isinstance(row, dict):
+                    values = {_column_index(chosen, k): v for k, v in row.items()}
+                else:
+                    raise ConfluenceError("New row {} must be an object or a list.".format(n))
+                if plain:
+                    cells = "".join("<td>{}</td>".format(
+                        _replace_cell_text("", self._cell_markup(values.get(i))))
+                        for i in range(chosen["width"]))
+                    new_rows.append("<tr>{}</tr>".format(cells))
+                else:
+                    pieces, cursor = [], last["start"]
+                    for i, cell in enumerate(last["cells"]):
+                        pieces.append(existing[cursor:cell["start"]])
+                        pieces.append(_replace_cell_text(
+                            existing[cell["start"]:cell["end"]] if not cell["rich"] else "",
+                            self._cell_markup(values.get(i))))
+                        cursor = cell["end"]
+                    pieces.append(existing[cursor:last["end"]])
+                    new_rows.append("".join(pieces))
+                report.append("new row: " + " | ".join(
+                    "{}={}".format(chosen["columns"][i]["name"] or i + 1, _plain(self._cell_markup(v)))
+                    for i, v in sorted(values.items())))
+            insert_at = last["end"]
+
+        storage = existing
+        if insert_at is not None:
+            storage = storage[:insert_at] + "".join(new_rows) + storage[insert_at:]
+        for start, end, markup in sorted(edits.values(), reverse=True):
+            storage = storage[:start] + markup + storage[end:]
+        saved = self._put_page(page, page.get("title"), storage,
+                               version_message, minor_edit)
+        log("updated table {} on page {} ({} change(s))".format(
+            chosen["number"], target, len(report)))
+        where = "table {} (under {!r}{})".format(
+            chosen["number"], chosen["heading"] or "no heading",
+            ", inside " + " > ".join(chosen["wrappers"]) if chosen["wrappers"] else "")
+        return (self._write_summary("Updated {} on".format(where), saved)
+                + "\nChanges:\n" + "\n".join("  - " + line for line in report)
+                + "\nEverything else on the page, including the table's own "
+                "formatting, was left as it was.")
 
     # -- attachments -------------------------------------------------------
     def _fetch_attachments(self, page_id):
@@ -2864,7 +3362,26 @@ def attachment_tool_definitions():
             ),
         },
     })
+    tables_props = page_ref_properties()
+    tables_props["table"] = {
+        "type": "string",
+        "description": "Optional: show just this table (its number, or the heading above it) with up to 200 rows.",
+    }
     return [
+        {
+            "name": "confluence_list_tables",
+            "description": (
+                "List the tables stored on a Confluence page - including ones "
+                "inside a table filter, column, section or expand macro - with "
+                "each table's number, the heading above it, the macros around "
+                "it, its column names (a two-row header gives names like "
+                "'FY26 Q3') and its rows. Read this before "
+                "confluence_update_table. Tables that Confluence builds at "
+                "display time (Jira issues, page properties reports) are named "
+                "but have no cells to edit."
+            ),
+            "inputSchema": {"type": "object", "properties": tables_props},
+        },
         {
             "name": "confluence_list_attachments",
             "description": (
@@ -2988,6 +3505,39 @@ def write_tool_definitions():
         "content_format": content_format_property(),
     })
     section_props.update(version_properties())
+    table_props = page_ref_properties()
+    table_props.update({
+        "table": {
+            "type": "string",
+            "description": "The table's number (from confluence_list_tables) or the heading above it.",
+        },
+        "updates": {
+            "type": "array",
+            "items": {"type": "object"},
+            "description": (
+                "Cell changes: each {\"match\": {column: value}, \"set\": "
+                "{column: new value}, \"all_matches\": optional true}. Columns "
+                "by header name (or one part of a two-row header, e.g. 'Q3') "
+                "or 1-based number; numbers match as numbers ('1,200' = 1200)."
+            ),
+        },
+        "add_rows": {
+            "type": "array",
+            "description": (
+                "Rows to add at the bottom: objects of column -> value, or "
+                "lists in column order. They copy the last row's formatting."
+            ),
+        },
+        "allow_macro_removal": {
+            "type": "boolean",
+            "description": "Only with the user's agreement: allow overwriting a cell that holds a macro (default false).",
+        },
+        "expected_version": {
+            "type": "integer",
+            "description": "The page version you read; nothing is saved if the page has moved on.",
+        },
+    })
+    table_props.update(version_properties())
     return [
         {
             "name": "confluence_create_page",
@@ -3040,6 +3590,27 @@ def write_tool_definitions():
                 "type": "object",
                 "properties": section_props,
                 "required": ["section", "body"],
+            },
+        },
+        {
+            "name": "confluence_update_table",
+            "description": (
+                "Change figures or text in a table on a Confluence page, in "
+                "place: only the text inside the cells named changes, so the "
+                "table's widths, colours and merged cells - and any macro it "
+                "sits in (table filter, column, section, expand) - are kept. "
+                "Pick the table by 'table' (number or the heading above it; "
+                "omit if the page has one). 'updates' finds rows by column "
+                "value and sets others: [{\"match\": {\"Item\": \"Travel\"}, "
+                "\"set\": {\"Q3\": 120}}]. 'add_rows' appends rows: "
+                "[{\"Item\": \"Hotels\", \"Q3\": 40}]. Every change is "
+                "checked before any is made; an ambiguous match, an unknown "
+                "column or a cell holding a macro stops the whole call. Run "
+                "confluence_list_tables first to see the column names."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": table_props,
             },
         },
         {
@@ -3354,6 +3925,23 @@ def call_tool(servers, name, arguments):
             version_message=arguments.get("version_message"),
             minor_edit=bool(arguments.get("minor_edit", False)),
             expected_version=arguments.get("expected_version"),
+        )
+
+    if name == "confluence_list_tables":
+        return client.list_tables(
+            arguments.get("page_id"), arguments.get("title"), arguments.get("space"),
+            table=arguments.get("table"))
+
+    if name == "confluence_update_table":
+        return client.update_table(
+            arguments.get("page_id"), arguments.get("title"), arguments.get("space"),
+            table=arguments.get("table"),
+            updates=arguments.get("updates"),
+            add_rows=arguments.get("add_rows"),
+            allow_macro_removal=bool(arguments.get("allow_macro_removal", False)),
+            expected_version=arguments.get("expected_version"),
+            version_message=arguments.get("version_message"),
+            minor_edit=bool(arguments.get("minor_edit", False)),
         )
 
     if name == "confluence_update_section":
