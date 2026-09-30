@@ -1,22 +1,42 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r"""
-excel.py (v6.0.0) -- Read-only Excel (.xlsx) MCP server.
+excel.py (v6.1.0) -- Excel (.xlsx) MCP server: reads directly, writes
+through Excel when switched on.
 
 PURPOSE
-    A single-file, standard-library-only MCP (Model Context Protocol) stdio
-    server that lets a local model query and ANALYSE Excel workbooks. It is
-    strictly READ-ONLY: it never writes, never opens Excel, and never touches
-    the network. It parses .xlsx directly (a .xlsx file is just a ZIP of XML),
-    so no third-party packages (openpyxl, pandas, pywin32) are required.
+    A single-file MCP (Model Context Protocol) stdio server that lets a local
+    model query and ANALYSE Excel workbooks, and - only when
+    EXCEL_ALLOW_WRITE=true - change them. READING is standard library only: it
+    parses .xlsx directly (a .xlsx file is just a ZIP of XML), never opens
+    Excel and never touches the network. WRITING drives the installed desktop
+    Excel through COM (pywin32), because Excel is the only thing that keeps a
+    workbook's formulas, Tables, charts and pivot caches consistent - and the
+    only thing that can build a real PivotTable.
 
-    Tools exposed:
-      * excel_list_workbooks   -- list .xlsx files in the configured folder
-      * excel_list_sheets      -- sheet names + declared dimensions for a workbook
-      * excel_get_headers      -- the first (header) row of a sheet
-      * excel_read_range       -- read cells from a sheet, optionally an A1 range
-      * excel_search           -- find cells whose value matches a query
-      * excel_column_stats     -- summary statistics for one column
+    Tools exposed (always):
+      * excel_list_workbooks    -- list .xlsx files in the configured folder
+      * excel_list_sheets       -- sheet names + declared dimensions, and the
+                                   Tables / pivot tables on each sheet
+      * excel_get_headers       -- the first (header) row of a sheet
+      * excel_read_range        -- read cells from a sheet, optionally an A1 range
+      * excel_search            -- find cells whose value matches a query
+      * excel_column_stats      -- summary statistics for one column
+      * excel_list_tables       -- every Table (Insert > Table / ListObject):
+                                   name, sheet, range, columns
+      * excel_read_table        -- a Table by NAME, as a Markdown table, with
+                                   column pick, a simple filter and paging
+      * excel_list_pivot_tables -- every pivot table's layout: source, row /
+                                   column / filter fields, value fields
+      * excel_read_pivot_table  -- one pivot's layout plus the figures it shows
+
+    Tools exposed ONLY when EXCEL_ALLOW_WRITE=true (see WRITING):
+      * excel_write_cells        -- write a block of values/formulas into a
+                                    sheet (tab), optionally adding the sheet
+      * excel_add_table_rows     -- append rows to a Table by name
+      * excel_update_table_rows  -- change the Table row(s) matching a value
+      * excel_create_pivot_table -- build a real PivotTable from a Table or a
+                                    range, on a new or existing sheet
 
     Design mirrors the other servers in this suite: stdout is reserved for
     JSON-RPC only, all diagnostics go to stderr, config lives in one fenced
@@ -43,7 +63,8 @@ SUPPORTED / NOT SUPPORTED
       leap-year bug; this affects almost no real enterprise data.
 
 REQUIREMENTS
-    * Python 3.8+ (standard library only). No pip install required.
+    * Python 3.8+ (standard library only) for everything but writing.
+    * Writing only: Windows, desktop Microsoft Excel, and pywin32.
 
 CONFIGURATION
     The workbook folder is REQUIRED. It is the "excel" sub-folder of
@@ -63,6 +84,38 @@ CONFIGURATION
     not searched (word.py does search recursively; this server does not). Keep
     workbooks directly in the folder, and use filename prefixes
     ("Finance - Budget FY26.xlsx") where you would otherwise want a sub-folder.
+
+TABLES AND PIVOT TABLES (reading)
+    A Table is read by its name wherever it sits, using the column names the
+    Table itself defines; a totals row is reported separately. A pivot table's
+    FIGURES are read from the cells Excel saved into the sheet, so they are as
+    of the pivot's last refresh-and-save - the reply says when that was, and a
+    pivot whose source has changed since is stale until refreshed in Excel.
+
+WRITING  (EXCEL_ALLOW_WRITE=true; Windows + desktop Excel + pywin32)
+    Off by default, and then the four write tools are not offered at all:
+    the server behaves exactly as the read-only v6.0.0 did. With it on, each
+    write call:
+      1. refuses up front if the workbook is open elsewhere (its ~$ lock file
+         exists, or the file is locked) - close it in Excel first;
+      2. starts a PRIVATE, invisible Excel (DispatchEx - your own Excel window
+         is never touched), with alerts, events and macros switched off;
+      3. opens the one workbook, checks every sheet / Table / column name
+         BEFORE changing anything, makes the change and lets Excel
+         recalculate;
+      4. saves - in place, or with 'save_as' as a NEW workbook in the same
+         folder, leaving the original untouched - and quits that Excel.
+    Any error closes the workbook WITHOUT saving, so a half-made change never
+    reaches the file. Only files inside the workbook folder can be written,
+    and 'save_as' is confined to it too.
+    pywin32 is imported only when a write tool runs, so reading still needs
+    nothing beyond the standard library:
+      & "C:\path\to\python.exe" -m pip install pywin32
+    UNTESTED ON THIS REPO'S CI: the COM calls follow Excel's documented object
+    model but can only run on a Windows endpoint with Excel. Run --check with
+    EXCEL_ALLOW_WRITE=true (it starts and quits Excel to prove automation
+    works), then try excel_create_pivot_table with 'save_as' on a copy
+    before relying on it.
 
 STANDALONE TESTING (before wiring the server in)
     1) Environment / config sanity check (prints interpreter + folder state):
@@ -101,8 +154,10 @@ CONFIGURATION  (environment variables, no folder flags)
     FOLDER MUST EXIST:
 
       %EVA_DOCUMENTS_DIR%\excel   REQUIRED. The .xlsx/.xlsm workbooks this
-                                  server may read - top level only. The server
-                                  refuses to start if it is missing.
+                                  server may read (and, with writing on,
+                                  change or save copies into) - top level
+                                  only. The server refuses to start if it is
+                                  missing.
 
     To set them permanently for your account (PowerShell, one-off):
 
@@ -113,9 +168,13 @@ CONFIGURATION  (environment variables, no folder flags)
     eva\README.md.
 
     EXCEL_DOCS_DIR overrides the workbook folder with a full path of its own,
-    for an endpoint whose layout differs. There are NO folder command-line
-    flags: configuration is environment variables only, so two settings can
-    never disagree about a path.
+    for an endpoint whose layout differs.
+
+    EXCEL_ALLOW_WRITE=true offers the write tools (see WRITING). Blank or
+    unset means read-only.
+
+    There are NO folder command-line flags: configuration is environment
+    variables only, so two settings can never disagree about a path.
 
 INSTALLING INTO CLAUDE CODE
     This server ships as the "excel" Claude Code plugin (its manifest is
@@ -142,11 +201,12 @@ PROTOCOL NOTE
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "6.0.0"
+__version__ = "6.1.0"
 
 import sys
 import os
 import io
+import re
 import json
 import difflib
 import argparse
@@ -162,7 +222,8 @@ from datetime import datetime, timedelta
 # its OWN sub-folder of each root, named after the plugin. This server uses one
 # root, and its sub-folder is "excel":
 #
-#   EVA_DOCUMENTS_DIR   -> %EVA_DOCUMENTS_DIR%\excel   workbooks, read-only
+#   EVA_DOCUMENTS_DIR   -> %EVA_DOCUMENTS_DIR%\excel   workbooks (written only
+#                                                  with EXCEL_ALLOW_WRITE=true)
 #
 # EVA_DOCUMENTS_DIR below is the fallback when the variable is not set, and
 # matches the Eva working tree: copy the repo's eva\ folder to H:\Eva and the
@@ -204,7 +265,7 @@ FUZZY_MIN_RATIO = 0.40
 FUZZY_AMBIGUITY_DELTA = 0.05
 
 # Server identity reported to the client.
-SERVER_NAME = "excel-readonly"
+SERVER_NAME = "excel-mcp"
 SERVER_VERSION = __version__
 PROTOCOL_VERSION = "2024-11-05"
 
@@ -345,7 +406,7 @@ class WorkbookError(Exception):
 
 class Workbook:
     """
-    Minimal read-only .xlsx reader. Loads shared strings, styles, and the
+    Minimal .xlsx reader (reading only - writes go through Excel, below). Loads shared strings, styles, and the
     sheet index up front; sheet data is parsed on demand.
     """
 
@@ -641,6 +702,293 @@ class Workbook:
             values = [cells.get(i) for i in range(width)]
             yield row_num, values
 
+    # -- relationships, Tables and pivot tables ------------------------------
+    #
+    # A Table (Insert > Table, a "ListObject" to VBA) and a pivot table are
+    # separate XML parts linked from their sheet by a relationship:
+    #
+    #   xl/worksheets/sheet1.xml
+    #     -> xl/worksheets/_rels/sheet1.xml.rels
+    #          -> ../tables/table1.xml            (the Table: name, range,
+    #                                              column names)
+    #          -> ../pivotTables/pivotTable1.xml  (the pivot: layout, fields)
+    #               -> ../pivotCache/pivotCacheDefinition1.xml
+    #                                             (source range, field names)
+    #
+    # The CELLS a pivot table shows are ordinary cells in the sheet (Excel
+    # saves the rendered pivot into the grid), so its values are read like any
+    # other range - as of the last time Excel refreshed and saved it.
+
+    def _relationships(self, part):
+        """
+        The relationships of a part: a list of (type_suffix, full_path). The
+        type is shortened to its last path segment ('table', 'pivotTable',
+        'pivotCacheDefinition').
+        """
+        folder, name = part.rsplit("/", 1) if "/" in part else ("", part)
+        rels_path = (folder + "/" if folder else "") + "_rels/" + name + ".rels"
+        root = self._read_xml(rels_path)
+        out = []
+        if root is None:
+            return out
+        for rel in root:
+            if _lname(rel.tag) != "Relationship":
+                continue
+            target = rel.get("Target") or ""
+            rtype = (rel.get("Type") or "").rsplit("/", 1)[-1]
+            if not target or rel.get("TargetMode") == "External":
+                continue
+            if target.startswith("/"):
+                full = target.lstrip("/")
+            else:
+                full = os.path.normpath(
+                    os.path.join(folder, target)).replace(os.sep, "/")
+            out.append((rtype, full))
+        return out
+
+    def tables(self):
+        """
+        Every Table in the workbook, in sheet order, as dicts:
+        {name, sheet, ref, columns, header_rows, totals_rows}.
+        """
+        found = []
+        for sheet in self._sheets:
+            for rtype, target in self._relationships(sheet["path"]):
+                if rtype != "table":
+                    continue
+                root = self._read_xml(target)
+                if root is None:
+                    continue
+                columns = [col.get("name") or "" for col in root.iter()
+                           if _lname(col.tag) == "tableColumn"]
+                try:
+                    header_rows = int(root.get("headerRowCount", "1"))
+                    totals_rows = int(root.get("totalsRowCount", "0"))
+                except ValueError:
+                    header_rows, totals_rows = 1, 0
+                found.append({
+                    "name": root.get("displayName") or root.get("name") or "?",
+                    "sheet": sheet["name"],
+                    "ref": root.get("ref") or "",
+                    "columns": columns,
+                    "header_rows": header_rows,
+                    "totals_rows": totals_rows,
+                })
+        return found
+
+    def find_table(self, name):
+        """A Table by name (exact, then case-insensitive), or WorkbookError."""
+        tables = self.tables()
+        want = str(name or "").strip()
+        for t in tables:
+            if t["name"] == want:
+                return t
+        for t in tables:
+            if t["name"].lower() == want.lower():
+                return t
+        raise WorkbookError(
+            "No Table named '%s' in %s. Tables: %s"
+            % (want, os.path.basename(self.path),
+               ", ".join("%s (sheet '%s')" % (t["name"], t["sheet"])
+                         for t in tables) or "none - this workbook has no "
+               "Tables (Insert > Table); read its sheets instead"))
+
+    @staticmethod
+    def _shared_items(cache_field):
+        """The values of a pivot cache field's <sharedItems>, in order."""
+        items = []
+        for el in cache_field:
+            if _lname(el.tag) != "sharedItems":
+                continue
+            for item in el:
+                kind = _lname(item.tag)
+                if kind == "m":
+                    items.append("(blank)")
+                else:
+                    items.append(item.get("v"))
+        return items
+
+    def pivot_tables(self):
+        """
+        Every pivot table in the workbook, as dicts describing its layout:
+        {name, sheet, location, source, rows, columns, filters, values,
+        refreshed, hidden_items}. Field names come from the pivot cache.
+        """
+        found = []
+        for sheet in self._sheets:
+            for rtype, target in self._relationships(sheet["path"]):
+                if rtype != "pivotTable":
+                    continue
+                root = self._read_xml(target)
+                if root is None:
+                    continue
+                cache_root = None
+                for ctype, ctarget in self._relationships(target):
+                    if ctype == "pivotCacheDefinition":
+                        cache_root = self._read_xml(ctarget)
+                        break
+                found.append(self._describe_pivot(sheet["name"], root, cache_root))
+        return found
+
+    def _describe_pivot(self, sheet_name, root, cache_root):
+        # Field names and each field's distinct values, from the cache.
+        cache_fields = []
+        source = "(unknown source)"
+        refreshed = None
+        if cache_root is not None:
+            for el in cache_root.iter():
+                if _lname(el.tag) == "cacheField":
+                    cache_fields.append({"name": el.get("name") or "?",
+                                         "items": self._shared_items(el)})
+            for el in cache_root.iter():
+                if _lname(el.tag) == "cacheSource":
+                    kind = el.get("type") or "worksheet"
+                    ws_src = next((c for c in el if _lname(c.tag) == "worksheetSource"), None)
+                    if ws_src is not None and ws_src.get("name"):
+                        source = "Table/name '%s'" % ws_src.get("name")
+                    elif ws_src is not None:
+                        source = "'%s'!%s" % (ws_src.get("sheet") or sheet_name,
+                                              ws_src.get("ref") or "?")
+                    else:
+                        source = "%s data source" % kind
+                    break
+            stamp = cache_root.get("refreshedDate")
+            if stamp:
+                refreshed = _serial_to_isoformat(stamp, False)
+
+        def field_name(index):
+            try:
+                index = int(index)
+            except (TypeError, ValueError):
+                return "?"
+            if index == -2:
+                return "(Values)"      # the pseudo-field holding the data fields
+            if 0 <= index < len(cache_fields):
+                return cache_fields[index]["name"]
+            return "field %d" % index
+
+        # Per pivot field: the cache item index behind each of its items, and
+        # how many items are hidden (unticked in a row/column filter).
+        pivot_fields = []
+        for el in root.iter():
+            if _lname(el.tag) != "pivotFields":
+                continue
+            for pf in el:
+                if _lname(pf.tag) != "pivotField":
+                    continue
+                item_x, hidden = [], 0
+                for items in pf:
+                    if _lname(items.tag) != "items":
+                        continue
+                    for it in items:
+                        item_x.append(it.get("x"))
+                        if it.get("h") in ("1", "true"):
+                            hidden += 1
+                pivot_fields.append({"items": item_x, "hidden": hidden})
+            break
+
+        def fields_of(container, attr):
+            names = []
+            for el in root.iter():
+                if _lname(el.tag) != container:
+                    continue
+                for f in el:
+                    names.append(f.get(attr))
+                break
+            return names
+
+        rows = [field_name(x) for x in fields_of("rowFields", "x")]
+        cols = [field_name(x) for x in fields_of("colFields", "x")]
+
+        filters = []
+        for el in root.iter():
+            if _lname(el.tag) != "pageFields":
+                continue
+            for pf in el:
+                fld = pf.get("fld")
+                label = field_name(fld)
+                chosen = "(All)"
+                item = pf.get("item")
+                try:
+                    fidx, iidx = int(fld), int(item)
+                    x = pivot_fields[fidx]["items"][iidx]
+                    chosen = cache_fields[fidx]["items"][int(x)]
+                except (TypeError, ValueError, IndexError):
+                    if item is not None:
+                        chosen = "(one item selected)"
+                filters.append("%s = %s" % (label, chosen))
+            break
+
+        values = []
+        for el in root.iter():
+            if _lname(el.tag) != "dataFields":
+                continue
+            for df in el:
+                values.append("%s (%s of %s)" % (
+                    df.get("name") or "?", df.get("subtotal") or "sum",
+                    field_name(df.get("fld"))))
+            break
+
+        location = ""
+        for el in root.iter():
+            if _lname(el.tag) == "location":
+                location = el.get("ref") or ""
+                break
+
+        hidden = []
+        for index, pf in enumerate(pivot_fields):
+            if pf["hidden"]:
+                hidden.append("%s: %d item(s) hidden" % (field_name(index), pf["hidden"]))
+
+        return {
+            "name": root.get("name") or "?",
+            "sheet": sheet_name,
+            "location": location,
+            "source": source,
+            "rows": rows, "columns": cols, "filters": filters, "values": values,
+            "refreshed": refreshed, "hidden_items": hidden,
+        }
+
+    def find_pivot(self, name):
+        """A pivot table by name, or the only one when name is omitted."""
+        pivots = self.pivot_tables()
+        if not pivots:
+            raise WorkbookError("%s has no pivot tables."
+                                % os.path.basename(self.path))
+        want = str(name or "").strip()
+        if not want:
+            if len(pivots) == 1:
+                return pivots[0]
+            raise WorkbookError(
+                "This workbook has %d pivot tables - name one: %s"
+                % (len(pivots), ", ".join("%s (sheet '%s')" % (p["name"], p["sheet"])
+                                          for p in pivots)))
+        for p in pivots:
+            if p["name"] == want or p["name"].lower() == want.lower():
+                return p
+        raise WorkbookError(
+            "No pivot table named '%s'. Pivot tables: %s"
+            % (want, ", ".join("%s (sheet '%s')" % (p["name"], p["sheet"])
+                               for p in pivots)))
+
+    def read_grid(self, sheet, ref, max_rows=None):
+        """
+        The cells of an A1 range as a list of rows (lists of equal width),
+        blanks as None. Returns (rows, truncated).
+        """
+        parsed = _parse_a1_range(ref)
+        if not parsed or None in parsed:
+            raise WorkbookError("Not a complete A1 range: %r" % (ref,))
+        min_row, max_row, min_col, max_col = parsed
+        width = max_col - min_col + 1
+        by_row = {}
+        stop = max_row if max_rows is None else min(max_row, min_row + max_rows - 1)
+        for row_num, values in self.iter_rows(sheet, min_row=min_row,
+                                              max_row=stop, max_col=max_col + 1):
+            by_row[row_num] = (values[min_col:] + [None] * width)[:width]
+        rows = [by_row.get(r, [None] * width) for r in range(min_row, stop + 1)]
+        return rows, stop < max_row
+
     def close(self):
         try:
             self._zip.close()
@@ -819,10 +1167,28 @@ def tool_list_sheets(folder, args):
         if wb.date1904:
             lines.append("(uses the 1904 date system)")
         lines.append("Sheets:")
+        # Tables and pivots are extras here: a malformed part must not stop
+        # the sheets themselves being listed.
+        try:
+            tables = wb.tables()
+        except WorkbookError as exc:
+            tables = []
+            lines.append("(Tables could not be read: %s)" % exc)
+        try:
+            pivots = wb.pivot_tables()
+        except WorkbookError as exc:
+            pivots = []
+            lines.append("(Pivot tables could not be read: %s)" % exc)
         for name in wb.sheet_names():
             dim = wb.declared_dimension(name)
             dim_txt = " declared range %s" % dim if dim else " (no declared range)"
             lines.append("  - %s:%s" % (name, dim_txt))
+            here = [t["name"] for t in tables if t["sheet"] == name]
+            if here:
+                lines.append("      Tables: %s" % ", ".join(here))
+            here = [p["name"] for p in pivots if p["sheet"] == name]
+            if here:
+                lines.append("      Pivot tables: %s" % ", ".join(here))
         return "\n".join(lines)
     finally:
         wb.close()
@@ -1081,11 +1447,809 @@ def tool_column_stats(folder, args):
         wb.close()
 
 
+def _md_cell(value):
+    """One Markdown table cell: blank for None, single line, pipes escaped."""
+    if value is None:
+        return ""
+    return " ".join(str(value).split()).replace("|", "\\|")
+
+
+def _md_table(header, rows):
+    """Render a header + rows as a Markdown table."""
+    width = max([len(header)] + [len(r) for r in rows]) if (header or rows) else 0
+    header = (list(header) + [""] * width)[:width]
+    out = ["| " + " | ".join(_md_cell(h) for h in header) + " |",
+           "| " + " | ".join("---" for _ in header) + " |"]
+    for row in rows:
+        row = (list(row) + [None] * width)[:width]
+        out.append("| " + " | ".join(_md_cell(v) for v in row) + " |")
+    return "\n".join(out)
+
+
+def _values_equal(cell, wanted):
+    """
+    Loose equality for filtering/matching rows: numbers compare as numbers
+    (so 3 matches 3.0), everything else as trimmed, case-insensitive text.
+    """
+    if cell is None:
+        return wanted is None or str(wanted).strip() == ""
+    try:
+        return float(cell) == float(wanted)
+    except (TypeError, ValueError):
+        pass
+    return str(cell).strip().lower() == str(wanted).strip().lower()
+
+
+def _table_layout(table):
+    """(first_row, last_row, first_col, last_col) of a Table's full range."""
+    parsed = _parse_a1_range(table["ref"])
+    if not parsed or None in parsed:
+        raise WorkbookError("Table '%s' has an unreadable range %r."
+                            % (table["name"], table["ref"]))
+    return parsed
+
+
+def tool_list_tables(folder, args):
+    wb = _open(folder, args.get("workbook"))
+    try:
+        tables = wb.tables()
+        name = os.path.basename(wb.path)
+        if not tables:
+            return ("%s has no Tables (Insert > Table). Read its sheets with "
+                    "excel_read_range instead." % name)
+        lines = ["Tables in %s:" % name]
+        for t in tables:
+            first, last, _c1, _c2 = _table_layout(t)
+            data_rows = max(0, (last - first + 1) - t["header_rows"] - t["totals_rows"])
+            lines.append("  - %s  (sheet '%s', range %s, %d data row(s)%s)"
+                         % (t["name"], t["sheet"], t["ref"], data_rows,
+                            ", totals row" if t["totals_rows"] else ""))
+            lines.append("      columns: %s" % ", ".join(t["columns"]))
+        return "\n".join(lines)
+    finally:
+        wb.close()
+
+
+def tool_read_table(folder, args):
+    wb = _open(folder, args.get("workbook"))
+    try:
+        table = wb.find_table(args.get("table"))
+        first, last, c1, c2 = _table_layout(table)
+        grid, _ = wb.read_grid(table["sheet"], table["ref"])
+        header = table["columns"] or (grid[0] if grid else [])
+        body = grid[table["header_rows"]:]
+        totals = []
+        if table["totals_rows"]:
+            totals = body[-table["totals_rows"]:]
+            body = body[:-table["totals_rows"]]
+        # Sheet row number of each data row, so an answer can cite the cell.
+        first_data = first + table["header_rows"]
+        numbered = [(first_data + i, row) for i, row in enumerate(body)]
+
+        # Optional filter: keep rows whose column equals a value.
+        fcol, fval = args.get("filter_column"), args.get("filter_value")
+        if fcol:
+            lookup = [str(h).strip().lower() for h in header]
+            if str(fcol).strip().lower() not in lookup:
+                raise WorkbookError("Table '%s' has no column '%s'. Columns: %s"
+                                    % (table["name"], fcol, ", ".join(header)))
+            idx = lookup.index(str(fcol).strip().lower())
+            numbered = [(r, row) for r, row in numbered
+                        if idx < len(row) and _values_equal(row[idx], fval)]
+
+        # Optional column subset, in the order asked for.
+        wanted = args.get("columns")
+        if wanted:
+            if isinstance(wanted, str):
+                wanted = [w for w in wanted.split(",")]
+            lookup = [str(h).strip().lower() for h in header]
+            picks = []
+            for w in wanted:
+                key = str(w).strip().lower()
+                if key not in lookup:
+                    raise WorkbookError("Table '%s' has no column '%s'. Columns: %s"
+                                        % (table["name"], w, ", ".join(header)))
+                picks.append(lookup.index(key))
+            header = [header[i] for i in picks]
+            numbered = [(r, [row[i] if i < len(row) else None for i in picks])
+                        for r, row in numbered]
+            totals = [[row[i] if i < len(row) else None for i in picks] for row in totals]
+
+        try:
+            offset = max(0, int(args.get("offset") or 0))
+        except (TypeError, ValueError):
+            offset = 0
+        total = len(numbered)
+        page = numbered[offset:offset + MAX_ROWS_PER_READ]
+
+        head = ("Table '%s' (sheet '%s', range %s): %d data row(s)%s"
+                % (table["name"], table["sheet"], table["ref"], total,
+                   " matching %s = %s" % (fcol, fval) if fcol else ""))
+        if not page:
+            return head + ("\n(no rows)" if not offset else
+                           "\n(no rows from offset %d)" % offset)
+        shown = "showing rows %d-%d" % (offset + 1, offset + len(page))
+        lines = [head + ", " + shown + ". 'Row' is the sheet row number.", ""]
+        lines.append(_md_table(["Row"] + list(header),
+                               [[r] + list(row) for r, row in page]))
+        if totals and offset + len(page) >= total:
+            lines.append("")
+            lines.append("Totals row: " + " | ".join(_md_cell(v) for v in totals[0]))
+        if offset + len(page) < total:
+            lines.append("")
+            lines.append("[%d more row(s): call again with offset=%d.]"
+                         % (total - offset - len(page), offset + len(page)))
+        return "\n".join(lines)
+    finally:
+        wb.close()
+
+
+def _pivot_summary(p):
+    lines = ["Pivot table '%s' (sheet '%s', cells %s)"
+             % (p["name"], p["sheet"], p["location"] or "?"),
+             "  source : %s" % p["source"],
+             "  rows   : %s" % (", ".join(p["rows"]) or "-"),
+             "  columns: %s" % (", ".join(p["columns"]) or "-"),
+             "  values : %s" % (", ".join(p["values"]) or "-"),
+             "  filters: %s" % (", ".join(p["filters"]) or "-")]
+    if p["hidden_items"]:
+        lines.append("  hidden : %s" % "; ".join(p["hidden_items"]))
+    if p["refreshed"]:
+        lines.append("  last refreshed: %s" % p["refreshed"])
+    return lines
+
+
+def tool_list_pivot_tables(folder, args):
+    wb = _open(folder, args.get("workbook"))
+    try:
+        pivots = wb.pivot_tables()
+        name = os.path.basename(wb.path)
+        if not pivots:
+            return "%s has no pivot tables." % name
+        lines = ["Pivot tables in %s:" % name]
+        for p in pivots:
+            lines.append("")
+            lines.extend(_pivot_summary(p))
+        return "\n".join(lines)
+    finally:
+        wb.close()
+
+
+def tool_read_pivot_table(folder, args):
+    wb = _open(folder, args.get("workbook"))
+    try:
+        p = wb.find_pivot(args.get("pivot"))
+        lines = _pivot_summary(p)
+        if not p["location"]:
+            lines.append("")
+            lines.append("(The pivot table has no saved location, so there are "
+                         "no cells to read.)")
+            return "\n".join(lines)
+        # The page-filter area sits ABOVE the location ref; the ref itself is
+        # the body of the pivot, header row first.
+        grid, truncated = wb.read_grid(p["sheet"], p["location"],
+                                       max_rows=MAX_ROWS_PER_READ)
+        lines.append("")
+        lines.append("Values as Excel last calculated and saved them%s:"
+                     % (" (first %d rows)" % MAX_ROWS_PER_READ if truncated else ""))
+        if grid:
+            lines.append(_md_table(grid[0], grid[1:]))
+        else:
+            lines.append("(empty)")
+        lines.append("")
+        lines.append("If the source data has changed since the last refresh, "
+                     "these figures are stale until the pivot is refreshed in "
+                     "Excel.")
+        return "\n".join(lines)
+    finally:
+        wb.close()
+
+
 def _fmt_num(x):
     """Render a float cleanly (drop trailing .0 for whole numbers)."""
     if isinstance(x, float) and x.is_integer():
         return str(int(x))
     return "%.6g" % x if isinstance(x, float) else str(x)
+
+
+# ===========================================================================
+# Writing: driving the installed Excel through COM (EXCEL_ALLOW_WRITE=true)
+# ===========================================================================
+# Everything above reads the .xlsx file directly. Writing does NOT: a workbook
+# is a web of parts that must agree (shared strings, styles, the calc chain,
+# Table ranges, pivot caches, charts), and Excel itself is the only thing that
+# keeps them all consistent - and the only thing that can build a real
+# PivotTable. So each write starts a private, invisible Excel (DispatchEx, never
+# the user's own window), opens the one workbook, makes the change, lets Excel
+# recalculate, saves, and quits. A failure part-way closes the workbook
+# WITHOUT saving, so a half-made change never reaches the file.
+#
+# Needs Windows, desktop Excel, and pywin32 (pip install pywin32), imported
+# only when a write tool runs - reading still needs nothing but the standard
+# library, and --version works without it.
+
+# Excel constants used below (from the Excel type library; late binding has no
+# access to the names).
+XL_DATABASE = 1                  # PivotCaches.Create SourceType
+XL_ROW_FIELD, XL_COLUMN_FIELD, XL_PAGE_FIELD = 1, 2, 3
+XL_OPENXML_WORKBOOK = 51         # .xlsx
+XL_OPENXML_MACRO_WORKBOOK = 52   # .xlsm
+MSO_AUTOMATION_SECURITY_FORCE_DISABLE = 3   # never run macros on open
+PIVOT_FUNCTIONS = {
+    "sum": -4157, "count": -4112, "average": -4106, "avg": -4106,
+    "mean": -4106, "max": -4136, "min": -4139, "product": -4149,
+    "countnums": -4113, "count_numbers": -4113, "stdev": -4155,
+    "stdevp": -4156, "var": -4164, "varp": -4165,
+}
+MAX_WRITE_CELLS = 20000          # cells one write call may set
+MAX_PIVOT_PREVIEW_ROWS = 60      # rows of a new pivot echoed back
+
+# Whether the write tools are offered at all. Off unless EXCEL_ALLOW_WRITE=
+# true: this server was read-only for its first six major versions, and an
+# endpoint that only ever read workbooks must not start changing them because
+# the plugin updated. Resolved from the environment in main().
+ALLOW_WRITE = False
+
+
+def _com_modules():
+    """Import pywin32 on demand, with an actionable error when it is missing."""
+    if os.name != "nt":
+        raise WorkbookError("Writing to a workbook drives Microsoft Excel, "
+                            "which needs Windows.")
+    try:
+        import pythoncom                 # noqa: F401  (pywin32)
+        import pywintypes                # noqa: F401
+        import win32com.client           # noqa: F401
+    except ImportError:
+        raise WorkbookError("Writing to a workbook needs pywin32. Install it "
+                            "into this Python:  pip install pywin32  - then "
+                            "restart the client.")
+    return pythoncom, pywintypes, win32com.client
+
+
+def _com_message(exc):
+    """The readable part of a pywintypes.com_error."""
+    try:
+        info = exc.excepinfo
+        if info and info[2]:
+            return str(info[2]).strip()
+    except AttributeError:
+        pass
+    try:
+        return str(exc.args[1])
+    except (AttributeError, IndexError):
+        return str(exc)
+
+
+def _check_not_locked(path):
+    """
+    Refuse early when the workbook is open somewhere (usually in the user's
+    own Excel): a second Excel would only get a read-only copy, and the change
+    could not be saved.
+    """
+    folder, name = os.path.split(path)
+    if os.path.exists(os.path.join(folder, "~$" + name)):
+        raise WorkbookError("%s appears to be open in Excel (its ~$ lock file "
+                            "exists). Close it there, then try again." % name)
+    try:
+        with open(path, "r+b"):
+            pass
+    except PermissionError:
+        raise WorkbookError("%s is locked by another program (probably open in "
+                            "Excel). Close it, then try again." % name)
+    except OSError as exc:
+        raise WorkbookError("Cannot open %s for writing: %s" % (name, exc))
+
+
+def _save_as_path(folder, source_path, save_as, overwrite):
+    """
+    Validate a 'save_as' name: inside the workbook folder, the same kind of
+    file as the source, and not replacing an existing workbook unless asked.
+    Returns the full path, or None when the source is to be saved in place.
+    """
+    if not save_as:
+        return None
+    # basename() so a path in 'save_as' cannot leave the folder.
+    name = os.path.basename(str(save_as).replace("\\", "/")).strip()
+    if not name or name in (".", ".."):
+        raise WorkbookError("'save_as' must be a file name.")
+    src_ext = os.path.splitext(source_path)[1].lower()
+    root, ext = os.path.splitext(name)
+    if not ext:
+        name, ext = name + src_ext, src_ext
+    if ext.lower() not in ALLOWED_EXTENSIONS:
+        raise WorkbookError("'save_as' must end in .xlsx or .xlsm.")
+    if src_ext == ".xlsm" and ext.lower() == ".xlsx":
+        raise WorkbookError("Saving a macro workbook (.xlsm) as .xlsx would "
+                            "strip its macros - keep the .xlsm extension.")
+    path = os.path.join(folder, name)
+    if os.path.abspath(path) == os.path.abspath(source_path):
+        return None
+    if os.path.exists(path) and not overwrite:
+        raise WorkbookError("%s already exists. Choose another 'save_as' name, "
+                            "or pass overwrite=true to replace it." % name)
+    return path
+
+
+class ExcelSession:
+    """
+    One workbook open in a private, invisible Excel, for one tool call.
+
+        with ExcelSession(path) as xl:
+            ws = xl.sheet("Data")
+            ...
+            xl.commit(save_as_path)      # save; without it nothing is kept
+
+    Leaving the block without commit() closes the workbook unsaved.
+    """
+
+    def __init__(self, path):
+        self.path = os.path.abspath(path)
+        self.app = None
+        self.wb = None
+        self._pythoncom = None
+        self._com_error = Exception
+
+    def __enter__(self):
+        pythoncom, pywintypes, client = _com_modules()
+        self._pythoncom = pythoncom
+        self._com_error = pywintypes.com_error
+        _check_not_locked(self.path)
+        pythoncom.CoInitialize()
+        try:
+            # DispatchEx: a NEW Excel process, so the user's own open window
+            # (and whatever they have in it) is never touched.
+            self.app = client.DispatchEx("Excel.Application")
+            self.app.Visible = False
+            self.app.DisplayAlerts = False
+            self.app.ScreenUpdating = False
+            self.app.EnableEvents = False
+            self.app.AskToUpdateLinks = False
+            try:
+                self.app.AutomationSecurity = MSO_AUTOMATION_SECURITY_FORCE_DISABLE
+            except self._com_error:
+                pass
+            # Empty passwords make a protected workbook fail fast instead of
+            # waiting on a password prompt nobody can see.
+            self.wb = self.app.Workbooks.Open(
+                self.path, UpdateLinks=0, ReadOnly=False, Password="",
+                WriteResPassword="", IgnoreReadOnlyRecommended=True,
+                Notify=False, AddToMru=False)
+            if self.wb.ReadOnly:
+                raise WorkbookError("%s opened read-only (it is open elsewhere, "
+                                    "or write-protected), so it cannot be "
+                                    "changed." % os.path.basename(self.path))
+        except self._com_error as exc:
+            self._shutdown()
+            raise WorkbookError("Excel could not open %s: %s"
+                                % (os.path.basename(self.path), _com_message(exc)))
+        except Exception:
+            self._shutdown()
+            raise
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self._shutdown()
+        if exc_type is not None and issubclass(exc_type, self._com_error):
+            raise WorkbookError("Excel reported an error, and nothing was saved: %s"
+                                % _com_message(exc))
+        return False
+
+    def _shutdown(self):
+        if self.wb is not None:
+            try:
+                self.wb.Close(SaveChanges=False)
+            except Exception:
+                pass
+            self.wb = None
+        if self.app is not None:
+            try:
+                self.app.Quit()
+            except Exception:
+                pass
+            self.app = None
+        if self._pythoncom is not None:
+            try:
+                self._pythoncom.CoUninitialize()
+            except Exception:
+                pass
+            self._pythoncom = None
+
+    # -- helpers used by the write tools ------------------------------------
+
+    def sheet_names(self):
+        return [self.wb.Worksheets(i).Name
+                for i in range(1, self.wb.Worksheets.Count + 1)]
+
+    def sheet(self, name, create=False):
+        """A worksheet by name (case-insensitive) or 1-based index."""
+        want = str(name or "").strip()
+        if not want:
+            return self.wb.Worksheets(1)
+        for i in range(1, self.wb.Worksheets.Count + 1):
+            ws = self.wb.Worksheets(i)
+            if ws.Name.lower() == want.lower():
+                return ws
+        if want.isdigit() and 1 <= int(want) <= self.wb.Worksheets.Count:
+            return self.wb.Worksheets(int(want))
+        if create:
+            return self.add_sheet(want)
+        raise WorkbookError("Sheet '%s' not found. Available: %s. Pass "
+                            "create_sheet=true to add it."
+                            % (want, ", ".join(self.sheet_names())))
+
+    def add_sheet(self, name):
+        clean = _clean_sheet_name(name)
+        if clean.lower() in [n.lower() for n in self.sheet_names()]:
+            raise WorkbookError("A sheet named '%s' already exists." % clean)
+        last = self.wb.Worksheets(self.wb.Worksheets.Count)
+        ws = self.wb.Worksheets.Add(After=last)
+        ws.Name = clean
+        return ws
+
+    def table(self, name):
+        """A ListObject (Table) by name, searching every sheet."""
+        want = str(name or "").strip().lower()
+        found = []
+        for i in range(1, self.wb.Worksheets.Count + 1):
+            ws = self.wb.Worksheets(i)
+            for j in range(1, ws.ListObjects.Count + 1):
+                lo = ws.ListObjects(j)
+                found.append(lo.Name)
+                if lo.Name.lower() == want:
+                    return lo
+        raise WorkbookError("No Table named '%s'. Tables: %s"
+                            % (name, ", ".join(found) or "none"))
+
+    def commit(self, save_as=None):
+        """Recalculate and save (in place, or as a new file in the folder)."""
+        try:
+            self.app.CalculateFull()
+        except self._com_error:
+            pass
+        if save_as:
+            fmt = (XL_OPENXML_MACRO_WORKBOOK
+                   if save_as.lower().endswith(".xlsm") else XL_OPENXML_WORKBOOK)
+            self.wb.SaveAs(os.path.abspath(save_as), FileFormat=fmt)
+        else:
+            self.wb.Save()
+
+
+def _clean_sheet_name(name):
+    """Excel's sheet-name rules: <= 31 chars, none of []:*?/\\ ."""
+    clean = re.sub(r"[\[\]:*?/\\]", " ", str(name)).strip().strip("'")
+    clean = " ".join(clean.split())[:31].strip()
+    if not clean:
+        raise WorkbookError("'%s' is not a usable sheet name." % name)
+    return clean
+
+
+def _as_grid(value):
+    """A COM Range.Value as a list of lists (a single cell comes back bare)."""
+    if value is None:
+        return [[None]]
+    if not isinstance(value, (tuple, list)):
+        return [[value]]
+    return [list(row) if isinstance(row, (tuple, list)) else [row] for row in value]
+
+
+def _com_value(value):
+    """A JSON value -> what to hand Excel: None clears, the rest as given."""
+    if isinstance(value, (dict, list)):
+        raise WorkbookError("A cell value must be text, a number, true/false or "
+                            "null - got %s." % type(value).__name__)
+    return value
+
+
+def _display(value):
+    """A COM value as text for a reply (dates come back as pywintypes times)."""
+    if value is None:
+        return None
+    if hasattr(value, "strftime"):
+        try:
+            if value.hour == 0 and value.minute == 0 and value.second == 0:
+                return value.strftime("%Y-%m-%d")
+            return value.strftime("%Y-%m-%d %H:%M:%S")
+        except (AttributeError, ValueError):
+            pass
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return value
+
+
+def _cell_matches(cell, wanted):
+    """_values_equal, plus a date cell matching its YYYY-MM-DD text."""
+    if hasattr(cell, "strftime"):
+        text, want = str(_display(cell)), str(wanted).strip()
+        return text == want or text[:10] == want
+    return _values_equal(cell, wanted)
+
+
+def _require_write():
+    if not ALLOW_WRITE:
+        raise WorkbookError("Writing workbooks is switched off on this endpoint. "
+                            "Set EXCEL_ALLOW_WRITE=true and restart the client.")
+
+
+def _write_path(folder, args):
+    """The workbook to change and the optional save-as target."""
+    path = resolve_workbook_path(folder, args.get("workbook"))
+    save_as = _save_as_path(folder, path, args.get("save_as"),
+                            bool(args.get("overwrite", False)))
+    return path, save_as
+
+
+def _saved_note(path, save_as):
+    return "Saved to %s." % (save_as or path)
+
+
+def tool_write_cells(folder, args):
+    _require_write()
+    values = args.get("values")
+    if not isinstance(values, list) or not values:
+        raise WorkbookError("'values' must be a list of rows, e.g. "
+                            "[[\"Name\", 5], [\"Other\", 6]].")
+    rows = [row if isinstance(row, list) else [row] for row in values]
+    width = max(len(r) for r in rows)
+    if width == 0:
+        raise WorkbookError("'values' has no cells.")
+    if len(rows) * width > MAX_WRITE_CELLS:
+        raise WorkbookError("That is %d cells; one call may write up to %d."
+                            % (len(rows) * width, MAX_WRITE_CELLS))
+    grid = tuple(tuple(_com_value(v) for v in (r + [None] * width)[:width])
+                 for r in rows)
+    start = str(args.get("cell") or "A1").strip().upper()
+    col_letters, row_num = _split_cell_ref(start)
+    if not col_letters or not row_num:
+        raise WorkbookError("'cell' must be one A1 cell reference, e.g. 'B2'.")
+    c0 = _col_letters_to_index(col_letters) + 1
+    path, save_as = _write_path(folder, args)
+    with ExcelSession(path) as xl:
+        ws = xl.sheet(args.get("sheet"), create=bool(args.get("create_sheet", False)))
+        target = ws.Range(ws.Cells(row_num, c0),
+                          ws.Cells(row_num + len(rows) - 1, c0 + width - 1))
+        target.Value = grid
+        address = target.Address.replace("$", "")
+        sheet_name = ws.Name
+        xl.commit(save_as)
+    return ("Wrote %d row(s) x %d column(s) to '%s'!%s in %s. %s"
+            % (len(rows), width, sheet_name, address,
+               os.path.basename(path), _saved_note(path, save_as)))
+
+
+def _table_headers(lo):
+    return [str(h) if h is not None else "" for h in _as_grid(lo.HeaderRowRange.Value)[0]]
+
+
+def _header_index(headers, column, table_name):
+    lookup = [h.strip().lower() for h in headers]
+    key = str(column).strip().lower()
+    if key not in lookup:
+        raise WorkbookError("Table '%s' has no column '%s'. Columns: %s"
+                            % (table_name, column, ", ".join(headers)))
+    return lookup.index(key)
+
+
+def tool_add_table_rows(folder, args):
+    _require_write()
+    rows = args.get("rows")
+    if not isinstance(rows, list) or not rows:
+        raise WorkbookError("'rows' must be a list: each row an object of "
+                            "column name -> value, or a list of values in "
+                            "column order.")
+    path, save_as = _write_path(folder, args)
+    with ExcelSession(path) as xl:
+        lo = xl.table(args.get("table"))
+        headers = _table_headers(lo)
+        # Validate EVERY row before adding any, so a bad column name in row 5
+        # cannot leave rows 1-4 half-added.
+        plan = []
+        for n, row in enumerate(rows, 1):
+            if isinstance(row, dict):
+                plan.append([(_header_index(headers, k, lo.Name) + 1, _com_value(v))
+                             for k, v in row.items()])
+            elif isinstance(row, list):
+                if len(row) > len(headers):
+                    raise WorkbookError("Row %d has %d values but Table '%s' has "
+                                        "%d columns." % (n, len(row), lo.Name,
+                                                         len(headers)))
+                plan.append([(i + 1, _com_value(v)) for i, v in enumerate(row)])
+            else:
+                raise WorkbookError("Row %d must be an object or a list." % n)
+        for cells in plan:
+            new_row = lo.ListRows.Add()
+            # Only the columns given are written, so a calculated column's
+            # formula (which Excel fills into the new row) is left alone.
+            for col, value in cells:
+                new_row.Range.Cells(1, col).Value = value
+        name, ref = lo.Name, lo.Range.Address.replace("$", "")
+        xl.commit(save_as)
+    return ("Added %d row(s) to Table '%s' (now %s) in %s. %s"
+            % (len(plan), name, ref, os.path.basename(path), _saved_note(path, save_as)))
+
+
+def tool_update_table_rows(folder, args):
+    _require_write()
+    match = args.get("match")
+    changes = args.get("set")
+    if not isinstance(match, dict) or not match:
+        raise WorkbookError("'match' must be an object of column -> value "
+                            "identifying the row(s), e.g. {\"ID\": \"A-17\"}.")
+    if not isinstance(changes, dict) or not changes:
+        raise WorkbookError("'set' must be an object of column -> new value.")
+    all_matches = bool(args.get("all_matches", False))
+    path, save_as = _write_path(folder, args)
+    with ExcelSession(path) as xl:
+        lo = xl.table(args.get("table"))
+        headers = _table_headers(lo)
+        match_idx = [(_header_index(headers, k, lo.Name), v) for k, v in match.items()]
+        set_idx = [(_header_index(headers, k, lo.Name), _com_value(v))
+                   for k, v in changes.items()]
+        body = lo.DataBodyRange
+        grid = _as_grid(body.Value) if body is not None else []
+        hits = [r for r, row in enumerate(grid)
+                if all(_cell_matches(row[i], v) for i, v in match_idx)]
+        if not hits:
+            raise WorkbookError("No row of Table '%s' matches %s; nothing changed."
+                                % (lo.Name, json.dumps(match, ensure_ascii=False)))
+        if len(hits) > 1 and not all_matches:
+            raise WorkbookError("%d rows of Table '%s' match %s; nothing changed. "
+                                "Narrow 'match', or pass all_matches=true to "
+                                "change all of them."
+                                % (len(hits), lo.Name,
+                                   json.dumps(match, ensure_ascii=False)))
+        first_row = body.Row
+        for r in hits:
+            for i, value in set_idx:
+                body.Cells(r + 1, i + 1).Value = value
+        name = lo.Name
+        sheet_rows = ", ".join(str(first_row + r) for r in hits[:20])
+        xl.commit(save_as)
+    return ("Updated %d row(s) of Table '%s' (sheet row(s) %s%s) in %s. %s"
+            % (len(hits), name, sheet_rows, ", ..." if len(hits) > 20 else "",
+               os.path.basename(path), _saved_note(path, save_as)))
+
+
+def _field_list(value, label):
+    if value is None:
+        return []
+    if isinstance(value, str):
+        value = [v for v in value.split(",")]
+    if not isinstance(value, list):
+        raise WorkbookError("'%s' must be a list of column names." % label)
+    return [str(v).strip() for v in value if str(v).strip()]
+
+
+def tool_create_pivot_table(folder, args):
+    _require_write()
+    rows = _field_list(args.get("rows"), "rows")
+    cols = _field_list(args.get("columns"), "columns")
+    filters = _field_list(args.get("filters"), "filters")
+    values = args.get("values")
+    if isinstance(values, (str, dict)):
+        values = [values]
+    if not isinstance(values, list) or not values:
+        raise WorkbookError("'values' is required: the column(s) to summarise, "
+                            "e.g. [{\"field\": \"Amount\", \"function\": \"sum\"}].")
+    specs = []
+    for v in values:
+        if isinstance(v, str):
+            v = {"field": v}
+        if not isinstance(v, dict) or not str(v.get("field") or "").strip():
+            raise WorkbookError("Each entry of 'values' needs a 'field'.")
+        func = str(v.get("function") or "sum").strip().lower()
+        if func not in PIVOT_FUNCTIONS:
+            raise WorkbookError("Unknown summary function '%s'. Use one of: %s"
+                                % (func, ", ".join(sorted(set(PIVOT_FUNCTIONS)))))
+        specs.append((str(v["field"]).strip(), func,
+                      str(v.get("caption") or "").strip(),
+                      str(v.get("number_format") or "").strip()))
+    if not rows and not cols:
+        raise WorkbookError("Give at least one 'rows' or 'columns' field to "
+                            "group by.")
+
+    source_table = str(args.get("source_table") or "").strip()
+    source_range = str(args.get("source_range") or "").strip()
+    if not source_table and not source_range:
+        raise WorkbookError("Name the data: 'source_table' (a Table name) or "
+                            "'source_sheet' plus 'source_range' (e.g. 'A1:F500', "
+                            "header row first).")
+
+    path, save_as = _write_path(folder, args)
+    with ExcelSession(path) as xl:
+        if source_table:
+            lo = xl.table(source_table)
+            # The Table's NAME, not its current cells, so the pivot keeps up
+            # when rows are added to the Table and it is refreshed.
+            source_data = lo.Name
+            source_label = "Table '%s'" % lo.Name
+            headers = _table_headers(lo)
+        else:
+            src_ws = xl.sheet(args.get("source_sheet"))
+            source_data = src_ws.Range(source_range)
+            source_label = "'%s'!%s" % (src_ws.Name, source_range.upper())
+            headers = [str(h) if h is not None else ""
+                       for h in _as_grid(source_data.Rows(1).Value)[0]]
+        # Check every field against the source headers before building
+        # anything: Excel's own error for a bad field name says nothing useful.
+        lookup = {h.strip().lower(): h for h in headers if h.strip()}
+        for field in rows + cols + filters + [s[0] for s in specs]:
+            if field.lower() not in lookup:
+                raise WorkbookError("'%s' is not a column of %s. Columns: %s"
+                                    % (field, source_label, ", ".join(headers)))
+
+        dest_name = str(args.get("destination_sheet") or "").strip()
+        if dest_name and dest_name.lower() in [n.lower() for n in xl.sheet_names()]:
+            dest_ws = xl.sheet(dest_name)
+        else:
+            base = dest_name or ("Pivot - " + (source_table or src_ws.Name))
+            candidate, n = _clean_sheet_name(base), 2
+            existing = [x.lower() for x in xl.sheet_names()]
+            while candidate.lower() in existing:
+                candidate = _clean_sheet_name("%s (%d)" % (base[:26], n))
+                n += 1
+            dest_ws = xl.add_sheet(candidate)
+        dest_cell = str(args.get("destination_cell") or "A3").strip().upper()
+        name = str(args.get("name") or "").strip() or "Pivot%s" % re.sub(
+            r"[^A-Za-z0-9]", "", source_table or src_ws.Name)[:40]
+
+        cache = xl.wb.PivotCaches().Create(SourceType=XL_DATABASE,
+                                           SourceData=source_data)
+        pt = cache.CreatePivotTable(TableDestination=dest_ws.Range(dest_cell),
+                                    TableName=name)
+        for field in rows:
+            pt.PivotFields(lookup[field.lower()]).Orientation = XL_ROW_FIELD
+        for field in cols:
+            pt.PivotFields(lookup[field.lower()]).Orientation = XL_COLUMN_FIELD
+        for field in filters:
+            pt.PivotFields(lookup[field.lower()]).Orientation = XL_PAGE_FIELD
+        for field, func, caption, number_format in specs:
+            real = lookup[field.lower()]
+            label = caption or "%s of %s" % (
+                {"countnums": "Count", "count_numbers": "Count", "avg": "Average",
+                 "mean": "Average"}.get(func, func.capitalize()), real)
+            data_field = pt.AddDataField(pt.PivotFields(real), label,
+                                         PIVOT_FUNCTIONS[func])
+            if number_format:
+                data_field.NumberFormat = number_format
+        pt_name, sheet_name = pt.Name, dest_ws.Name
+        address = pt.TableRange2.Address.replace("$", "")
+        preview = _as_grid(pt.TableRange1.Value)
+        xl.commit(save_as)
+
+    lines = ["Created pivot table '%s' on sheet '%s' (%s) from %s in %s. %s"
+             % (pt_name, sheet_name, address, source_label,
+                os.path.basename(save_as or path), _saved_note(path, save_as)),
+             "", "It shows:"]
+    shown = [[_display(v) for v in row] for row in preview[:MAX_PIVOT_PREVIEW_ROWS]]
+    if shown:
+        lines.append(_md_table(shown[0], shown[1:]))
+    if len(preview) > MAX_PIVOT_PREVIEW_ROWS:
+        lines.append("[%d more row(s) - read it with excel_read_pivot_table.]"
+                     % (len(preview) - MAX_PIVOT_PREVIEW_ROWS))
+    return "\n".join(lines)
+
+
+def _check_excel_automation():
+    """--check helper: can this endpoint start Excel? Returns a status line."""
+    try:
+        pythoncom, _pywintypes, client = _com_modules()
+    except WorkbookError as exc:
+        return "NOT available - %s" % exc
+    pythoncom.CoInitialize()
+    app = None
+    try:
+        app = client.DispatchEx("Excel.Application")
+        return "OK - Excel %s" % app.Version
+    except Exception as exc:
+        return "NOT available - Excel could not be started (%s)" % _com_message(exc)
+    finally:
+        if app is not None:
+            try:
+                app.Quit()
+            except Exception:
+                pass
+        pythoncom.CoUninitialize()
 
 
 # ===========================================================================
@@ -1197,7 +2361,219 @@ TOOLS = {
             "required": ["workbook", "column"],
         },
     },
+    "excel_list_tables": {
+        "handler": tool_list_tables,
+        "description": "List the Excel Tables (Insert > Table, also called "
+                       "ListObjects) in a workbook: name, sheet, range, data "
+                       "row count and column names. Use a Table's name with "
+                       "excel_read_table.",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "workbook": {"type": "string"},
+            },
+            "required": ["workbook"],
+        },
+    },
+    "excel_read_table": {
+        "handler": tool_read_table,
+        "description": "Read an Excel Table by its name (e.g. 'tblBudget'), "
+                       "wherever it sits in the workbook, as a Markdown table "
+                       "with the sheet row number of each row. Optionally "
+                       "pick columns, filter to rows where one column equals "
+                       "a value, and page with 'offset'.",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "workbook": {"type": "string"},
+                "table": {"type": "string",
+                          "description": "The Table's name (case-insensitive)."},
+                "columns": {"type": "array", "items": {"type": "string"},
+                            "description": "Optional: only these columns, by header name."},
+                "filter_column": {"type": "string",
+                                  "description": "Optional: keep rows where this column..."},
+                "filter_value": {"type": "string",
+                                 "description": "...equals this value (case-insensitive; "
+                                                "numbers compare as numbers)."},
+                "offset": {"type": "integer",
+                           "description": "Skip this many data rows (paging; default 0)."},
+            },
+            "required": ["workbook", "table"],
+        },
+    },
+    "excel_list_pivot_tables": {
+        "handler": tool_list_pivot_tables,
+        "description": "List the pivot tables in a workbook with their layout: "
+                       "sheet and cells, source data, row/column/filter fields "
+                       "and value fields (e.g. 'Sum of Amount').",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "workbook": {"type": "string"},
+            },
+            "required": ["workbook"],
+        },
+    },
+    "excel_read_pivot_table": {
+        "handler": tool_read_pivot_table,
+        "description": "Read one pivot table: its layout plus the figures it "
+                       "shows, as Excel last calculated and saved them. "
+                       "'pivot' may be omitted when the workbook has only one.",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "workbook": {"type": "string"},
+                "pivot": {"type": "string",
+                          "description": "Pivot table name, e.g. 'PivotTable1'."},
+            },
+            "required": ["workbook"],
+        },
+    },
 }
+
+
+_SAVE_AS_PROPS = {
+    "save_as": {"type": "string",
+                "description": "Optional: save the result as a NEW workbook "
+                               "of this name in the same folder, leaving the "
+                               "original untouched."},
+    "overwrite": {"type": "boolean",
+                  "description": "Allow 'save_as' to replace an existing file "
+                                 "(default false)."},
+}
+
+
+def _with_save_as(props):
+    merged = dict(props)
+    merged.update(_SAVE_AS_PROPS)
+    return merged
+
+
+# Offered only when EXCEL_ALLOW_WRITE=true. Each call starts a private,
+# invisible Excel, so it needs Windows, desktop Excel and pywin32.
+WRITE_TOOLS = {
+    "excel_write_cells": {
+        "handler": tool_write_cells,
+        "description": "Write values into a sheet (tab), starting at a cell: "
+                       "'values' is a list of rows, e.g. [[\"Region\", "
+                       "\"Total\"], [\"North\", 1200]]. A string starting "
+                       "with '=' is a formula; null clears a cell; dates as "
+                       "YYYY-MM-DD. Excel recalculates and saves the workbook "
+                       "(or a copy, with 'save_as'). The workbook must not be "
+                       "open in Excel.",
+        "schema": {
+            "type": "object",
+            "properties": _with_save_as({
+                "workbook": {"type": "string"},
+                "sheet": {"type": "string",
+                          "description": "Sheet name or 1-based index "
+                                         "(default: the first sheet)."},
+                "cell": {"type": "string",
+                         "description": "Top-left cell to write from, e.g. 'B2' "
+                                        "(default A1)."},
+                "values": {"type": "array", "items": {"type": "array"},
+                           "description": "Rows of cell values."},
+                "create_sheet": {"type": "boolean",
+                                 "description": "Add the sheet if it does not "
+                                                "exist (default false)."},
+            }),
+            "required": ["workbook", "values"],
+        },
+    },
+    "excel_add_table_rows": {
+        "handler": tool_add_table_rows,
+        "description": "Append rows to an Excel Table by name. Each row is an "
+                       "object of column name -> value (unnamed columns keep "
+                       "their calculated formulas), or a list of values in "
+                       "column order. The Table grows to take them.",
+        "schema": {
+            "type": "object",
+            "properties": _with_save_as({
+                "workbook": {"type": "string"},
+                "table": {"type": "string", "description": "The Table's name."},
+                "rows": {"type": "array",
+                         "description": "Rows to add: objects or lists."},
+            }),
+            "required": ["workbook", "table", "rows"],
+        },
+    },
+    "excel_update_table_rows": {
+        "handler": tool_update_table_rows,
+        "description": "Change values in the row(s) of an Excel Table that "
+                       "match: 'match' is column -> value identifying the "
+                       "row (e.g. {\"ID\": \"A-17\"}), 'set' is column -> "
+                       "new value. Refuses when several rows match unless "
+                       "all_matches is true.",
+        "schema": {
+            "type": "object",
+            "properties": _with_save_as({
+                "workbook": {"type": "string"},
+                "table": {"type": "string", "description": "The Table's name."},
+                "match": {"type": "object",
+                          "description": "Column -> value the row must have "
+                                         "(case-insensitive)."},
+                "set": {"type": "object",
+                        "description": "Column -> new value."},
+                "all_matches": {"type": "boolean",
+                                "description": "Change every matching row "
+                                               "(default false)."},
+            }),
+            "required": ["workbook", "table", "match", "set"],
+        },
+    },
+    "excel_create_pivot_table": {
+        "handler": tool_create_pivot_table,
+        "description": "Create a real Excel PivotTable from a Table "
+                       "('source_table') or a range with a header row "
+                       "('source_sheet' + 'source_range'). Group by 'rows' "
+                       "and/or 'columns', summarise 'values' (each "
+                       "{field, function: sum|count|average|max|min|...}), "
+                       "optionally with 'filters'. It goes on a new sheet "
+                       "unless 'destination_sheet' names an existing one. "
+                       "Returns the figures it shows.",
+        "schema": {
+            "type": "object",
+            "properties": _with_save_as({
+                "workbook": {"type": "string"},
+                "source_table": {"type": "string",
+                                 "description": "Name of the Table to summarise (preferred)."},
+                "source_sheet": {"type": "string",
+                                 "description": "Sheet of the source range (with 'source_range')."},
+                "source_range": {"type": "string",
+                                 "description": "A1 range including the header row, e.g. 'A1:F500'."},
+                "rows": {"type": "array", "items": {"type": "string"},
+                         "description": "Column names to group down the side."},
+                "columns": {"type": "array", "items": {"type": "string"},
+                            "description": "Column names to group across the top."},
+                "values": {"type": "array",
+                           "items": {"type": "object"},
+                           "description": "What to summarise: [{\"field\": "
+                                          "\"Amount\", \"function\": \"sum\", "
+                                          "\"caption\": optional, "
+                                          "\"number_format\": optional e.g. "
+                                          "\"#,##0\"}]."},
+                "filters": {"type": "array", "items": {"type": "string"},
+                            "description": "Column names to add as report filters."},
+                "destination_sheet": {"type": "string",
+                                      "description": "Sheet to put it on (default: a "
+                                                     "new sheet 'Pivot - <source>')."},
+                "destination_cell": {"type": "string",
+                                     "description": "Top-left cell (default A3)."},
+                "name": {"type": "string",
+                         "description": "PivotTable name (default derived from the source)."},
+            }),
+            "required": ["workbook", "values"],
+        },
+    },
+}
+
+
+def active_tools():
+    """The tools on offer: the read tools, plus the write tools when enabled."""
+    tools = dict(TOOLS)
+    if ALLOW_WRITE:
+        tools.update(WRITE_TOOLS)
+    return tools
 
 
 # ===========================================================================
@@ -1246,7 +2622,7 @@ def handle_request(msg, folder):
 
     if method == "tools/list":
         tool_list = []
-        for name, spec in TOOLS.items():
+        for name, spec in active_tools().items():
             tool_list.append({
                 "name": name,
                 "description": spec["description"],
@@ -1258,7 +2634,7 @@ def handle_request(msg, folder):
         params = msg.get("params") or {}
         name = params.get("name")
         arguments = params.get("arguments") or {}
-        spec = TOOLS.get(name)
+        spec = active_tools().get(name)
         if spec is None:
             return _make_result(
                 req_id,
@@ -1341,6 +2717,14 @@ def env(name):
     return value
 
 
+def env_flag(name, default):
+    """A true/false environment variable; blank (or unset) keeps the default."""
+    value = env(name)
+    if value is None:
+        return default
+    return value.lower() in ("1", "true", "yes", "on")
+
+
 def resolve_docs_dir():
     """The workbook folder, from the environment.
 
@@ -1361,11 +2745,13 @@ def resolve_docs_dir():
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="Read-only Excel (.xlsx) MCP server. Configuration is "
-                    "environment variables only: EVA_DOCUMENTS_DIR (this "
-                    "server reads its 'excel' sub-folder), or EXCEL_DOCS_DIR "
-                    "to override that one folder. See the CONFIGURATION "
-                    "section of this file's docstring.")
+        description="Excel (.xlsx) MCP server: reads workbooks directly, and "
+                    "with EXCEL_ALLOW_WRITE=true changes them through Excel. "
+                    "Configuration is environment variables only: "
+                    "EVA_DOCUMENTS_DIR (this server works in its 'excel' "
+                    "sub-folder), or EXCEL_DOCS_DIR to override that one "
+                    "folder. See the CONFIGURATION section of this file's "
+                    "docstring.")
     parser.add_argument("--check", action="store_true",
                         help="Print environment/config diagnostics and exit.")
     parser.add_argument("--list", action="store_true",
@@ -1374,9 +2760,10 @@ def main(argv=None):
                         version="{0} {1}".format(SERVER_NAME, __version__))
     args = parser.parse_args(argv)
 
-    global DOCS_DIR
+    global DOCS_DIR, ALLOW_WRITE
     DOCS_DIR, folder_chosen = resolve_docs_dir()
     folder = DOCS_DIR
+    ALLOW_WRITE = env_flag("EXCEL_ALLOW_WRITE", ALLOW_WRITE)
 
     if args.check:
         print("excel_mcp environment check")
@@ -1395,8 +2782,16 @@ def main(argv=None):
                     print("      - %s" % f)
             except WorkbookError as exc:
                 print("  error listing     : %s" % exc)
+        print("  writing           : %s"
+              % ("ENABLED (EXCEL_ALLOW_WRITE=true)" if ALLOW_WRITE
+                 else "off (read-only; set EXCEL_ALLOW_WRITE=true to enable)"))
+        if ALLOW_WRITE:
+            # Starts (and quits) a private Excel, proving the write tools can
+            # run here before the model finds out the hard way.
+            print("  Excel automation  : %s" % _check_excel_automation())
+        tools = active_tools()
         print("  tools registered  : %d (%s)"
-              % (len(TOOLS), ", ".join(TOOLS.keys())))
+              % (len(tools), ", ".join(tools.keys())))
         return 0
 
     # The workbook folder is REQUIRED: the server only reads inside it and
@@ -1421,6 +2816,12 @@ def main(argv=None):
             return 1
         return 0
 
+    if ALLOW_WRITE:
+        log("WRITE ENABLED: workbooks can be changed through Excel "
+            "(EXCEL_ALLOW_WRITE=true)")
+    else:
+        log("read-only: workbook writing is off (set EXCEL_ALLOW_WRITE=true "
+            "to enable it)")
     serve(folder)
     return 0
 

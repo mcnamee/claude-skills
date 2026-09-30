@@ -1,15 +1,18 @@
-# Jira (read-only)
+# Jira
 
-Query Jira issues, sprints and projects. **Strictly read-only** — every request
-is an HTTP GET, and there is no code path that creates, edits, transitions,
-comments on, or deletes anything.
+Query Jira issues, sprints and projects — and, once you switch writing on,
+create issues, edit them, comment on them and move them through their workflow.
+**Read-only by default**: until `JIRA_ALLOW_WRITE=true`, every request is an HTTP
+GET and the write tools are not offered at all. Nothing can ever delete an
+issue.
 
 | | |
 |---|---|
-| **Server** | `jira.py` v3.0.1 |
+| **Server** | `jira.py` v3.1.0 |
 | **pip install** | _none_ — standard library only (HTTP via stdlib `urllib`) |
 | **Platform** | any |
 | **Writes to disk** | no |
+| **Writes to Jira** | only with `JIRA_ALLOW_WRITE=true` — off by default |
 
 > Targets Jira **Data Center / Server** (plain-text descriptions via the v2
 > API). Jira Cloud's v3 API returns rich-text documents and is not supported.
@@ -31,6 +34,7 @@ blank or missing value means "not set".
 | `JIRA_BASE_URL` | **yes** | Base URL including any context path, no trailing slash |
 | `JIRA_TOKEN` | **yes** (or `JIRA_USER` + `JIRA_PASSWORD`) | Personal Access Token, sent as Bearer |
 | `JIRA_PROJECTS` | no | Comma-separated project keys, e.g. `ABC,DEF` |
+| `JIRA_ALLOW_WRITE` | no | `true` to let it create, edit, comment on and transition issues. Blank = read-only |
 
 ```json
 {
@@ -58,6 +62,44 @@ setx JIRA_TOKEN "your-personal-access-token"
 `setx` does not affect processes that are already running, so quit VS Code
 completely (a window reload is not enough) and reopen it. Check it took in a
 **new** window with `$env:JIRA_TOKEN`.
+
+## Tools
+
+| Tool | Does |
+|---|---|
+| `jira_search` | Free-text search (safely quoted into JQL) |
+| `jira_search_jql` | Advanced search with raw JQL |
+| `jira_get_issue` | One issue in full: fields, description, comments, optionally the change history |
+| `jira_my_issues` | Issues assigned to you |
+| `jira_project_status` | Health summary of one project |
+| `jira_list_projects` | The project keys you can see |
+| `jira_list_transitions` | An issue's status and the transitions available from it (and any field each needs) |
+| `jira_create_issue` | *(writing on)* New issue: project, type, summary, plus description, priority, assignee, labels, components, fix versions, due date, `parent` for a sub-task, and any custom field via `fields` |
+| `jira_update_issue` | *(writing on)* Edit any of those fields; `labels` replaces, `add_labels` / `remove_labels` adjust; `assignee: "none"` unassigns; optional `comment` in the same call |
+| `jira_add_comment` | *(writing on)* Comment on an issue |
+| `jira_transition_issue` | *(writing on)* Move an issue by transition name, id, **or target status** ("move it to Done"), with an optional `resolution` and `comment`. No match lists what is available |
+
+## Writing issues
+
+**Off unless `JIRA_ALLOW_WRITE=true`.** Then:
+
+- **Text is Jira wiki markup**, the format Jira Data Center stores — `h2.
+  Heading`, `*bold*`, `_italic_`, `{{code}}`, `* bullet`, `# numbered`,
+  `[label|https://url]`, `||head||` / `|cell|` tables, `{code}...{code}`,
+  `[~username]` mentions. Not Markdown.
+- **Assignees** can be given as a username, an email or a display name
+  (`me` for you). A name that matches more than one person is refused with the
+  candidates, never guessed.
+- **Custom fields** go in `fields` by id, e.g.
+  `{"customfield_10010": "value"}` or `{"customfield_10020": {"value": "Option"}}`.
+  When Jira refuses a create, its reply names each field it wanted — the tool
+  passes that on field by field.
+- **`JIRA_PROJECTS` confines writes** exactly as it confines reads: a project
+  or issue key outside the allowlist is refused before anything is sent.
+- Jira's own permissions still apply: the account can only do what it could do
+  in the browser.
+- A comment added alongside a transition is posted separately after the move,
+  because Jira refuses a comment inside a transition that has no screen.
 
 ## Configuration
 
@@ -98,6 +140,7 @@ it uses only `EVA_PYTHON` - there is nothing here that has to exist on disk.
 | `JIRA_VERIFY_SSL=false` | Disable TLS certificate verification |
 | `JIRA_TIMEOUT` | Request timeout in seconds (default 30) |
 | `JIRA_MAX_BODY` | Truncate issue descriptions to N chars, 0 = unlimited (default) |
+| `JIRA_ALLOW_WRITE=true` | Offer the write tools (create, update, comment, transition) — see [Writing issues](#writing-issues). Default off: read-only |
 
 ### Command-line flags
 
@@ -106,13 +149,13 @@ flags are actions:
 
 | Flag | Purpose |
 |---|---|
-| `--check` | Connect to Jira, print who you are authenticated as + visible project count to stderr, then exit (no server) |
+| `--check` | Connect to Jira, print who you are authenticated as + visible project count and whether writing is on, to stderr, then exit (no server) |
 | `--version` | Print version and exit |
 
 ## File access
 
-None. HTTP GET to Jira only; the optional `JIRA_CA_CERT` bundle is read once at
-startup.
+None. HTTP to Jira only (GET only, unless `JIRA_ALLOW_WRITE=true`); the optional
+`JIRA_CA_CERT` bundle is read once at startup.
 
 There is no knowledge folder here: nothing you read from
 Jira is written to disk or indexed. To keep something from a ticket, ask for it
@@ -128,6 +171,11 @@ to be saved and Claude writes a note with the `knowledge-base` plugin's
 5. "How healthy is project ABC — what's open, in progress, unassigned?" → `jira_project_status`
 6. "Which projects can I see in Jira?" → `jira_list_projects`
 7. "Draft a status report from my open tickets as a Word doc with tracked changes." → `jira_my_issues` + the `word` plugin's editing tools
+8. "Raise a bug in ABC: the export button times out on large reports, assign it to Jane Smith." → `jira_create_issue` *(writing on)*
+9. "Bump ABC-123 to High and add the label `regression`." → `jira_update_issue` with `priority` and `add_labels` *(writing on)*
+10. "Comment on ABC-123 that the fix is in the 2.4 build." → `jira_add_comment` *(writing on)*
+11. "Move ABC-123 to In Progress." / "Resolve ABC-123 as Done." → `jira_transition_issue` (with `resolution` for the second) *(writing on)*
+12. "What can ABC-123 move to from here?" → `jira_list_transitions`
 
 ## Troubleshooting
 

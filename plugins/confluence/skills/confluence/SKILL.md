@@ -1,11 +1,13 @@
 ---
 name: confluence
-description: Search and read Confluence pages via the confluence MCP server, across one or two Confluence instances. Use when the user asks to find, read, summarise or pull content from Confluence (runbooks, handbooks, wiki pages, spaces), including when they ask for the tasks, action items, statuses, properties or child pages listed on a Confluence page (macro content), when they name a particular Confluence server, or when they ask for a Confluence page to be saved into the local knowledge base.
+description: Search, read and (when writing is switched on) create and edit Confluence pages via the confluence MCP server, across one or two Confluence instances, and download a page's attachments. Use when the user asks to find, read, summarise or pull content from Confluence (runbooks, handbooks, wiki pages, spaces), including when they ask for the tasks, action items, statuses, properties or child pages listed on a Confluence page (macro content), when they name a particular Confluence server, when they ask for a Confluence page to be saved into the local knowledge base, when they want a file attached to a page (a spreadsheet, document, deck, PDF or Markdown file) - often to open it with another plugin next - or when they ask to create a page, update a page, or add content (minutes, actions, a section) to a page.
 ---
 
 # Confluence (via the `confluence` MCP server)
 
-Requires the `confluence.py` MCP server (read-only, Confluence Data Center).
+Requires the `confluence.py` MCP server (Confluence Data Center). It reads by
+default; the page-writing tools exist only when the endpoint sets
+`CONFLUENCE_ALLOW_WRITE=true`.
 If its tools are not available, tell the user to wire it in first (see the
 repo README) and to verify connectivity with `python confluence.py --check`.
 
@@ -18,6 +20,17 @@ repo README) and to verify connectivity with `python confluence.py --check`.
 | `confluence_get_page` | Full content of one page by numeric ID |
 | `confluence_get_page_by_title` | Full content by exact title + space key |
 | `confluence_list_pages_under` | Children of a page (navigate a page tree) |
+| `confluence_list_attachments` | The files attached to a page, and where each would download to |
+| `confluence_download_attachment` | Save one attachment into the folder the matching plugin reads |
+| `confluence_create_page` | New page in a space, optionally under a parent *(writing on)* |
+| `confluence_append_to_page` | Add content to the end/start of a page, keeping the rest *(writing on)* |
+| `confluence_update_page` | Replace a page's whole body and/or title *(writing on)* |
+
+The last three are only in the tool list when writing is switched on. If the
+user asks for a page to be created or changed and they are missing, say that
+Confluence writing is off on this endpoint and that `CONFLUENCE_ALLOW_WRITE=true`
+(in Claude Code's settings `env` block, then a restart) turns it on. Do not
+work around it.
 
 ## Picking the server
 
@@ -101,6 +114,64 @@ explicitly wants to see how a page is built rather than what it shows.
    task text, who it is assigned to and any due date, and say whether each one
    is ticked.
 
+## Attachments: getting a file off a page
+
+1. `confluence_list_attachments` on the page (by `page_id`, or `title` +
+   `space`). Each line gives the name, type, size, version and the local
+   folder it would go to, or why it cannot be downloaded.
+2. `confluence_download_attachment` with the exact `filename` (or
+   `attachment_id`). The file lands where the plugin for its type looks:
+
+   | Type | Folder | Next tool |
+   |---|---|---|
+   | `.xlsx` / `.xlsm` | `documents\excel` | `excel_list_sheets`, `excel_read_table`, `excel_read_range` |
+   | `.docx` | `documents\word` | `msword_open` |
+   | `.pptx` | `documents\powerpoint` | `powerpoint_open` |
+   | `.pdf` | `documents\pdf` | `convert_pdf_to_markdown` |
+   | `.md` | `knowledge\confluence` | `kb_index` |
+
+3. Carry straight on with the other plugin, passing the **file name** the
+   download reported (not the full path - each plugin resolves names inside
+   its own folder). "Get the budget from page X and total column D" is the
+   download followed by an `excel_*` call, in one turn.
+
+- **Never overwrite by default.** If the file already exists the download is
+  refused. When the user wants the newest copy ("get the latest version"),
+  retry with `overwrite: true`; when they want both, use `save_as`. If it is not
+  clear which, ask in one line.
+- Other file types are listed but cannot be downloaded - say so rather than
+  suggesting a workaround.
+- Downloading changes nothing in Confluence, so it works with writing off.
+
+## Writing pages (only when the write tools are present)
+
+Writing to a wiki publishes as the user, so:
+
+1. **Only write what the user asked for.** Never create or edit a page as a
+   side effect of research, and never "tidy up" a page you were reading.
+2. **Show the content first** - draft it in the chat, get a yes, then write -
+   unless the user has already given you the exact text or said to go ahead.
+3. **Prefer `confluence_append_to_page`** for adding to a page (minutes,
+   actions, a new section). It leaves every existing macro and layout
+   untouched.
+4. **`confluence_update_page` replaces the whole body.** Read the page first
+   (`confluence_get_page` with `body_format: "storage"` shows what is really
+   there), build the complete new body from it, and pass the version you read
+   as `expected_version`. If the page carries macros (task reports, Jira
+   tables, page properties) that your Markdown cannot reproduce, either use
+   `content_format: "storage"` and keep the macro XML, or append instead - and
+   tell the user. A refused write because the page moved on means read it again,
+   never force it.
+5. **Say what you did:** title, page ID, new version and URL, as the tool
+   reports them.
+
+Bodies are Markdown by default: headings, bold/italic, `code`, links, nested
+lists, tables, block quotes, fenced code (becomes a code macro), `- [ ] task`
+(becomes a real Confluence task), and `> [!NOTE] Title` / `[!TIP]` /
+`[!WARNING]` quotes (become panels). Write action items as `- [ ]` tasks so they
+show up in Confluence task reports. Page titles must be unique within a space;
+if a create is refused for that reason, ask the user for another title.
+
 ## Saving to the knowledge base
 
 Reading a page does **not** save it. `confluence_get_page` and
@@ -122,7 +193,8 @@ the path.
 
 ## Notes
 
-- The server is read-only; it cannot create or edit pages.
+- Without `CONFLUENCE_ALLOW_WRITE=true` the server is read-only and cannot
+  create or edit pages; downloading attachments still works.
 - With two instances configured, saved files are named
   `Confluence <server> - <title>.md`, so pages that share a title on both
   instances stay separate. Saving is off at the server if

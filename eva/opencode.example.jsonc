@@ -104,6 +104,9 @@
       "command": ["C:/path/to/python.exe", "H:/Claude-Skills/plugins/excel/excel.py"],
       "environment": {
         "PYTHONUTF8": "1",
+        // "true" lets it change workbooks (write cells, Table rows, create
+        // pivot tables) through Excel; needs pywin32. Blank = read-only.
+        "EXCEL_ALLOW_WRITE": "",
         // Folder override (default H:/Eva/documents/excel).
         "EXCEL_DOCS_DIR": ""
       },
@@ -160,13 +163,19 @@
         "CONFLUENCE_PASSWORD_2": "",
         "CONFLUENCE_CA_CERT_2": "",
         "CONFLUENCE_VERIFY_SSL_2": "",
+        // "true" lets it create, update and append to pages. Blank = read-only.
+        "CONFLUENCE_ALLOW_WRITE": "",
         // Tuning.
         "CONFLUENCE_KB_AUTOSAVE": "",
         "CONFLUENCE_BODY_FORMAT": "",
         "CONFLUENCE_TIMEOUT": "",
         "CONFLUENCE_MAX_BODY": "",
-        // Folder override (default H:/Eva/knowledge/confluence); also takes "off".
-        "CONFLUENCE_KB_DIR": ""
+        // Folder overrides: saved pages and .md attachments (default
+        // H:/Eva/knowledge/confluence), and the documents ROOT other
+        // attachments download into by type (default H:/Eva/documents, so
+        // documents/excel, documents/word, ...). Both also take "off".
+        "CONFLUENCE_KB_DIR": "",
+        "CONFLUENCE_DOCS_DIR": ""
       },
       "enabled": true,
       "timeout": 300000
@@ -185,6 +194,9 @@
         "JIRA_PASSWORD": "",
         "JIRA_CA_CERT": "",
         "JIRA_VERIFY_SSL": "",
+        // "true" lets it create, edit, comment on and transition issues.
+        // Blank = read-only.
+        "JIRA_ALLOW_WRITE": "",
         // Tuning.
         "JIRA_TIMEOUT": "",
         "JIRA_MAX_BODY": ""

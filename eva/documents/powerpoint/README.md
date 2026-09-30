@@ -14,6 +14,13 @@ this folder, so nobody has to type an absolute path. An exact filename always
 wins; failing that the plugin falls back to a fuzzy match, so `"kickoff deck"`
 still finds the file.
 
+## Confluence attachments land here too
+
+Ask the `confluence` plugin to download an attachment and a `.pptx` file comes
+here, because this is the one folder the `powerpoint` plugin can open. It keeps
+the attachment's own name and never replaces a file already here unless you
+say so (or give it a different name to save as).
+
 ## What belongs here
 
 Every `.pptx` in play: decks you already have and want Eva to read, review or

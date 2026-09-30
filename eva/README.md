@@ -55,6 +55,7 @@ H:\Eva\
 │  ├─ powerpoint\      .pptx  (searched recursively)
 │  ├─ excel\           .xlsx  (top level only — see its README)
 │  └─ pdf\             .pdf   source PDFs, and planners outlook printed
+│                      (confluence downloads attachments into these four too)
 └─ templates\        blank branded files new documents start from
    ├─ word\             .docx templates        (read-only)
    └─ powerpoint\       .pptx / .potx templates (read-only)
@@ -102,7 +103,7 @@ Where each plugin lands, and **which folders must exist**:
 | `excel` | `documents\excel\` | — | — |
 | `pdf-to-md` | `documents\pdf\` | — | `knowledge\pdf\` |
 | `outlook` | `documents\pdf\` *(planners it prints)* | — | `knowledge\email\` |
-| `confluence` | — | — | `knowledge\confluence\` |
+| `confluence` | `documents\excel\`, `word\`, `powerpoint\`, `pdf\` *(attachments it downloads, by type)* | — | `knowledge\confluence\` |
 | `knowledge-base` | `knowledge\` *(the whole root - it indexes everything)* | — | `knowledge\captures\` |
 | `jira` | — | — | — |
 

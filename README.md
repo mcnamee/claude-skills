@@ -45,9 +45,14 @@ source material with something invented.
   block. The matching skill comes with the server.
 - **Confined by default.** Every server that touches the filesystem is locked to
   its sub-folders, and refuses to start unconfined rather than falling back to
-  "anywhere". `word` and `powerpoint` are the only ones that can change a file
-  you already have; the rest either read, or write new Markdown into the
-  knowledge tree.
+  "anywhere". `word` and `powerpoint` can change a file you already have, and
+  so can `excel` once you switch its writing on; the rest either read, or write
+  new files (Markdown, a downloaded attachment) into their own folders.
+- **Read-only until you say otherwise.** `confluence`, `jira` and `excel` can
+  write - create and edit pages, raise and move tickets, update workbooks and
+  build pivot tables - but each ships with writing **off**. One variable
+  (`CONFLUENCE_ALLOW_WRITE`, `JIRA_ALLOW_WRITE`, `EXCEL_ALLOW_WRITE`) turns it
+  on; until then the write tools are not even offered.
 - **Secrets never hit the command line.** Tokens and API keys are environment
   variables only — argv is visible to other local users in process listings.
 - **Notes you can read at a lectern.** `powerpoint` formats the one surface
@@ -68,7 +73,10 @@ source material with something invented.
 - **They compose.** `word` and `powerpoint` mirror what they open into one
   Markdown folder, `confluence` and `outlook` save the pages and emails you ask
   them to keep into the same folder, and `pdf-to-md` fills it from PDFs; the
-  `knowledge-base` server indexes it and answers questions over the lot.
+  `knowledge-base` server indexes it and answers questions over the lot. A
+  spreadsheet attached to a Confluence page downloads straight into the folder
+  `excel` reads, so "get the budget from page X and total column D" is one
+  request.
 - **And it grows.** `word` mirrors documents it *writes*, not just ones it
   reads, and `knowledge-base` takes a `kb_capture` call — so an analysis or a
   research brief that would otherwise vanish with the chat goes back into the
@@ -80,10 +88,10 @@ source material with something invented.
 |---|---|---|---|
 | [**word**](plugins/word) | 10.0.0 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
 | [**powerpoint**](plugins/powerpoint) | 6.0.0 | Build sectioned `.pptx` decks that inherit your own template's layouts and theme, with formatted speaker notes, audited against the 10/20/30 rule | `python-pptx` |
-| [**excel**](plugins/excel) | 6.0.0 | Read and analyse workbooks; parses `.xlsx` directly, so Excel isn't needed | _none_ |
+| [**excel**](plugins/excel) | 6.1.0 | Read and analyse workbooks - sheets, Tables by name, pivot tables - by parsing `.xlsx` directly; when switched on, write cells and Table rows and create real PivotTables through Excel | _none_ (`pywin32` to write) |
 | [**outlook**](plugins/outlook) | 11.0.0 | Read local Outlook mail and calendar via COM, with a content blacklist; schedules a meeting (fuzzy directory search, free/busy, and an **unsent** draft you send yourself); prints a day as an A4 PDF planner in your own category colours, and saves an email to the knowledge base when you ask | `pywin32` |
-| [**confluence**](plugins/confluence) | 7.0.0 | Search and read Confluence pages, across one or two instances, with macro content included; saves a page to the knowledge base when you ask | _none_ |
-| [**jira**](plugins/jira) | 3.0.1 | Query issues, sprints and projects (Jira Data Center v2 API) | _none_ |
+| [**confluence**](plugins/confluence) | 7.1.0 | Search and read Confluence pages, across one or two instances, with macro content included; download attachments into the folder the matching plugin reads; saves a page to the knowledge base when you ask; when switched on, create, update and append to pages | _none_ |
+| [**jira**](plugins/jira) | 3.1.0 | Query issues, sprints and projects; when switched on, create, edit, comment on and transition issues (Jira Data Center v2 API) | _none_ |
 | [**knowledge-base**](plugins/knowledge-base) | 6.0.0 | True RAG over your own Markdown: local ChromaDB index + your embeddings API, and capture notes back into it | `chromadb` |
 | [**pdf-to-md**](plugins/pdf-to-md) | 7.0.0 | Convert PDFs to Markdown with tables preserved | `pymupdf pymupdf4llm` |
 
@@ -135,7 +143,8 @@ in step 3:
 & "C:\path\to\python.exe" -m pip install python-docx pymupdf pymupdf4llm pywin32 chromadb
 ```
 
-(Drop `pywin32` if you're not on Windows / not using `outlook`. Install only
+(Drop `pywin32` if you're not on Windows / not using `outlook` or `excel`'s
+writing. Install only
 what the plugins you want need — see the table above.) `word.py`'s docstring
 walks through sideloading the wheels.
 
@@ -319,17 +328,24 @@ The per-plugin READMEs list each server's actual settings.
    differs: `<PREFIX>_DOCS_DIR`, `<PREFIX>_TEMPLATES_DIR`, `<PREFIX>_KB_DIR`.
    It beats the shared root. Prefixes: `CONFLUENCE_`, `JIRA_`, `KB_`, `EXCEL_`,
    `OUTLOOK_`, `MSWORD_` (the `word` server keeps this older prefix), `PDF2MD_`,
-   `POWERPOINT_`.
-4. **Secrets are env-var only**, and always were — no flag has ever existed
+   `POWERPOINT_`. `CONFLUENCE_DOCS_DIR` is the one that names a **root**
+   rather than a folder: attachments go to the per-type sub-folders of it
+   (`excel\`, `word\`, ...), because those are the folders the other plugins
+   read.
+4. **Writing to a shared system is opt-in:** `<PREFIX>_ALLOW_WRITE=true`
+   (`CONFLUENCE_`, `JIRA_`, `EXCEL_`). Blank or unset means read-only, and the
+   write tools are not offered at all, so updating a plugin never hands it new
+   power over a wiki, a tracker or your workbooks.
+5. **Secrets are env-var only**, and always were — no flag has ever existed
    that could put a token in a command line, where other local users can read
    it out of a process listing.
-5. **A blank value means "not configured"**, so the shared root still applies —
+6. **A blank value means "not configured"**, so the shared root still applies —
    that is what an MCP client substitutes for a setting left empty. To switch an
    optional folder off, set it to `off` (`none`, `no`, `false` and `disabled`
    also work). A folder you named yourself that does not exist is a fatal
    error, because it is almost always a typo; a built-in default that does not
    exist yet is a warning, and the feature it enables simply stays off.
-6. **Every folder must exist.** Copying [`eva/`](eva) to `H:\Eva` creates all of
+7. **Every folder must exist.** Copying [`eva/`](eva) to `H:\Eva` creates all of
    them; each server's `--check` reports which are missing and where the path
    came from.
 
@@ -358,6 +374,7 @@ H:\Eva\
 │  ├─ powerpoint\      .pptx (searched recursively)
 │  ├─ excel\           .xlsx (top level only - excel does not recurse)
 │  └─ pdf\             source PDFs, and day planners outlook printed
+│                      (confluence downloads attachments into these four too)
 └─ templates\        blank branded files new documents/decks start from
    ├─ word\             .docx templates         (read-only)
    └─ powerpoint\       .pptx / .potx templates (read-only)
@@ -373,7 +390,7 @@ sub-folder. **Every folder listed here must exist.**
 | `excel` | `excel\` | — | — |
 | `pdf-to-md` | `pdf\` | — | `pdf\` |
 | `outlook` | `pdf\` (printed planners) | — | `email\` |
-| `confluence` | — | — | `confluence\` |
+| `confluence` | `excel\`, `word\`, `powerpoint\`, `pdf\` (downloaded attachments, by type) | — | `confluence\` |
 | `knowledge-base` | — | — | the **whole root** it indexes, plus `captures\` |
 | `jira` | — | — | — |
 
@@ -420,12 +437,12 @@ three shared roots, and those folders are **required**:
 |---|---|
 | `word` | Read/write, confined to the one documents folder (where new documents are created too) plus the knowledge-base folder; the templates folder is read-only. Opening, creating and saving each mirror to the knowledge-base folder |
 | `powerpoint` | Read/write, confined to the one presentations folder (where new decks are created too) plus the knowledge-base folder; the templates folder is read-only. Opening, creating and saving each mirror to the knowledge-base folder |
-| `excel` | Read-only, confined to the workbook folder (top level only) |
+| `excel` | Read-only, confined to the workbook folder (top level only). With `EXCEL_ALLOW_WRITE=true` it also changes workbooks in that folder (or saves copies into it) through a private Excel instance |
 | `knowledge-base` | Reads the documents folder; writes its vector index (`H:\Eva\index`) and captured notes (`H:\Eva\knowledge\captures`, always inside the documents folder); never edits or deletes an existing document; network only to the endpoints you configure |
 | `pdf-to-md` | Reads the PDF folder, writes the output folder |
-| `confluence` | Writes only the knowledge-base folder, and only for a page you asked to keep (`save_to_kb`); reading a page saves nothing. Set the folder to `off` and the server touches no local file |
+| `confluence` | Writes the knowledge-base folder only for a page you asked to keep (`save_to_kb`) or a Markdown attachment you downloaded, and the per-type documents folders only for an attachment you asked it to download - never replacing a file already there unless told to. Reading a page saves nothing. Set `CONFLUENCE_KB_DIR` and `CONFLUENCE_DOCS_DIR` to `off` and the server touches no local file |
 | `outlook` | Reads no local folder at all. Writes two, both only when asked: the knowledge-base folder for an email you asked to keep (`save_to_kb`), and the PDF folder for a day planner you asked it to print. Reading mail saves nothing, and a blacklisted message or meeting is never written at all. Set both folders to `off` and the server touches no local file. In the mailbox it can never send, accept, move or delete; its one write there is an **unsent** meeting draft you review and send yourself (`OUTLOOK_ALLOW_DRAFTS=false` removes even that) |
-| `jira` | None — HTTP GET to Jira only |
+| `jira` | None. HTTP GET to Jira only, unless `JIRA_ALLOW_WRITE=true` adds the write tools |
 
 Paths are resolved (symlinks included) before the containment check, so a
 symlink dropped inside a configured folder cannot reach files outside it.
