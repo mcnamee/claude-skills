@@ -1,6 +1,7 @@
 # documents\
 
-The binary library — the `.docx`, `.pptx`, `.xlsx` and `.pdf` files themselves.
+The binary library — the `.docx`, `.pptx`, `.xlsx` and `.pdf` files themselves,
+plus images.
 One folder per file type, and each is the **only** folder its plugin touches:
 what you put there and what Eva writes live side by side. The text extracted for
 searching goes to [`..\knowledge`](../knowledge).
@@ -14,8 +15,9 @@ plugin appends its own name, so there is no per-plugin folder setting.
 | [`powerpoint\`](powerpoint) | `powerpoint` | yes — searched recursively |
 | [`excel\`](excel) | `excel` | **no** — top level only |
 | [`pdf\`](pdf) | `pdf-to-md` (and `outlook`, which prints day planners here) | only with `PDF2MD_RECURSIVE=1` |
+| [`images\`](images) | no plugin of its own - the `/org-chart` skill writes here, and `confluence` downloads and uploads images here | n/a |
 
-Each of these **must exist** for its plugin to start (`word`, `powerpoint` and
+Each of the first four **must exist** for its plugin to start (`word`, `powerpoint` and
 `excel` refuse to run without their folder; `pdf-to-md` reports it on `--check`,
 and `outlook` starts anyway and disables printing, since mail has to stay
 readable either way).

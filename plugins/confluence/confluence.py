@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-confluence.py (v7.2.0) - A single-file MCP (Model Context Protocol) server
+confluence.py (v7.3.0) - A single-file MCP (Model Context Protocol) server
 for querying - and, when switched on, writing to - ONE OR TWO Confluence Data
 Center instances (tested against the 9.x v1 REST API) using only the Python 3
 standard library.
@@ -35,10 +35,13 @@ Tools exposed ONLY when CONFLUENCE_ALLOW_WRITE=true (see WRITING PAGES):
   - confluence_append_to_page   : add content to the end/start of a page,
                                   keeping everything already on it
   - confluence_update_page      : replace a page's WHOLE content and/or title
+  - confluence_upload_attachment: attach a local file to a page, or replace
+                                  the attachment of the same name with a new
+                                  version (see ATTACHMENTS)
 
 WRITING PAGES
 -------------
-Off unless CONFLUENCE_ALLOW_WRITE=true. With it off the three write tools are
+Off unless CONFLUENCE_ALLOW_WRITE=true. With it off the write tools are
 not offered at all, and the server never sends anything but a GET - exactly
 how it behaved before v7.1.0. With it on, the tools take MARKDOWN and convert
 it to Confluence's storage format: headings, bold/italic/strikethrough, inline
@@ -91,12 +94,27 @@ and a download anywhere else could never be opened:
   .pptx        -> %EVA_DOCUMENTS_DIR%\powerpoint  (powerpoint plugin)
   .pdf         -> %EVA_DOCUMENTS_DIR%\pdf         (pdf-to-md plugin)
   .md          -> the knowledge folder below       (knowledge-base plugin)
+  .svg .png .jpg .jpeg .gif
+               -> %EVA_DOCUMENTS_DIR%\images      (no plugin; the org-chart
+                                                   skill writes here)
 
 So "get the budget spreadsheet from page X, then use excel to total column D"
 is two calls: this tool, then excel_read_range on the file name it reports.
 Other types are listed but not downloaded. A file already in the folder is
 never replaced unless the call passes overwrite=true. Downloading writes only
 to the local disk; it needs no write access to Confluence.
+
+confluence_upload_attachment (only with CONFLUENCE_ALLOW_WRITE=true) goes the
+other way. It reads ONLY from those same folders - a bare file name is looked
+up in the folder for its type, and a full path must sit inside one of them -
+so "replace the org chart on page Z" cannot send an arbitrary file off the
+endpoint. A file whose name is new to the page is added; one whose name is
+already attached is refused unless overwrite=true, which uploads it as a NEW
+VERSION of that attachment. That is how an image on a page is replaced: the
+page refers to the attachment by name, so it shows the new version without the
+page itself being edited, and Confluence keeps the old one in the attachment's
+history. 'attach_as' uploads the file under a different name (same
+extension), for a local "Org Chart 2026-09.svg" that replaces "orgchart.svg".
 
 MACROS
 ------
@@ -241,13 +259,14 @@ read it out of a process listing.
                         asked (default false).
   CONFLUENCE_ALLOW_WRITE
                         "true" to offer the page-writing tools (create,
-                        update, append). Default off: read-only. Applies to
+                        update, append, upload an attachment). Default off:
+                        read-only. Applies to
                         both servers; Confluence's own permissions still
                         decide which spaces the account can edit.
   CONFLUENCE_DOCS_DIR   override the documents ROOT attachments are
                         downloaded into, instead of EVA_DOCUMENTS_DIR. The
-                        per-type sub-folders (excel, word, powerpoint, pdf)
-                        are still appended, so it should be the same root the
+                        per-type sub-folders (excel, word, powerpoint, pdf,
+                        images) are still appended, so it should be the same root the
                         document plugins use. "off" forbids document downloads
                         (Markdown still goes to the knowledge folder).
 
@@ -327,17 +346,19 @@ config (every setting, tokens included, goes in the environment):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "7.2.0"
+__version__ = "7.3.0"
 
 import argparse
 import base64
 import datetime
 import html.parser
 import json
+import mimetypes
 import os
 import re
 import ssl
 import sys
+import uuid
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -363,7 +384,8 @@ KB_DIR = r"H:\Eva\knowledge\confluence"
 # RESOLVED FROM THE ENVIRONMENT in main(): CONFLUENCE_DOCS_DIR, else
 # %EVA_DOCUMENTS_DIR%, else this fallback. It is a ROOT, not one folder: a
 # download goes into the sub-folder named for its FILE TYPE (documents\excel,
-# documents\word, documents\powerpoint, documents\pdf - see ATTACHMENT_FOLDERS),
+# documents\word, documents\powerpoint, documents\pdf, documents\images - see
+# ATTACHMENT_FOLDERS),
 # because each is the one folder the plugin for that type can open. The root
 # must already exist; the type sub-folder is created on demand. Set
 # CONFLUENCE_DOCS_DIR=off to forbid document downloads.
@@ -1265,16 +1287,22 @@ def _inline_markdown(text):
     text = re.sub(r"\\([\\`*_{}\[\]()#+\-.!|~>])",
                   lambda m: keep(_xml_text(m.group(1))), text)
     # Images: an http(s) URL is an external image, anything else is taken to be
-    # the filename of an attachment on the page.
+    # the filename of an attachment on the page. An attachment name with spaces
+    # is written ![](<Org Chart.svg>) (the CommonMark form) or with %20, and
+    # both give Confluence the real name - it matches ri:filename literally.
     def image(m):
-        alt, src = m.group(1), m.group(2).strip()
+        alt = m.group(1)
+        src = (m.group(2) if m.group(2) is not None else m.group(3)).strip()
         if re.match(r"(?i)^https?://", src):
             ref = '<ri:url ri:value="{}" />'.format(_xml_attr(src))
         else:
-            ref = '<ri:attachment ri:filename="{}" />'.format(_xml_attr(src))
+            ref = '<ri:attachment ri:filename="{}" />'.format(
+                _xml_attr(urllib.parse.unquote(src)))
         alt_attr = ' ac:alt="{}"'.format(_xml_attr(alt)) if alt else ""
         return keep("<ac:image{}>{}</ac:image>".format(alt_attr, ref))
-    text = re.sub(r"!\[([^\]]*)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)", image, text)
+    text = re.sub(
+        r"!\[([^\]]*)\]\((?:<([^>\n]+)>|([^)\s]+))(?:\s+\"[^\"]*\")?\)",
+        image, text)
     # Links: [label](url) and <https://autolink>. Only the tags are lifted out:
     # the label stays in the text, so it is escaped and emphasised with the
     # rest of the line.
@@ -2063,7 +2091,38 @@ ATTACHMENT_FOLDERS = {
     ".pptx": "powerpoint",
     ".md": "knowledge",
     ".markdown": "knowledge",
+    # Images have no plugin of their own; they go to documents\images, which
+    # is also where the org-chart skill writes the SVGs it draws, so a chart
+    # can be downloaded, redrawn and uploaded again from the one folder.
+    ".svg": "images",
+    ".png": "images",
+    ".jpg": "images",
+    ".jpeg": "images",
+    ".gif": "images",
 }
+
+# Content types sent with an upload, for the extensions Python's own table can
+# get wrong or leave out (on Windows, mimetypes also reads the registry, which
+# some endpoints fill with odd values). Anything else is guessed, then falls
+# back to application/octet-stream.
+UPLOAD_CONTENT_TYPES = {
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".pdf": "application/pdf",
+    ".md": "text/markdown",
+    ".markdown": "text/markdown",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".xlsm": "application/vnd.ms-excel.sheet.macroEnabled.12",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+}
+
+# Largest file the upload tool will send. It is read into memory to build the
+# request, and Confluence's own default limit is 100 MB.
+MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 
 # What to suggest next after a download, per destination.
 ATTACHMENT_NEXT_STEP = {
@@ -2072,6 +2131,8 @@ ATTACHMENT_NEXT_STEP = {
     "excel": "open it with the excel plugin (excel_list_sheets, excel_read_range)",
     "powerpoint": "open it with the powerpoint plugin (powerpoint_open)",
     "knowledge": "run kb_index to make it searchable in the knowledge base",
+    "images": ("no plugin opens images; redraw or edit it, then attach it "
+               "again with confluence_upload_attachment"),
 }
 
 # Ceiling on attachments read while looking one up; a page with more than this
@@ -2107,6 +2168,33 @@ def safe_filename(name, max_len=150):
     if len(cleaned) > max_len:
         cleaned = cleaned[:max_len].rstrip(" .")
     return cleaned or "untitled"
+
+
+def _multipart(fields, file_field, filename, content_type, content):
+    """
+    Build a multipart/form-data body by hand (the standard library has no
+    encoder for one). Returns (body_bytes, boundary). The file name is sent as
+    UTF-8 with quotes and backslashes escaped, which is what Confluence's
+    upload handler reads.
+    """
+    boundary = "----confluence-mcp-" + uuid.uuid4().hex
+    safe_name = filename.replace("\\", "\\\\").replace('"', '\\"')
+    crlf = "\r\n"
+    parts = []
+    for key, value in fields:
+        parts.append((
+            "--" + boundary + crlf
+            + 'Content-Disposition: form-data; name="' + key + '"' + crlf
+            + "Content-Type: text/plain; charset=utf-8" + crlf + crlf
+            + value + crlf).encode("utf-8"))
+    parts.append((
+        "--" + boundary + crlf
+        + 'Content-Disposition: form-data; name="' + file_field
+        + '"; filename="' + safe_name + '"' + crlf
+        + "Content-Type: " + content_type + crlf + crlf).encode("utf-8"))
+    parts.append(content)
+    parts.append((crlf + "--" + boundary + "--" + crlf).encode("utf-8"))
+    return b"".join(parts), boundary
 
 
 def cql_quote(value):
@@ -3159,6 +3247,200 @@ class ConfluenceClient:
                 step=ATTACHMENT_NEXT_STEP.get(key, "open it"), note=size_note))
 
 
+    # -- uploading (only offered when CONFLUENCE_ALLOW_WRITE is on) ---------
+    def _upload_roots(self):
+        """
+        The local folders an upload may read from: the same ones downloads
+        write to (each documents type folder, and the knowledge folder), so
+        nothing outside the suite's own tree can be sent to Confluence.
+        """
+        roots = []
+        if self.docs_dir:
+            for key in sorted(set(ATTACHMENT_FOLDERS.values())):
+                if key != "knowledge":
+                    roots.append(os.path.join(self.docs_dir, key))
+        if self.kb_dir:
+            roots.append(self.kb_dir)
+        return roots
+
+    @staticmethod
+    def _inside(path, root):
+        """True when 'path' is 'root' or somewhere beneath it (after resolving
+        '..' and links, and ignoring case the way Windows does)."""
+        path = os.path.normcase(os.path.realpath(path))
+        root = os.path.normcase(os.path.realpath(root))
+        try:
+            return os.path.commonpath([path, root]) == root
+        except ValueError:
+            # Different drives on Windows: certainly not inside.
+            return False
+
+    def _upload_source(self, file):
+        """
+        The local file an upload names, as a full path. A bare file name is
+        looked up in the folder its type downloads to; a path must sit inside
+        one of _upload_roots().
+        """
+        raw = str(file or "").strip().strip('"')
+        if not raw:
+            raise ConfluenceError(
+                "Name the local file to upload with 'file' - a file name such "
+                "as 'Org Chart.svg' (looked up in the folder for its type), or "
+                "a full path inside the documents or knowledge folder.")
+        roots = self._upload_roots()
+        if not roots:
+            raise ConfluenceError(
+                "Uploading needs a local folder to read from, and both the "
+                "documents folder and the knowledge folder are off or missing "
+                "on this endpoint (see EVA_DOCUMENTS_DIR / CONFLUENCE_DOCS_DIR).")
+        if os.path.isabs(raw) or "/" in raw or "\\" in raw:
+            path = os.path.abspath(raw)
+            if not any(self._inside(path, root) for root in roots):
+                raise ConfluenceError(
+                    "{} is outside the folders this server may upload from, so "
+                    "it was not sent. Move or save it into one of: {}.".format(
+                        path, "; ".join(roots)))
+        else:
+            _key, folder, reason = self._attachment_destination(raw)
+            if not folder:
+                raise ConfluenceError(
+                    "Cannot find {!r}: {}. Pass a full path inside one of: "
+                    "{}.".format(raw, reason, "; ".join(roots)))
+            path = os.path.join(folder, raw)
+        if not os.path.isfile(path):
+            raise ConfluenceError(
+                "No file at {}. Check the name (and that it was saved there) "
+                "and try again.".format(path))
+        return path
+
+    def upload_attachment(self, page_id=None, title=None, space=None,
+                          file=None, attach_as=None, overwrite=False,
+                          comment=None, minor_edit=True):
+        self._require_write()
+        target = self._target_page_id(page_id, title, space)
+        path = self._upload_source(file)
+        ext = os.path.splitext(path)[1]
+
+        # The name the file takes on the page. 'attach_as' must keep the
+        # file's own extension: a page image that points at "chart.svg" would
+        # break if a PNG were uploaded over it.
+        if attach_as and str(attach_as).strip():
+            wanted = os.path.basename(str(attach_as).replace("\\", "/")).strip()
+            stem, wanted_ext = os.path.splitext(wanted)
+            if not wanted_ext:
+                wanted_ext = ext
+            elif wanted_ext.lower() != ext.lower():
+                raise ConfluenceError(
+                    "'attach_as' must keep the file's extension ({}), got "
+                    "{!r}. Upload a file of the same type to replace an "
+                    "attachment.".format(ext, wanted))
+            name = safe_filename(stem) + wanted_ext
+        else:
+            name = os.path.basename(path)
+
+        try:
+            size = os.path.getsize(path)
+            if size > MAX_UPLOAD_BYTES:
+                raise ConfluenceError(
+                    "{} is {}, over the {} upload limit.".format(
+                        path, _human_size(size), _human_size(MAX_UPLOAD_BYTES)))
+            with open(path, "rb") as fh:
+                content = fh.read()
+        except OSError as e:
+            raise ConfluenceError(
+                "Could not read {} ({}). If it is open in another program, "
+                "close it and try again.".format(path, e))
+
+        items = self._fetch_attachments(target)
+        existing = next((i for i in items if i.get("title") == name), None)
+        if existing is None:
+            # Same name but different case: Confluence would add a second
+            # attachment beside the first, and the page image would keep
+            # showing the old one. Make the caller pick the exact name.
+            folded = [i.get("title") for i in items
+                      if str(i.get("title", "")).lower() == name.lower()]
+            if folded:
+                raise ConfluenceError(
+                    "Page {}{} already has {!r}, which differs from {!r} only "
+                    "in case. To replace it, pass attach_as={!r} and "
+                    "overwrite=true.".format(
+                        target, self._on_server(), folded[0], name, folded[0]))
+        if existing is not None and not overwrite:
+            version = (existing.get("version") or {}).get("number", "?")
+            raise ConfluenceError(
+                "Page {}{} already has an attachment named {!r} (version {}), "
+                "so nothing was uploaded - an attachment must not be replaced "
+                "without asking. Pass overwrite=true to upload this file as its "
+                "next version (the page keeps showing it under the same name, "
+                "and the old version stays in its history), or 'attach_as' for "
+                "a different name.".format(
+                    target, self._on_server(), name, version))
+
+        ctype = (UPLOAD_CONTENT_TYPES.get(ext.lower())
+                 or mimetypes.guess_type(name)[0]
+                 or "application/octet-stream")
+        fields = [("minorEdit", "true" if minor_edit else "false")]
+        if comment and str(comment).strip():
+            fields.append(("comment", str(comment).strip()))
+        body, boundary = _multipart(fields, "file", name, ctype, content)
+
+        page_path = "/rest/api/content/{}/child/attachment".format(
+            urllib.parse.quote(target, safe=""))
+        if existing is not None:
+            # A new version of the SAME attachment (same ID), which is what
+            # keeps every reference to it on the page working.
+            url = self.base_url + "{}/{}/data".format(
+                page_path, urllib.parse.quote(str(existing.get("id")), safe=""))
+        else:
+            url = self.base_url + page_path
+        headers = dict(self.headers)
+        headers["Content-Type"] = "multipart/form-data; boundary=" + boundary
+        # Confluence's XSRF check refuses a multipart POST without this.
+        headers["X-Atlassian-Token"] = "no-check"
+        req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+        with self._open(req) as resp:
+            raw = resp.read()
+        try:
+            data = json.loads(raw.decode("utf-8")) if raw.strip() else {}
+        except (ValueError, UnicodeDecodeError):
+            data = {}
+        # Adding returns {"results": [attachment]}; a new version returns the
+        # attachment itself.
+        att = data
+        if isinstance(data, dict) and isinstance(data.get("results"), list):
+            att = data["results"][0] if data["results"] else {}
+        if not isinstance(att, dict):
+            att = {}
+        version = (att.get("version") or {}).get("number", "?")
+        link = self._abs_link(data if isinstance(data, dict) else {},
+                              (att.get("_links") or {}).get("download", ""))
+        log("uploaded {} to page {} as {!r} (version {})".format(
+            path, target, name, version))
+
+        lines = [
+            "{} {!r} on page {}{}:".format(
+                "Replaced" if existing is not None else "Attached",
+                name, target, self._on_server()),
+            "From: {}".format(path),
+            "Size: {}".format(_human_size(len(content))),
+            "Attachment ID: {}".format(att.get("id") or
+                                        (existing or {}).get("id") or "?"),
+            "Version: {}".format(version),
+            "Download: {}".format(link or "(unknown)"),
+        ]
+        if existing is not None:
+            lines.append(
+                "\nThe page shows attachments by name, so anywhere it displays "
+                "{!r} now shows this version. The page itself was not edited; "
+                "the previous version is in the attachment's history.".format(name))
+        elif ext.lower() in (".svg", ".png", ".jpg", ".jpeg", ".gif"):
+            lines.append(
+                "\nThis is a NEW attachment, so the page does not display it "
+                "yet. To show it, add ![](<{}>) to the page with "
+                "confluence_update_section or confluence_append_to_page.".format(name))
+        return "\n".join(lines)
+
+
 class ConfluenceServers:
     """
     The one or two configured Confluence instances, in configuration order.
@@ -3415,6 +3697,44 @@ def write_tool_definitions():
     """
     The page-writing tools, offered only when CONFLUENCE_ALLOW_WRITE is on.
     """
+    upload_props = page_ref_properties()
+    upload_props.update({
+        "file": {
+            "type": "string",
+            "description": (
+                "The local file to upload: its name (e.g. 'Org Chart.svg', "
+                "found in the folder for its type) or a full path inside the "
+                "documents or knowledge folder."
+            ),
+        },
+        "attach_as": {
+            "type": "string",
+            "description": (
+                "Optional name for it on the page, when that differs from "
+                "the local file's name - e.g. the name of the attachment it "
+                "replaces. Must keep the same extension."
+            ),
+        },
+        "overwrite": {
+            "type": "boolean",
+            "description": (
+                "Replace an attachment of the same name with this file as its "
+                "next version (default false). Set it only when the user has "
+                "asked for that attachment to be replaced."
+            ),
+        },
+        "comment": {
+            "type": "string",
+            "description": "Optional comment stored with this version of the attachment.",
+        },
+        "minor_edit": {
+            "type": "boolean",
+            "description": (
+                "Do not notify page watchers (default true). Set false to "
+                "send the usual notification."
+            ),
+        },
+    })
     create_props = {
         "space": {
             "type": "string",
@@ -3625,6 +3945,28 @@ def write_tool_definitions():
                 "type": "object",
                 "properties": append_props,
                 "required": ["body"],
+            },
+        },
+        {
+            "name": "confluence_upload_attachment",
+            "description": (
+                "Attach a local file to a Confluence page, or replace an "
+                "attachment of the same name with a new version - the way to "
+                "update an image (an org chart SVG, say) shown on a page, since "
+                "the page displays it by name and needs no edit. 'file' is a "
+                "file name, looked up in the folder for its type "
+                "(documents\\images for .svg/.png/.jpg/.gif, documents\\excel, "
+                "documents\\word, documents\\powerpoint, documents\\pdf, or "
+                "knowledge\\confluence for .md), or a full path inside one of "
+                "those folders; nothing else can be uploaded. An attachment "
+                "already on the page is replaced only when 'overwrite' is "
+                "true. Run confluence_list_attachments first to see the exact "
+                "name to replace."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": upload_props,
+                "required": ["file"],
             },
         },
     ]
@@ -3966,6 +4308,16 @@ def call_tool(servers, name, arguments):
             minor_edit=bool(arguments.get("minor_edit", False)),
         )
 
+    if name == "confluence_upload_attachment":
+        return client.upload_attachment(
+            arguments.get("page_id"), arguments.get("title"), arguments.get("space"),
+            file=arguments.get("file"),
+            attach_as=arguments.get("attach_as"),
+            overwrite=bool(arguments.get("overwrite", False)),
+            comment=arguments.get("comment"),
+            minor_edit=bool(arguments.get("minor_edit", True)),
+        )
+
     raise ConfluenceError("Unknown tool: {}".format(name))
 
 
@@ -4263,12 +4615,12 @@ def run_check(servers):
         log("KB save folder   : disabled - no page can be saved")
     log("Page body format : {}".format(servers.default.body_format))
     if servers.default.docs_dir:
-        log("Attachments      : {}\\<excel|word|powerpoint|pdf> (.md -> the KB "
+        log("Attachments      : {}\\<excel|word|powerpoint|pdf|images> (.md -> the KB "
             "save folder)".format(servers.default.docs_dir))
     else:
         log("Attachments      : document downloads disabled")
     log("Page writing     : {}".format(
-        "ENABLED (create / update / append)" if servers.default.allow_write
+        "ENABLED (create / update / append / upload)" if servers.default.allow_write
         else "off (read-only)"))
     if failed:
         log("CHECK FAILED for {} of {} server(s): {}".format(
@@ -4442,7 +4794,7 @@ def main(argv=None):
     elif docs_off:
         log("attachment downloads disabled ({}=off)".format(docs_source))
     if servers.default.allow_write:
-        log("WRITE ENABLED: pages can be created and edited "
+        log("WRITE ENABLED: pages can be created and edited, and files attached "
             "(CONFLUENCE_ALLOW_WRITE=true)")
     else:
         log("read-only: page writing is off (set CONFLUENCE_ALLOW_WRITE=true "

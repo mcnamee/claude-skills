@@ -4,11 +4,11 @@ Search and read Confluence pages across one or two Confluence instances, macro
 content included; download a page's attachments into the folder the matching
 plugin reads; save a page to Markdown — when you ask for it — so it feeds a
 local RAG knowledge base; and, once you switch writing on, create, update and
-add to pages.
+add to pages, and attach files to them (replacing an image on a page included).
 
 | | |
 |---|---|
-| **Server** | `confluence.py` v7.2.0 |
+| **Server** | `confluence.py` v7.3.0 |
 | **pip install** | _none_ — standard library only (HTTP via stdlib `urllib`) |
 | **Platform** | any |
 | **Writes to disk** | only when you ask: a saved page (Markdown, `H:\Eva\knowledge\confluence`) or a downloaded attachment (`H:\Eva\documents\<type>`) |
@@ -35,7 +35,7 @@ blank or missing value means "not set".
 | `CONFLUENCE_BASE_URL_2` | no | Leave unset for a single-server setup |
 | `CONFLUENCE_TOKEN_2` | with `_BASE_URL_2` | The second server's own token |
 | `CONFLUENCE_NAME_2` | no | e.g. `Blue` — say it in a prompt to query that server; defaults to `Secondary` |
-| `CONFLUENCE_ALLOW_WRITE` | no | `true` to let it create, update and append to pages. Blank = read-only |
+| `CONFLUENCE_ALLOW_WRITE` | no | `true` to let it create, update and append to pages, and upload attachments. Blank = read-only |
 
 The Python interpreter and the folder saved pages go to come from the shared
 environment variables in [Configuration](#configuration). Every other setting is
@@ -129,6 +129,7 @@ and a download anywhere else could never be opened:
 | `.pptx` | `%EVA_DOCUMENTS_DIR%\powerpoint` | `powerpoint` (`powerpoint_open`) |
 | `.pdf` | `%EVA_DOCUMENTS_DIR%\pdf` | `pdf-to-md` (`convert_pdf_to_markdown`) |
 | `.md` | `%EVA_KNOWLEDGE_DIR%\confluence` | `knowledge-base` (`kb_index`) |
+| `.svg`, `.png`, `.jpg`, `.jpeg`, `.gif` | `%EVA_DOCUMENTS_DIR%\images` | no plugin - it is where the `/org-chart` skill writes, ready to upload again |
 
 So a request like *"get the budget spreadsheet attached to the FY26 Planning
 page, then use Excel to total the Travel column"* is two calls: the download,
@@ -146,6 +147,31 @@ types are listed but not downloaded.
   created if missing. `CONFLUENCE_DOCS_DIR=off` switches document downloads off
   outright.
 
+### Uploading an attachment
+
+`confluence_upload_attachment` (writing on - see below) goes the other way: it
+attaches a local file to a page, or **replaces an attachment with a new
+version**. That is how an image on a page is updated - the page shows the
+attachment by name, so a new version of `orgchart.svg` appears wherever the page
+displays it, without the page itself being edited. The old version stays in the
+attachment's history.
+
+- **It reads only the folders above.** `file` is a name (`Org Chart.svg`,
+  looked up in the folder for its type) or a full path inside one of them;
+  anything else is refused, so nothing outside `H:\Eva\documents` and
+  `H:\Eva\knowledge\confluence` can be sent off the endpoint.
+- **An attachment already on the page is never replaced** unless the call
+  passes `overwrite=true` - ask to "replace the org chart" and Claude will.
+- `attach_as` uploads under another name, for a local `Org Chart 2026-09.svg`
+  that replaces `orgchart.svg`. The extension must stay the same, and a name
+  that differs only in case is refused (Confluence would add a second
+  attachment rather than replace the first).
+- `minor_edit` is on by default (no watcher notifications); `comment` is stored
+  with the version.
+- A **new** image is attached but not shown; add it to the page with
+  `confluence_update_section` or `confluence_append_to_page` using
+  `![](<Org Chart.svg>)` (angle brackets for a name with spaces).
+
 ## Writing pages
 
 **Off unless `CONFLUENCE_ALLOW_WRITE=true`.** With it off the write tools are
@@ -158,6 +184,7 @@ not offered at all, and the server sends nothing but GET requests. With it on:
 | `confluence_update_section` | Changes **one section** — found by its heading text, or a panel/expand title — and sends the rest of the page back byte-for-byte. `mode`: `replace` (default), `append` or `prepend`. The right tool for "update the Director's notes on page 1234" |
 | `confluence_append_to_page` | Adds content to the **end** (or `position: "start"`) of a page, keeping everything already on it byte-for-byte — macros, layouts and all. The safe way to add minutes, actions or a new section |
 | `confluence_update_page` | **Replaces** a page's whole body and/or its title. Anything left out of the new body — including macros such as a task report — is gone from the page (Confluence keeps the old version in the page history). For a full rewrite only |
+| `confluence_upload_attachment` | Attaches a local file to a page, or uploads it as the **next version** of the attachment of the same name (`overwrite=true`). See [Uploading an attachment](#uploading-an-attachment) |
 
 **What counts as a section.** A heading and everything under it — sub-headings
 included — up to the next heading of the same or a higher level, or the end of
@@ -179,7 +206,7 @@ Content is written in **Markdown** and converted to Confluence formatting:
 | `\| a \| b \|` tables | tables, first row as the header |
 | ```` ```python ```` fenced code | the **code** macro, language kept where Confluence knows it |
 | `> [!NOTE] Title` quote | an **info** panel (`[!TIP]` tip, `[!IMPORTANT]` note, `[!WARNING]` / `[!CAUTION]` warning) |
-| `![alt](diagram.png)` | an image — an `http(s)` URL, or else an attachment on the page |
+| `![alt](diagram.png)` | an image — an `http(s)` URL, or else an attachment on the page; write a name with spaces as `![](<Org Chart.svg>)` (or `Org%20Chart.svg`) |
 
 `content_format: "storage"` sends raw Confluence storage-format XHTML instead,
 for a macro Markdown cannot express.
@@ -333,8 +360,8 @@ takes no folder command-line flags.
 that are already running, so quit and reopen your editor afterwards.
 
 Of the four, this server uses three: `EVA_PYTHON`, `EVA_KNOWLEDGE_DIR`, and
-`EVA_DOCUMENTS_DIR` for downloaded attachments. It reads no local folder at all -
-pages come over HTTP.
+`EVA_DOCUMENTS_DIR` for downloaded attachments. Pages come over HTTP; the only
+local files it reads are the ones you ask it to upload, from those same folders.
 
 ### The folders this plugin uses
 
@@ -346,7 +373,7 @@ they all do.
 | Folder | What it is for | Missing? |
 |---|---|---|
 | `%EVA_KNOWLEDGE_DIR%\confluence` | Where a page is saved as Markdown **when a tool call asks for it** (`save_to_kb=true`) - `Confluence - <title>.md`, or `Confluence <server> - <title>.md` with two instances - for the `knowledge-base` plugin to index. Downloaded `.md` attachments land here too | Created on demand |
-| `%EVA_DOCUMENTS_DIR%\excel`, `\word`, `\powerpoint`, `\pdf` | Where a downloaded attachment goes, by file type - the same folders the `excel`, `word`, `powerpoint` and `pdf-to-md` plugins read ([Attachments](#attachments)) | The root must exist, or document downloads are disabled (warned at startup); a sub-folder is created on demand |
+| `%EVA_DOCUMENTS_DIR%\excel`, `\word`, `\powerpoint`, `\pdf`, `\images` | Where a downloaded attachment goes, by file type - the same folders the `excel`, `word`, `powerpoint` and `pdf-to-md` plugins read, plus `images` for pictures ([Attachments](#attachments)); and the only folders an upload reads from | The root must exist, or document downloads are disabled (warned at startup); a sub-folder is created on demand |
 
 ### This server's own settings
 
@@ -389,8 +416,8 @@ Setting `CONFLUENCE_BASE_URL_2` is what enables it.
 | `CONFLUENCE_MAX_BODY` | Truncate page bodies to N chars, 0 = unlimited (default). Applies only to text returned to the model, not to saved files |
 | `CONFLUENCE_KB_DIR` | Full path to the save folder, instead of `%EVA_KNOWLEDGE_DIR%\confluence`. `off` forbids saving outright, after which the server writes no local file at all |
 | `CONFLUENCE_KB_AUTOSAVE=true` | Save **every** page read, without being asked (default false). Needs a save folder to be on |
-| `CONFLUENCE_ALLOW_WRITE=true` | Offer the page-writing tools (create, update, append) — see [Writing pages](#writing-pages). Default off: read-only. Applies to both servers |
-| `CONFLUENCE_DOCS_DIR` | The documents **root** attachments download into, instead of `EVA_DOCUMENTS_DIR`; the per-type sub-folders (`excel`, `word`, `powerpoint`, `pdf`) are still appended, so point it at the same root the document plugins use. `off` forbids document downloads (Markdown attachments still go to the knowledge folder) |
+| `CONFLUENCE_ALLOW_WRITE=true` | Offer the page-writing tools (create, update, append, upload an attachment) — see [Writing pages](#writing-pages). Default off: read-only. Applies to both servers |
+| `CONFLUENCE_DOCS_DIR` | The documents **root** attachments download into, instead of `EVA_DOCUMENTS_DIR`; the per-type sub-folders (`excel`, `word`, `powerpoint`, `pdf`, `images`) are still appended, so point it at the same root the document plugins use. `off` forbids document downloads (Markdown attachments still go to the knowledge folder) |
 
 **Blank does not mean off.** A blank value means "not configured", so the shared
 root still applies. To forbid saving outright, set `CONFLUENCE_KB_DIR=off`
@@ -412,7 +439,8 @@ No local file access until a tool call asks for it: a saved page writes one
 Markdown file inside the knowledge-base folder, and a downloaded attachment one
 file inside the documents folder for its type (or the knowledge folder, for
 Markdown). An existing file is never replaced unless the call says
-`overwrite=true`, and a file name can never reach outside those folders.
+`overwrite=true`, and a file name can never reach outside those folders. An
+upload (writing on) reads one file, and only from those same folders.
 
 ## Usage examples
 
@@ -434,6 +462,7 @@ Markdown). An existing file is never replaced unless the call says
 16. "Rewrite the onboarding page with this new text." → `confluence_get_page`, then `confluence_update_page` with `expected_version` *(writing on)*
 17. "Update the Director's notes on page 1234 with this." → `confluence_update_section` with `section: "Director's notes"` — the task report and Jira tables elsewhere on the page are untouched *(writing on)*
 18. "Update the Q3 figures in the Budget table on page 1234: Travel 120, Hotels 1,250." → `confluence_list_tables`, then `confluence_update_table` — works even though the table sits inside a Table Filter macro *(writing on)*
+19. "Replace the org chart on the Team Structure page with the one I just made." → `confluence_list_attachments` to find the image's name, then `confluence_upload_attachment` with `attach_as` set to it and `overwrite=true` *(writing on)*
 
 ## Troubleshooting
 

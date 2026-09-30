@@ -32,7 +32,7 @@ The tree is organised by **what writes to a folder**, not by topic:
 |---|---|---|
 | [`knowledge\`](knowledge) | The RAG corpus — Markdown only | every server that mirrors what it opens or saves what you ask it to keep, plus `kb_capture` |
 | [`index\`](index) | The ChromaDB vector store | `knowledge-base`, from `knowledge\` |
-| [`documents\`](documents) | The binary library — `.docx`, `.pptx`, `.xlsx`, `.pdf` | you **and** the assistant |
+| [`documents\`](documents) | The binary library — `.docx`, `.pptx`, `.xlsx`, `.pdf`, images | you **and** the assistant |
 | [`templates\`](templates) | Blank branded files a new document is created from — style, not facts | you |
 
 ```
@@ -54,8 +54,10 @@ H:\Eva\
 │  ├─ word\            .docx  (searched recursively)
 │  ├─ powerpoint\      .pptx  (searched recursively)
 │  ├─ excel\           .xlsx  (top level only — see its README)
-│  └─ pdf\             .pdf   source PDFs, and planners outlook printed
-│                      (confluence downloads attachments into these four too)
+│  ├─ pdf\             .pdf   source PDFs, and planners outlook printed
+│  └─ images\          .svg / .png  org charts /org-chart draws, and images
+│                      (confluence downloads attachments into these five too,
+│                      and uploads only from them)
 └─ templates\        blank branded files new documents start from
    ├─ word\             .docx templates        (read-only)
    └─ powerpoint\       .pptx / .potx templates (read-only)
@@ -103,7 +105,7 @@ Where each plugin lands, and **which folders must exist**:
 | `excel` | `documents\excel\` | — | — |
 | `pdf-to-md` | `documents\pdf\` | — | `knowledge\pdf\` |
 | `outlook` | `documents\pdf\` *(planners it prints)* | — | `knowledge\email\` |
-| `confluence` | `documents\excel\`, `word\`, `powerpoint\`, `pdf\` *(attachments it downloads, by type)* | — | `knowledge\confluence\` |
+| `confluence` | `documents\excel\`, `word\`, `powerpoint\`, `pdf\`, `images\` *(attachments it downloads, by type - and the only folders it uploads from)* | — | `knowledge\confluence\` |
 | `knowledge-base` | `knowledge\` *(the whole root - it indexes everything)* | — | `knowledge\captures\` |
 | `jira` | — | — | — |
 

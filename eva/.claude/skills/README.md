@@ -1,8 +1,9 @@
 # Skills
 
-Standalone Claude skills — no MCP server, no Python, no dependencies. Each one
-is a folder holding a `SKILL.md` (the instructions Claude follows) and a
-`README.md` (what it does, for you).
+Standalone Claude skills — no MCP server and no dependencies. Each one is a
+folder holding a `SKILL.md` (the instructions Claude follows) and a `README.md`
+(what it does, for you). All but one are pure prose; `org-chart` also ships a
+standard-library Python script it runs to draw the chart.
 
 ```
 eva\.claude\skills\      (H:\Eva\.claude\skills\ on the endpoint)
@@ -28,6 +29,7 @@ need nothing installed and work anywhere, including offline.
 | [**brief-writer**](brief-writer) | `/brief-writer` | Drafts a decision or noting brief for a senior executive, following the structure of an exemplar in its own `exemplars/` folder, and finishing with `/polish` |
 | [**email-writer**](email-writer) | `/email-writer` | Drafts an email in your voice, classifying what the email is for and matching that intent to your own sent mail in its `exemplars/` folder, then running `/unslop` |
 | [**exemplar-writer**](exemplar-writer) | `/exemplar-writer` | Writes a document in the shape of one you already have — pulls the structure, section order, proportions and register out of an exemplar, then writes your material to that shape and runs `/unslop` |
+| [**org-chart**](org-chart) | `/org-chart` | Draws an organisation chart as an SVG in the house design from staffing data (often a spreadsheet on a Confluence page), ready to upload back to the page. Ships `orgchart.py`, a standard-library script it runs under `EVA_PYTHON` |
 | [**polish**](polish) | `/polish` | Rewrites a draft into Australian Public Service style — the Australian Government Style Manual — asking who the reader is and what the medium is, then picking the register from them |
 | [**unslop**](unslop) | `/unslop` | Strips AI-slop markers from writing — padding, tell-tale vocabulary, stock LLM sentence shapes — leaving meaning and voice intact |
 

@@ -33,7 +33,7 @@ source material with something invented.
   install.
 - **One file per server.** Every server is a single `.py` — nothing to build, no
   package tree to transfer. Three of the eight are **standard library only**, and
-  the standalone skills have no code at all.
+  the standalone skills are prose (bar `org-chart`'s one standard-library script).
 - **Four settings, once, for the whole suite.** `EVA_PYTHON`,
   `EVA_DOCUMENTS_DIR`, `EVA_TEMPLATES_DIR` and `EVA_KNOWLEDGE_DIR` are the
   configuration. Each server works in its own sub-folder of those roots, named
@@ -90,7 +90,7 @@ source material with something invented.
 | [**powerpoint**](plugins/powerpoint) | 6.0.0 | Build sectioned `.pptx` decks that inherit your own template's layouts and theme, with formatted speaker notes, audited against the 10/20/30 rule | `python-pptx` |
 | [**excel**](plugins/excel) | 6.1.0 | Read and analyse workbooks - sheets, Tables by name, pivot tables - by parsing `.xlsx` directly; write cells and Table rows and create real PivotTables through Excel | _none_ (`pywin32` to write) |
 | [**outlook**](plugins/outlook) | 11.0.0 | Read local Outlook mail and calendar via COM, with a content blacklist; schedules a meeting (fuzzy directory search, free/busy, and an **unsent** draft you send yourself); prints a day as an A4 PDF planner in your own category colours, and saves an email to the knowledge base when you ask | `pywin32` |
-| [**confluence**](plugins/confluence) | 7.2.0 | Search and read Confluence pages, across one or two instances, with macro content included; download attachments into the folder the matching plugin reads; saves a page to the knowledge base when you ask; when switched on, create pages, update one section, edit a table's figures in place (even inside a table filter or column macro) and append | _none_ |
+| [**confluence**](plugins/confluence) | 7.3.0 | Search and read Confluence pages, across one or two instances, with macro content included; download attachments into the folder the matching plugin reads; saves a page to the knowledge base when you ask; when switched on, create pages, update one section, edit a table's figures in place (even inside a table filter or column macro), append, and upload an attachment (replacing an image on a page) | _none_ |
 | [**jira**](plugins/jira) | 3.1.0 | Query issues, sprints and projects; when switched on, create, edit, comment on and transition issues (Jira Data Center v2 API) | _none_ |
 | [**knowledge-base**](plugins/knowledge-base) | 6.0.0 | True RAG over your own Markdown: local ChromaDB index + your embeddings API, and capture notes back into it | `chromadb` |
 | [**pdf-to-md**](plugins/pdf-to-md) | 7.0.0 | Convert PDFs to Markdown with tables preserved | `pymupdf pymupdf4llm` |
@@ -374,8 +374,10 @@ H:\Eva\
 │  ├─ word\            .docx (searched recursively)
 │  ├─ powerpoint\      .pptx (searched recursively)
 │  ├─ excel\           .xlsx (top level only - excel does not recurse)
-│  └─ pdf\             source PDFs, and day planners outlook printed
-│                      (confluence downloads attachments into these four too)
+│  ├─ pdf\             source PDFs, and day planners outlook printed
+│  └─ images\          org charts /org-chart draws (.svg), and images
+│                      (confluence downloads attachments into these five too,
+│                      and uploads only from them)
 └─ templates\        blank branded files new documents/decks start from
    ├─ word\             .docx templates         (read-only)
    └─ powerpoint\       .pptx / .potx templates (read-only)
@@ -489,6 +491,7 @@ OpenCode) opened in `H:\Eva` loads them:
 | [**brief-writer**](eva/.claude/skills/brief-writer) | `/brief-writer` | Drafts a decision or noting brief for a senior executive, following the structure of an exemplar in its own `exemplars/` folder, and finishing with `/polish` |
 | [**email-writer**](eva/.claude/skills/email-writer) | `/email-writer` | Drafts an email in your voice, classifying what the email is for and matching that intent to your own sent mail in its `exemplars/` folder, then running `/unslop` |
 | [**exemplar-writer**](eva/.claude/skills/exemplar-writer) | `/exemplar-writer` | Writes a document in the shape of one you already have — pulls the structure, section order, proportions and register out of an exemplar, then writes your material to that shape |
+| [**org-chart**](eva/.claude/skills/org-chart) | `/org-chart` | Draws an organisation chart as an SVG in the house design from staffing data (often a spreadsheet on a Confluence page), ready to upload back to the page with `confluence_upload_attachment` |
 | [**polish**](eva/.claude/skills/polish) | `/polish` | Rewrites a draft into Australian Public Service style — the Australian Government Style Manual — asking who the reader is and what the medium is, then picking the register from them |
 | [**unslop**](eva/.claude/skills/unslop) | `/unslop` | Strips AI-slop markers from writing — padding, tell-tale vocabulary, stock LLM sentence shapes — leaving meaning and voice intact |
 

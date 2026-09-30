@@ -1,6 +1,6 @@
 ---
 name: confluence
-description: Search, read and (when writing is switched on) create and edit Confluence pages - including changing the figures in a table in place, even inside a table filter or column macro - via the confluence MCP server, across one or two Confluence instances, and download a page's attachments. Use when the user asks to find, read, summarise or pull content from Confluence (runbooks, handbooks, wiki pages, spaces), including when they ask for the tasks, action items, statuses, properties or child pages listed on a Confluence page (macro content), when they name a particular Confluence server, when they ask for a Confluence page to be saved into the local knowledge base, when they want a file attached to a page (a spreadsheet, document, deck, PDF or Markdown file) - often to open it with another plugin next - or when they ask to create a page, update a page, or add content (minutes, actions, a section) to a page.
+description: Search, read and (when writing is switched on) create and edit Confluence pages - including changing the figures in a table in place, even inside a table filter or column macro - via the confluence MCP server, across one or two Confluence instances, and download a page's attachments or (writing on) upload one. Use when the user asks to find, read, summarise or pull content from Confluence (runbooks, handbooks, wiki pages, spaces), including when they ask for the tasks, action items, statuses, properties or child pages listed on a Confluence page (macro content), when they name a particular Confluence server, when they ask for a Confluence page to be saved into the local knowledge base, when they want a file attached to a page (a spreadsheet, document, deck, PDF or Markdown file) - often to open it with another plugin next - when they want a local file attached to a page or an image on a page replaced (an org chart SVG, say), or when they ask to create a page, update a page, or add content (minutes, actions, a section) to a page.
 ---
 
 # Confluence (via the `confluence` MCP server)
@@ -28,8 +28,9 @@ repo README) and to verify connectivity with `python confluence.py --check`.
 | `confluence_update_section` | Change one section (by heading or panel title), keeping the rest *(writing on)* |
 | `confluence_append_to_page` | Add content to the end/start of a page, keeping the rest *(writing on)* |
 | `confluence_update_page` | Replace a page's whole body and/or title *(writing on)* |
+| `confluence_upload_attachment` | Attach a local file, or replace an attachment with a new version *(writing on)* |
 
-The last five are only in the tool list when writing is switched on. If the
+The last six are only in the tool list when writing is switched on. If the
 user asks for a page to be created or changed and they are missing, say that
 Confluence writing is off on this endpoint and that `CONFLUENCE_ALLOW_WRITE=true`
 (in Claude Code's settings `env` block, then a restart) turns it on. Do not
@@ -138,6 +139,34 @@ explicitly wants to see how a page is built rather than what it shows.
    its own folder). "Get the budget from page X and total column D" is the
    download followed by an `excel_*` call, in one turn.
 
+Images (`.svg`, `.png`, `.jpg`, `.jpeg`, `.gif`) download to
+`documents\images`. No plugin opens them; it is where `/org-chart` writes.
+
+## Attachments: putting a file on a page *(writing on)*
+
+`confluence_upload_attachment` reads ONLY from the folders in the table above
+(plus `documents\images`). Pass `file` as the file name - it is looked up in
+the folder for its type - or a full path inside one of them. A file anywhere
+else is refused: say so, and ask the user to save it into the right folder
+rather than copying it there yourself.
+
+**Replacing an image on a page** ("swap the org chart on page Z for this one")
+is an upload, not a page edit. The page shows the attachment by name, so a new
+version of it appears in place:
+
+1. `confluence_list_attachments` on page Z to find the image's exact name.
+   If more than one image could be the one meant, ask which.
+2. `confluence_upload_attachment` with `file` (the local name), `attach_as`
+   (the name on the page, when it differs) and `overwrite: true`. Set
+   `overwrite` only when the user has asked for the replacement - without it the
+   tool refuses and names the existing attachment, which is the check you want.
+3. Report the new version number. Do not edit the page body: it already points
+   at the attachment.
+
+A **new** image is attached but not displayed. To show it, add
+`![](<file name.svg>)` (angle brackets when the name has spaces) with
+`confluence_update_section` or `confluence_append_to_page`.
+
 - **Never overwrite by default.** If the file already exists the download is
   refused. When the user wants the newest copy ("get the latest version"),
   retry with `overwrite: true`; when they want both, use `save_as`. If it is not
@@ -223,7 +252,8 @@ the path.
 ## Notes
 
 - Without `CONFLUENCE_ALLOW_WRITE=true` the server is read-only and cannot
-  create or edit pages; downloading attachments still works.
+  create or edit pages or upload attachments; downloading attachments still
+  works.
 - With two instances configured, saved files are named
   `Confluence <server> - <title>.md`, so pages that share a title on both
   instances stay separate. Saving is off at the server if
