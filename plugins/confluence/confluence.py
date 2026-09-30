@@ -1,19 +1,83 @@
 #!/usr/bin/env python3
 """
-confluence.py (v7.0.0) - A single-file MCP (Model Context Protocol) server
-for querying ONE OR TWO Confluence Data Center instances (tested against the
-9.x v1 REST API) using only the Python 3 standard library.
+confluence.py (v7.1.0) - A single-file MCP (Model Context Protocol) server
+for querying - and, when switched on, writing to - ONE OR TWO Confluence Data
+Center instances (tested against the 9.x v1 REST API) using only the Python 3
+standard library.
 
 It speaks MCP over stdio (newline-delimited JSON-RPC 2.0), the transport an
 MCP client launches for a `type: stdio` server. No third-party packages are
 required.
 
-Tools exposed (read-only / query):
+Tools exposed (read / query):
   - confluence_search           : free-text search for pages
   - confluence_search_cql       : advanced search using raw CQL
   - confluence_get_page         : fetch one page by numeric ID (with body text)
   - confluence_get_page_by_title: fetch one page by exact title + space key
   - confluence_list_pages_under : list pages beneath a parent page
+  - confluence_list_attachments : the files attached to a page
+  - confluence_download_attachment
+                                : save one attachment into the local folder
+                                  the matching plugin reads (see ATTACHMENTS)
+
+Tools exposed ONLY when CONFLUENCE_ALLOW_WRITE=true (see WRITING PAGES):
+  - confluence_create_page      : create a page (optionally under a parent)
+  - confluence_update_section   : replace (or add to) ONE section - the
+                                  content under a heading, or inside a titled
+                                  panel/expand - leaving the rest untouched
+  - confluence_append_to_page   : add content to the end/start of a page,
+                                  keeping everything already on it
+  - confluence_update_page      : replace a page's WHOLE content and/or title
+
+WRITING PAGES
+-------------
+Off unless CONFLUENCE_ALLOW_WRITE=true. With it off the three write tools are
+not offered at all, and the server never sends anything but a GET - exactly
+how it behaved before v7.1.0. With it on, the tools take MARKDOWN and convert
+it to Confluence's storage format: headings, bold/italic/strikethrough, inline
+code, links, images (a bare file name is taken to be an attachment on the
+page), nested lists, tables, block quotes and rules, plus
+  - '- [ ] item' / '- [x] item'  -> real Confluence inline tasks
+  - ```lang fenced code          -> the code macro
+  - '> [!NOTE] Title' block      -> an info panel ([!TIP] tip, [!IMPORTANT]
+                                    note, [!WARNING] / [!CAUTION] warning)
+content_format="storage" passes raw storage-format XHTML through instead, for
+a macro Markdown cannot express.
+
+Three ways to change an existing page, from safest to bluntest:
+  - confluence_update_section finds ONE part of the page by its heading text
+    (everything under it, sub-headings included, up to the next heading of the
+    same or a higher level, or the end of its layout column) or by a panel's
+    title (its body), and changes only that. The rest of the page goes back
+    byte-for-byte, so "update the Director's notes on page 1234" cannot touch
+    a task report or Jira table elsewhere on it. Replacing a section that
+    itself contains a macro is refused unless allow_macro_removal=true.
+  - confluence_append_to_page adds to the end (or start): the existing body
+    is sent back byte-for-byte and only the new part is converted.
+  - confluence_update_page REPLACES the whole body, so a macro left out of the
+    new body is gone from the page (Confluence keeps the old version in the
+    page history). For a full rewrite or a title change only.
+Every write saves a new page version; a version that moved on in the meantime
+is refused by Confluence (HTTP 409), and update_page's expected_version
+argument refuses it before anything is sent.
+
+ATTACHMENTS
+-----------
+confluence_download_attachment saves a file into the folder the plugin that
+opens that type reads, because each document plugin is confined to ONE folder
+and a download anywhere else could never be opened:
+
+  .xlsx .xlsm  -> %EVA_DOCUMENTS_DIR%\excel       (excel plugin)
+  .docx        -> %EVA_DOCUMENTS_DIR%\word        (word plugin)
+  .pptx        -> %EVA_DOCUMENTS_DIR%\powerpoint  (powerpoint plugin)
+  .pdf         -> %EVA_DOCUMENTS_DIR%\pdf         (pdf-to-md plugin)
+  .md          -> the knowledge folder below       (knowledge-base plugin)
+
+So "get the budget spreadsheet from page X, then use excel to total column D"
+is two calls: this tool, then excel_read_range on the file name it reports.
+Other types are listed but not downloaded. A file already in the folder is
+never replaced unless the call passes overwrite=true. Downloading writes only
+to the local disk; it needs no write access to Confluence.
 
 MACROS
 ------
@@ -76,16 +140,21 @@ EVERY setting is an environment variable - the natural fit for an MCP client's
 `env` block, and the reason there are no configuration flags: two settings can
 then never disagree. The only command-line flags are --check and --version.
 
-Two variables are shared with every other plugin in this suite, set once for
-your Windows account:
+Three variables are shared with every other plugin in this suite, set once
+for your Windows account:
 
   EVA_PYTHON            full path to the python.exe the MCP client launches,
                         e.g. C:\Python311\python.exe (read by the plugin
                         manifest, not by this file)
   EVA_KNOWLEDGE_DIR     root of the RAG corpus (default H:\Eva\knowledge).
                         This server saves into its own "confluence"
-                        sub-folder, and THAT FOLDER MUST EXIST:
+                        sub-folder (created on demand):
                         %EVA_KNOWLEDGE_DIR%\confluence
+  EVA_DOCUMENTS_DIR     root of the document library (default
+                        H:\Eva\documents). Attachments are downloaded into
+                        its per-type sub-folders (see ATTACHMENTS). The root
+                        must exist or document downloads are disabled; a
+                        sub-folder is created on demand.
 
 The rest are this server's own. CREDENTIALS ARE ENV-VAR ONLY - there is no
 flag that could put a token in a command line, where other local users can
@@ -151,6 +220,17 @@ read it out of a process listing.
   CONFLUENCE_KB_AUTOSAVE
                         "true" to save EVERY page that is read, without being
                         asked (default false).
+  CONFLUENCE_ALLOW_WRITE
+                        "true" to offer the page-writing tools (create,
+                        update, append). Default off: read-only. Applies to
+                        both servers; Confluence's own permissions still
+                        decide which spaces the account can edit.
+  CONFLUENCE_DOCS_DIR   override the documents ROOT attachments are
+                        downloaded into, instead of EVA_DOCUMENTS_DIR. The
+                        per-type sub-folders (excel, word, powerpoint, pdf)
+                        are still appended, so it should be the same root the
+                        document plugins use. "off" forbids document downloads
+                        (Markdown still goes to the knowledge folder).
 
 The second server is all-or-nothing: if CONFLUENCE_BASE_URL_2 is set without
 credentials, the server refuses to start rather than quietly answering "Blue"
@@ -202,7 +282,8 @@ Diagnostic output goes ONLY to stderr. stdout is reserved for the JSON-RPC
 stream - writing anything else there would corrupt the protocol.
 
 `--check` connects to EVERY configured server, prints who you are
-authenticated as and how many spaces are visible (to stderr), then exits
+authenticated as, how many spaces are visible, the download folder and
+whether page writing is on (to stderr), then exits
 without starting the server. It exits non-zero if any server fails, so it is
 the fastest way to prove a two-server setup before wiring it in:
 
@@ -227,7 +308,7 @@ config (every setting, tokens included, goes in the environment):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "7.0.0"
+__version__ = "7.1.0"
 
 import argparse
 import base64
@@ -258,6 +339,22 @@ SERVER_VERSION = __version__
 SUBFOLDER = "confluence"                 # this server's knowledge sub-folder
 EVA_KNOWLEDGE_DIR = r"H:\Eva\knowledge"  # fallback for the suite-wide root
 KB_DIR = r"H:\Eva\knowledge\confluence"
+
+# Root of the document library that confluence_download_attachment saves into.
+# RESOLVED FROM THE ENVIRONMENT in main(): CONFLUENCE_DOCS_DIR, else
+# %EVA_DOCUMENTS_DIR%, else this fallback. It is a ROOT, not one folder: a
+# download goes into the sub-folder named for its FILE TYPE (documents\excel,
+# documents\word, documents\powerpoint, documents\pdf - see ATTACHMENT_FOLDERS),
+# because each is the one folder the plugin for that type can open. The root
+# must already exist; the type sub-folder is created on demand. Set
+# CONFLUENCE_DOCS_DIR=off to forbid document downloads.
+EVA_DOCUMENTS_DIR = r"H:\Eva\documents"  # fallback for the suite-wide root
+
+# Whether the page-writing tools (create / update / append) are offered at
+# all. Off unless CONFLUENCE_ALLOW_WRITE=true: this server was read-only for
+# its first seven major versions, and an endpoint that only ever read
+# Confluence must not start editing it because the plugin updated.
+ALLOW_WRITE = False
 
 # Which representation of a page body to read. Confluence keeps the page SOURCE
 # in "storage" and the RENDERED page in "view"/"export_view"; a macro that
@@ -1054,6 +1151,631 @@ def html_to_markdown(raw):
         return html_to_text(raw)
 
 
+# ---------------------------------------------------------------------------
+# Markdown -> Confluence storage format (for the write tools)
+# ---------------------------------------------------------------------------
+# The write tools take Markdown, because that is what the model drafts in, and
+# convert it to Confluence's storage format (XHTML with <ac:...> macros). The
+# converter covers the Markdown a page is actually written in - headings,
+# paragraphs, bold/italic/strikethrough, inline code, links, images, nested
+# bullet/numbered lists, task lists, tables, block quotes, rules and fenced code
+# - and maps a few constructs onto the Confluence macro a reader expects:
+#
+#   ```lang ... ```     -> code macro (language kept when Confluence knows it)
+#   - [ ] / - [x]       -> inline tasks (a real Confluence task list)
+#   > [!NOTE] Title     -> info panel   ([!TIP] tip, [!IMPORTANT] note,
+#                                        [!WARNING] / [!CAUTION] warning)
+#
+# Anything else is escaped and kept as text, so a construct the converter does
+# not know can never produce markup Confluence rejects. For a page that needs
+# a macro Markdown cannot express, the write tools also accept raw storage
+# format (content_format="storage").
+
+# Languages the Confluence code macro accepts, plus the aliases people type. A
+# language outside this list is dropped rather than passed on, because an
+# unknown language renders as an error box instead of the code.
+_CODE_LANGUAGES = {
+    "actionscript3": "actionscript3", "applescript": "applescript",
+    "bash": "bash", "sh": "bash", "shell": "bash", "zsh": "bash",
+    "csharp": "csharp", "cs": "csharp", "c#": "csharp",
+    "coldfusion": "coldfusion", "cpp": "cpp", "c++": "cpp", "c": "cpp",
+    "css": "css", "delphi": "delphi", "pascal": "delphi", "diff": "diff",
+    "patch": "diff", "erlang": "erlang", "groovy": "groovy",
+    "java": "java", "javafx": "javafx", "javascript": "javascript",
+    "js": "javascript", "json": "javascript", "typescript": "javascript",
+    "ts": "javascript", "perl": "perl", "php": "php",
+    "powershell": "powershell", "ps1": "powershell", "pwsh": "powershell",
+    "python": "python", "py": "python", "ruby": "ruby", "rb": "ruby",
+    "sass": "sass", "scss": "sass", "scala": "scala", "sql": "sql",
+    "vb": "vb", "vbnet": "vb", "vba": "vb", "xml": "xml", "html": "xml",
+    "xhtml": "xml", "yaml": "yaml", "yml": "yaml", "text": "none",
+    "txt": "none", "plain": "none", "none": "none",
+}
+
+# GitHub-style alert markers in a block quote -> Confluence panel macro.
+_ALERT_MACROS = {
+    "NOTE": "info", "INFO": "info", "TIP": "tip", "IMPORTANT": "note",
+    "WARNING": "warning", "CAUTION": "warning",
+}
+
+_FENCE_RE = re.compile(r"^\s{0,3}(`{3,}|~{3,})\s*([^\s`]*)\s*$")
+_HEADING_RE = re.compile(r"^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$")
+_HR_RE = re.compile(r"^\s{0,3}([-*_])(\s*\1){2,}\s*$")
+_LIST_RE = re.compile(r"^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$")
+_TASK_RE = re.compile(r"^\[([ xX])\]\s+(.*)$")
+_TABLE_SEP_RE = re.compile(r"^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$")
+_ALERT_RE = re.compile(r"^\[!([A-Za-z]+)\]\s*(.*)$")
+_TASK_ID_RE = re.compile(r"<ac:task-id>\s*(\d+)\s*</ac:task-id>")
+
+
+def _xml_text(text):
+    """Escape text for XHTML element content."""
+    return (text.replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;"))
+
+
+def _xml_attr(text):
+    """Escape text for a double-quoted XHTML attribute."""
+    return _xml_text(text).replace('"', "&quot;")
+
+
+def _cdata(text):
+    """Wrap text in CDATA, splitting any ']]>' so it cannot end the section."""
+    return "<![CDATA[" + text.replace("]]>", "]]]]><![CDATA[>") + "]]>"
+
+
+def _inline_markdown(text):
+    """
+    Convert one run of inline Markdown to storage-format XHTML.
+
+    Code spans are lifted out first, so nothing inside backticks is treated as
+    emphasis or a link; everything else is escaped BEFORE any markup is added,
+    so a literal '<' or '&' in the text can never become a tag.
+    """
+    stash = []
+
+    def keep(markup):
+        stash.append(markup)
+        return "\x00{}\x00".format(len(stash) - 1)
+
+    # Inline code spans (`x` or ``x``).
+    text = re.sub(r"(`+)(.+?)\1",
+                  lambda m: keep("<code>{}</code>".format(_xml_text(m.group(2).strip()))),
+                  text)
+    # Backslash escapes: \* stays a literal asterisk, and so on.
+    text = re.sub(r"\\([\\`*_{}\[\]()#+\-.!|~>])",
+                  lambda m: keep(_xml_text(m.group(1))), text)
+    # Images: an http(s) URL is an external image, anything else is taken to be
+    # the filename of an attachment on the page.
+    def image(m):
+        alt, src = m.group(1), m.group(2).strip()
+        if re.match(r"(?i)^https?://", src):
+            ref = '<ri:url ri:value="{}" />'.format(_xml_attr(src))
+        else:
+            ref = '<ri:attachment ri:filename="{}" />'.format(_xml_attr(src))
+        alt_attr = ' ac:alt="{}"'.format(_xml_attr(alt)) if alt else ""
+        return keep("<ac:image{}>{}</ac:image>".format(alt_attr, ref))
+    text = re.sub(r"!\[([^\]]*)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)", image, text)
+    # Links: [label](url) and <https://autolink>. Only the tags are lifted out:
+    # the label stays in the text, so it is escaped and emphasised with the
+    # rest of the line.
+    def link(m):
+        label, href = m.group(1), m.group(2).strip()
+        return (keep('<a href="{}">'.format(_xml_attr(href))) + label
+                + keep("</a>"))
+    text = re.sub(r"\[([^\]]+)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)", link, text)
+    text = re.sub(r"<(https?://[^\s>]+)>",
+                  lambda m: keep('<a href="{0}">{1}</a>'.format(
+                      _xml_attr(m.group(1)), _xml_text(m.group(1)))), text)
+
+    # Everything left is plain text: escape it, then add emphasis.
+    text = _xml_text(text)
+    text = re.sub(r"\*\*(?=\S)(.+?)(?<=\S)\*\*", r"<strong>\1</strong>", text)
+    text = re.sub(r"(?<!\w)__(?=\S)(.+?)(?<=\S)__(?!\w)", r"<strong>\1</strong>", text)
+    text = re.sub(r"(?<![*\w])\*(?=[^\s*])(.+?)(?<=[^\s*])\*(?![*\w])", r"<em>\1</em>", text)
+    text = re.sub(r"(?<!\w)_(?=[^\s_])(.+?)(?<=[^\s_])_(?!\w)", r"<em>\1</em>", text)
+    text = re.sub(r"~~(?=\S)(.+?)(?<=\S)~~",
+                  r'<span style="text-decoration: line-through;">\1</span>', text)
+
+    # Put the lifted-out pieces back. Stashed markup never contains a marker of
+    # its own, so one pass restores everything.
+    return re.sub(r"\x00(\d+)\x00", lambda m: stash[int(m.group(1))], text)
+
+
+def _paragraph_markup(lines):
+    """Join a paragraph's lines, honouring Markdown hard breaks."""
+    parts = []
+    for index, line in enumerate(lines):
+        hard = line.endswith("  ") or line.endswith("\\")
+        clean = line.rstrip()
+        if clean.endswith("\\"):
+            clean = clean[:-1].rstrip()
+        parts.append(_inline_markdown(clean.strip()))
+        if index < len(lines) - 1:
+            parts.append("<br />" if hard else " ")
+    return "".join(parts)
+
+
+def _split_table_row(line):
+    """Split a Markdown table row on unescaped pipes."""
+    row = line.strip()
+    if row.startswith("|"):
+        row = row[1:]
+    if row.endswith("|") and not row.endswith("\\|"):
+        row = row[:-1]
+    cells = re.split(r"(?<!\\)\|", row)
+    return [cell.strip().replace("\\|", "|") for cell in cells]
+
+
+class _TaskCounter:
+    """Hands out Confluence task IDs, continuing from any already on the page."""
+
+    def __init__(self, start=1):
+        self.next_id = max(1, int(start))
+
+    def take(self):
+        value = self.next_id
+        self.next_id += 1
+        return value
+
+
+def _render_list(items, tasks):
+    """
+    Render a tree of list items (see _parse_list_block) as storage XHTML.
+
+    Consecutive siblings of the same kind share one list element, so a bullet
+    list followed directly by a numbered one becomes two lists, as it reads.
+    """
+    out = []
+    index = 0
+    while index < len(items):
+        kind = items[index]["kind"]
+        group = []
+        while index < len(items) and items[index]["kind"] == kind:
+            group.append(items[index])
+            index += 1
+        if kind == "task":
+            out.append("<ac:task-list>")
+            for item in group:
+                body = _inline_markdown(item["text"])
+                if item["children"]:
+                    body += _render_list(item["children"], tasks)
+                out.append(
+                    "<ac:task><ac:task-id>{}</ac:task-id>"
+                    "<ac:task-status>{}</ac:task-status>"
+                    "<ac:task-body>{}</ac:task-body></ac:task>".format(
+                        tasks.take(),
+                        "complete" if item["checked"] else "incomplete",
+                        body))
+            out.append("</ac:task-list>")
+        else:
+            out.append("<{}>".format(kind))
+            for item in group:
+                body = _inline_markdown(item["text"])
+                if item["children"]:
+                    body += _render_list(item["children"], tasks)
+                out.append("<li>{}</li>".format(body))
+            out.append("</{}>".format(kind))
+    return "".join(out)
+
+
+def _indent_width(prefix):
+    """Width of leading whitespace, a tab counting as four spaces."""
+    return len(prefix.replace("\t", "    "))
+
+
+def _parse_list_block(lines):
+    """
+    Turn the lines of one Markdown list into a tree of items.
+
+    Each item is {"kind": "ul"|"ol"|"task", "text", "checked", "indent",
+    "children"}. Nesting follows indentation: an item indented further than the
+    one above it becomes its child. A non-marker line is a continuation of the
+    item above it.
+    """
+    roots = []
+    stack = []
+    for line in lines:
+        m = _LIST_RE.match(line)
+        if not m:
+            if stack:
+                stack[-1]["text"] += " " + line.strip()
+            continue
+        indent = _indent_width(m.group(1))
+        marker, text = m.group(2), m.group(3)
+        kind = "ol" if marker[0].isdigit() else "ul"
+        checked = False
+        task = _TASK_RE.match(text)
+        if task and kind == "ul":
+            kind = "task"
+            checked = task.group(1).lower() == "x"
+            text = task.group(2)
+        item = {"kind": kind, "text": text, "checked": checked,
+                "indent": indent, "children": []}
+        while stack and stack[-1]["indent"] >= indent:
+            stack.pop()
+        (stack[-1]["children"] if stack else roots).append(item)
+        stack.append(item)
+    return roots
+
+
+def markdown_to_storage(markdown, task_start=1):
+    """
+    Convert Markdown to Confluence storage-format XHTML.
+
+    task_start is the first inline-task ID to use; when appending to a page
+    that already has tasks, pass one past the highest ID on it so the new tasks
+    do not collide with the old ones.
+    """
+    tasks = _TaskCounter(task_start)
+    return _blocks_to_storage(
+        (markdown or "").replace("\r\n", "\n").replace("\r", "\n").split("\n"),
+        tasks)
+
+
+def _is_block_start(line, next_line):
+    """True when a line starts a block other than a paragraph."""
+    return bool(
+        _FENCE_RE.match(line) or _HEADING_RE.match(line) or _HR_RE.match(line)
+        or _LIST_RE.match(line) or line.lstrip().startswith(">")
+        or (line.strip().startswith("|") and next_line is not None
+            and _TABLE_SEP_RE.match(next_line))
+    )
+
+
+def _blocks_to_storage(lines, tasks):
+    out = []
+    i = 0
+    n = len(lines)
+    while i < n:
+        line = lines[i]
+        if not line.strip():
+            i += 1
+            continue
+
+        fence = _FENCE_RE.match(line)
+        if fence:
+            marker = fence.group(1)
+            lang = _CODE_LANGUAGES.get(fence.group(2).lower().strip())
+            body = []
+            i += 1
+            while i < n and not lines[i].strip().startswith(marker):
+                body.append(lines[i])
+                i += 1
+            i += 1  # skip the closing fence (or run off the end)
+            param = ('<ac:parameter ac:name="language">{}</ac:parameter>'
+                     .format(lang) if lang else "")
+            out.append(
+                '<ac:structured-macro ac:name="code">{}'
+                "<ac:plain-text-body>{}</ac:plain-text-body>"
+                "</ac:structured-macro>".format(param, _cdata("\n".join(body))))
+            continue
+
+        heading = _HEADING_RE.match(line)
+        if heading:
+            level = len(heading.group(1))
+            out.append("<h{0}>{1}</h{0}>".format(
+                level, _inline_markdown(heading.group(2))))
+            i += 1
+            continue
+
+        if _HR_RE.match(line):
+            out.append("<hr />")
+            i += 1
+            continue
+
+        next_line = lines[i + 1] if i + 1 < n else None
+        if (line.strip().startswith("|") and next_line is not None
+                and _TABLE_SEP_RE.match(next_line)):
+            header = _split_table_row(line)
+            i += 2
+            rows = []
+            while i < n and lines[i].strip().startswith("|"):
+                rows.append(_split_table_row(lines[i]))
+                i += 1
+            width = len(header)
+            cells = ["<tr>" + "".join("<th>{}</th>".format(_inline_markdown(c))
+                                      for c in header) + "</tr>"]
+            for row in rows:
+                row = (row + [""] * width)[:width]
+                cells.append("<tr>" + "".join(
+                    "<td>{}</td>".format(_inline_markdown(c)) for c in row) + "</tr>")
+            out.append("<table><tbody>{}</tbody></table>".format("".join(cells)))
+            continue
+
+        if line.lstrip().startswith(">"):
+            quoted = []
+            while i < n and lines[i].lstrip().startswith(">"):
+                inner = lines[i].lstrip()[1:]
+                quoted.append(inner[1:] if inner.startswith(" ") else inner)
+                i += 1
+            alert = _ALERT_RE.match(quoted[0].strip()) if quoted else None
+            macro = _ALERT_MACROS.get(alert.group(1).upper()) if alert else None
+            if macro:
+                title = alert.group(2).strip()
+                body = _blocks_to_storage(quoted[1:], tasks)
+                title_param = ('<ac:parameter ac:name="title">{}</ac:parameter>'
+                               .format(_xml_text(title)) if title else "")
+                out.append(
+                    '<ac:structured-macro ac:name="{}">{}'
+                    "<ac:rich-text-body>{}</ac:rich-text-body>"
+                    "</ac:structured-macro>".format(macro, title_param, body))
+            else:
+                out.append("<blockquote>{}</blockquote>".format(
+                    _blocks_to_storage(quoted, tasks)))
+            continue
+
+        if _LIST_RE.match(line):
+            block = []
+            while i < n:
+                current = lines[i]
+                if not current.strip():
+                    # A blank line ends the list unless the list carries on
+                    # (another item, or an indented continuation) after it.
+                    ahead = i + 1
+                    while ahead < n and not lines[ahead].strip():
+                        ahead += 1
+                    if ahead < n and (_LIST_RE.match(lines[ahead])
+                                      or lines[ahead].startswith((" ", "\t"))):
+                        i = ahead
+                        continue
+                    break
+                if (block and not _LIST_RE.match(current)
+                        and not current.startswith((" ", "\t"))
+                        and _is_block_start(current, lines[i + 1] if i + 1 < n else None)):
+                    break
+                block.append(current)
+                i += 1
+            out.append(_render_list(_parse_list_block(block), tasks))
+            continue
+
+        # Paragraph: consecutive lines up to a blank line or another block.
+        para = [line]
+        i += 1
+        while i < n and lines[i].strip() and not _is_block_start(
+                lines[i], lines[i + 1] if i + 1 < n else None):
+            para.append(lines[i])
+            i += 1
+        out.append("<p>{}</p>".format(_paragraph_markup(para)))
+    return "".join(out)
+
+
+def next_task_id(storage):
+    """One past the highest inline-task ID in a storage body (1 if none)."""
+    ids = [int(x) for x in _TASK_ID_RE.findall(storage or "")]
+    return (max(ids) + 1) if ids else 1
+
+
+# ---------------------------------------------------------------------------
+# Section editing: find one part of a storage body by its heading or title
+# ---------------------------------------------------------------------------
+# confluence_update_section changes ONE part of a page and sends everything
+# else back byte-for-byte, so the macros, layouts and tables elsewhere on the
+# page cannot be lost. A "section" is either
+#   - a HEADING and everything after it up to the next heading of the same or
+#     a higher level (or the end of the layout cell / page it sits in), or
+#   - a PANEL-LIKE MACRO (info, note, panel, expand...) whose title parameter
+#     matches: its rich-text body is the section.
+# Locating it needs the exact character offsets of each element, so the
+# storage body is indexed with the standard-library HTML parser rather than
+# converted to Markdown (which would lose exactly what this protects).
+
+_CDATA_RE = re.compile(r"<!\[CDATA\[.*?\]\]>", re.S)
+_TAG_RE = re.compile(r"<[^>]+>")
+_HEADING_TAGS = ("h1", "h2", "h3", "h4", "h5", "h6")
+
+
+def _mask_cdata(raw):
+    """
+    Blank out CDATA sections (code-macro bodies) with same-length filler, so
+    a '<' or '>' inside code cannot be mistaken for markup. Offsets are
+    unchanged, so positions found in the masked text apply to the original.
+    """
+    return _CDATA_RE.sub(lambda m: "x" * len(m.group(0)), raw)
+
+
+def _norm_label(text):
+    """Normalise a heading/title for matching: tags, entities, quotes, case."""
+    text = _TAG_RE.sub(" ", text or "")
+    text = html.unescape(text)
+    for curly, plain in (("\u2018", "'"), ("\u2019", "'"), ("\u201c", '"'),
+                         ("\u201d", '"'), ("\u00a0", " ")):
+        text = text.replace(curly, plain)
+    text = " ".join(text.split()).strip().rstrip(":").strip()
+    return text.casefold()
+
+
+class _StorageIndex(html.parser.HTMLParser):
+    """
+    Records where every element of a storage body starts and ends, as
+    character offsets: start (the '<' of the start tag), inner_start (just
+    after it), inner_end (the '<' of the end tag) and end (just after it).
+    """
+
+    def __init__(self, raw):
+        super().__init__(convert_charrefs=False)
+        self.raw = raw
+        self._line_starts = [0]
+        for index, char in enumerate(raw):
+            if char == "\n":
+                self._line_starts.append(index + 1)
+        self.elements = []
+        self._stack = []
+
+    def _offset(self):
+        line, col = self.getpos()
+        return self._line_starts[line - 1] + col
+
+    def _add(self, tag, attrs, closed):
+        start = self._offset()
+        text = self.get_starttag_text() or ""
+        inner = start + len(text)
+        self.elements.append({
+            "tag": tag, "attrs": {k.lower(): (v or "") for k, v in attrs},
+            "start": start, "inner_start": inner,
+            "inner_end": inner if closed else None,
+            "end": inner if closed else None,
+            "parent": self._stack[-1] if self._stack else None,
+        })
+        return len(self.elements) - 1
+
+    def handle_starttag(self, tag, attrs):
+        self._stack.append(self._add(tag, attrs, closed=False))
+
+    def handle_startendtag(self, tag, attrs):
+        self._add(tag, attrs, closed=True)
+
+    def handle_endtag(self, tag):
+        start = self._offset()
+        end = self.raw.find(">", start) + 1 or len(self.raw)
+        for depth in range(len(self._stack) - 1, -1, -1):
+            element = self.elements[self._stack[depth]]
+            if element["tag"] != tag:
+                continue
+            # Anything opened inside it and never closed ends here too.
+            for index in self._stack[depth + 1:]:
+                inner = self.elements[index]
+                inner["inner_end"] = inner["end"] = start
+            element["inner_end"], element["end"] = start, end
+            del self._stack[depth:]
+            return
+        # A stray end tag with no matching start: ignore it.
+
+    def finish(self):
+        self.close()
+        for index in self._stack:
+            element = self.elements[index]
+            element["inner_end"] = element["end"] = len(self.raw)
+        self._stack = []
+        return self.elements
+
+
+def _index_storage(raw):
+    parser = _StorageIndex(_mask_cdata(raw))
+    parser.feed(parser.raw)
+    return parser.finish()
+
+
+def storage_sections(raw):
+    """
+    Every editable section of a storage body, in page order, as dicts:
+    {kind, label, level, start, end} where [start, end) is the CONTENT to
+    replace (not the heading or the macro wrapper, which are kept).
+    """
+    masked = _mask_cdata(raw)
+    elements = _index_storage(raw)
+    sections = []
+    for index, el in enumerate(elements):
+        if el["tag"] in _HEADING_TAGS:
+            level = int(el["tag"][1])
+            end = None
+            for later in elements[index + 1:]:
+                if later["start"] < el["end"]:
+                    continue
+                if (later["parent"] == el["parent"] and later["tag"] in _HEADING_TAGS
+                        and int(later["tag"][1]) <= level):
+                    end = later["start"]
+                    break
+            if end is None:
+                parent = el["parent"]
+                end = elements[parent]["inner_end"] if parent is not None else len(raw)
+            sections.append({
+                "kind": "heading", "level": level,
+                "label": masked[el["inner_start"]:el["inner_end"]],
+                "start": el["end"], "end": end,
+            })
+        elif el["tag"] in ("ac:structured-macro", "ac:macro"):
+            children = [c for c in elements if c["parent"] == index]
+            title = next((c for c in children if c["tag"] == "ac:parameter"
+                          and c["attrs"].get("ac:name", "").lower() == "title"), None)
+            body = next((c for c in children if c["tag"] == "ac:rich-text-body"), None)
+            if title is None or body is None:
+                continue
+            sections.append({
+                "kind": "{} macro".format(el["attrs"].get("ac:name", "?")),
+                "level": None,
+                "label": masked[title["inner_start"]:title["inner_end"]],
+                "start": body["inner_start"], "end": body["inner_end"],
+            })
+    for section in sections:
+        section["display"] = " ".join(
+            html.unescape(_TAG_RE.sub(" ", section["label"])).split())
+    return sections
+
+
+def find_section(raw, wanted):
+    """
+    The one section whose heading/title matches `wanted` (exact after
+    normalising, else a unique partial match). Raises ConfluenceError naming
+    the sections that exist when there is no single match.
+    """
+    sections = storage_sections(raw)
+    want = _norm_label(wanted)
+    if not want:
+        raise ConfluenceError("'section' (the heading or panel title) is required.")
+    exact = [s for s in sections if _norm_label(s["label"]) == want]
+    matches = exact or [s for s in sections if want in _norm_label(s["label"])]
+
+    def listing(items):
+        return "; ".join("{!r} ({})".format(s["display"], s["kind"] if s["level"] is None
+                                            else "heading h{}".format(s["level"]))
+                         for s in items) or "none"
+    if not matches:
+        raise ConfluenceError(
+            "No heading or titled panel matching {!r} on this page. Sections: {}."
+            .format(wanted, listing(sections)))
+    if len(matches) > 1:
+        raise ConfluenceError(
+            "{!r} matches more than one section: {}. Use the full heading text."
+            .format(wanted, listing(matches)))
+    return matches[0]
+
+
+# Attachment types the download tool will fetch, by extension, and the plugin
+# folder each lands in so the plugin that opens that type can find it. The
+# documents library is organised by FILE TYPE, not by where a file came from,
+# so a spreadsheet attached to a Confluence page goes to documents\excel beside
+# the user's own workbooks - exactly where the excel plugin looks. Markdown
+# goes to this server's knowledge folder instead: it is the RAG index's format,
+# and knowledge\confluence is where this server already keeps the pages it
+# saves.
+ATTACHMENT_FOLDERS = {
+    ".pdf": "pdf",
+    ".docx": "word",
+    ".xlsx": "excel",
+    ".xlsm": "excel",
+    ".pptx": "powerpoint",
+    ".md": "knowledge",
+    ".markdown": "knowledge",
+}
+
+# What to suggest next after a download, per destination.
+ATTACHMENT_NEXT_STEP = {
+    "pdf": "convert it with the pdf-to-md plugin (convert_pdf_to_markdown)",
+    "word": "open it with the word plugin (msword_open)",
+    "excel": "open it with the excel plugin (excel_list_sheets, excel_read_range)",
+    "powerpoint": "open it with the powerpoint plugin (powerpoint_open)",
+    "knowledge": "run kb_index to make it searchable in the knowledge base",
+}
+
+# Ceiling on attachments read while looking one up; a page with more than this
+# is vanishingly rare, and the cap stops a runaway pagination loop.
+MAX_ATTACHMENTS_SCAN = 1000
+
+
+def _human_size(size):
+    """Bytes -> '48 KB' / '3.2 MB'."""
+    try:
+        size = float(size)
+    except (TypeError, ValueError):
+        return "?"
+    for unit in ("bytes", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            return ("{:.0f} {}" if unit in ("bytes", "KB") else "{:.1f} {}").format(size, unit)
+        size /= 1024.0
+    return "?"
+
+
 def safe_filename(name, max_len=150):
     """
     Turn a page title into a filesystem-safe filename component (no extension).
@@ -1090,7 +1812,8 @@ class ConfluenceError(Exception):
 class ConfluenceClient:
     def __init__(self, name, base_url, token=None, user=None, password=None,
                  verify_ssl=True, ca_cert=None, timeout=30, max_body=0,
-                 kb_dir=None, kb_autosave=False, body_format=BODY_FORMAT):
+                 kb_dir=None, kb_autosave=False, body_format=BODY_FORMAT,
+                 allow_write=False, docs_dir=None):
         if not name:
             raise ValueError("name is required")
         if not base_url:
@@ -1107,6 +1830,14 @@ class ConfluenceClient:
         # Whether a page read without an explicit save_to_kb argument is saved
         # anyway. Off by default - saving is something the user asks for.
         self.kb_autosave = bool(kb_autosave)
+        # Whether the page-writing tools exist at all (CONFLUENCE_ALLOW_WRITE).
+        # Off by default: an install that has only ever read Confluence must
+        # not gain the power to change it just because the plugin updated.
+        self.allow_write = bool(allow_write)
+        # Root of the document library attachments are downloaded into (each
+        # file type in its own sub-folder, see ATTACHMENT_FOLDERS); None
+        # forbids downloading documents.
+        self.docs_dir = docs_dir or None
         # Whether output should say which server it came from. ConfluenceServers
         # turns this on when more than one server is configured; with a single
         # server the output stays exactly as it was before multi-server support.
@@ -1151,33 +1882,45 @@ class ConfluenceClient:
         prefix = "[{}] ".format(self.name) if self.label_output else ""
         raise ConfluenceError(prefix + message)
 
-    def _get(self, path, params=None):
-        """Perform a GET against the REST API and return parsed JSON."""
-        url = self.base_url + path
-        if params:
-            # urlencode percent-encodes values (including CQL special chars).
-            url = url + "?" + urllib.parse.urlencode(params)
-        req = urllib.request.Request(url, headers=self.headers, method="GET")
+    def _open(self, req):
+        """
+        Send a request and return the open response, turning every failure
+        into a ConfluenceError with a message the user can act on. The caller
+        reads (and closes) the response.
+        """
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout,
-                                        context=self.ssl_context) as resp:
-                body = resp.read()
+            return urllib.request.urlopen(req, timeout=self.timeout,
+                                          context=self.ssl_context)
         except urllib.error.HTTPError as e:
             # Try to surface Confluence's error message from the response body.
             detail = ""
             try:
-                detail = e.read().decode("utf-8", "replace")[:500]
+                raw = e.read().decode("utf-8", "replace")
+                try:
+                    parsed = json.loads(raw)
+                    detail = parsed.get("message") or raw
+                except ValueError:
+                    detail = raw
+                detail = detail[:500]
             except Exception:
                 pass
+            hint = ""
+            if e.code == 409:
+                hint = (" (the page changed since it was read - someone else "
+                        "saved a new version. Read it again and retry.)")
+            elif e.code in (401, 403) and req.get_method() != "GET":
+                hint = (" (this account may not have permission to edit "
+                        "that space or page)")
             self._fail(
-                "HTTP {} from Confluence for {}{}".format(
-                    e.code, url, (": " + detail) if detail else ""
+                "HTTP {} from Confluence for {} {}{}{}".format(
+                    e.code, req.get_method(), req.full_url,
+                    (": " + detail) if detail else "", hint
                 )
             )
         except urllib.error.URLError as e:
             self._fail(
                 "Could not reach Confluence at {} ({}). Check the base URL, "
-                "network reachability and TLS settings.".format(url, e.reason)
+                "network reachability and TLS settings.".format(req.full_url, e.reason)
             )
         except ssl.SSLError as e:
             self._fail(
@@ -1185,10 +1928,37 @@ class ConfluenceClient:
                 "CONFLUENCE_CA_CERT, or CONFLUENCE_VERIFY_SSL=false to disable "
                 "verification.".format(e)
             )
+
+    def _request(self, method, path, params=None, payload=None):
+        """
+        Perform a REST call and return parsed JSON. `payload`, when given, is
+        sent as a JSON body (POST/PUT).
+        """
+        url = self.base_url + path
+        if params:
+            # urlencode percent-encodes values (including CQL special chars).
+            url = url + "?" + urllib.parse.urlencode(params)
+        headers = dict(self.headers)
+        data = None
+        if payload is not None:
+            data = json.dumps(payload).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+            # Confluence's XSRF check: a REST write from a non-browser client
+            # must say so, or some instances refuse it with a 403.
+            headers["X-Atlassian-Token"] = "no-check"
+        req = urllib.request.Request(url, data=data, headers=headers, method=method)
+        with self._open(req) as resp:
+            body = resp.read()
+        if not body.strip():
+            return {}
         try:
             return json.loads(body.decode("utf-8"))
         except (ValueError, UnicodeDecodeError) as e:
             self._fail("Confluence returned a non-JSON response: {}".format(e))
+
+    def _get(self, path, params=None):
+        """Perform a GET against the REST API and return parsed JSON."""
+        return self._request("GET", path, params)
 
     def _abs_link(self, data, link):
         """Build an absolute web URL from a result's webui link."""
@@ -1496,6 +2266,400 @@ class ConfluenceClient:
         cql = " AND ".join(clauses) + " ORDER BY lastmodified DESC"
         return self.search(cql, limit)
 
+    # -- page lookup shared by the write and attachment tools ----------------
+    def _target_page_id(self, page_id, title, space):
+        """
+        The numeric ID of the page a write or attachment call is aimed at:
+        'page_id' when given, else the page with exact 'title' in 'space'.
+        """
+        if page_id is not None and str(page_id).strip():
+            page_id = str(page_id).strip()
+            if not page_id.isdigit():
+                raise ConfluenceError(
+                    "'page_id' must be a numeric content ID (got {!r}). Pass "
+                    "'title' plus 'space' if you only know the title.".format(page_id))
+            return page_id
+        if not title or not space:
+            raise ConfluenceError(
+                "Identify the page with 'page_id', or with 'title' plus 'space'.")
+        params = {"title": title, "spaceKey": space, "limit": 1}
+        data = self._get("/rest/api/content", params)
+        results = data.get("results", []) or []
+        if not results:
+            raise ConfluenceError(
+                "No page titled {!r} found in space {!r}{}.".format(
+                    title, space, self._on_server()))
+        return str(results[0].get("id"))
+
+    def _fetch_for_edit(self, page_id):
+        """A page with its storage body and version, ready to be rewritten."""
+        return self._get(
+            "/rest/api/content/" + urllib.parse.quote(page_id, safe=""),
+            {"expand": "body.storage,version,space"})
+
+    # -- writing pages (only offered when CONFLUENCE_ALLOW_WRITE is on) ------
+    def _require_write(self):
+        if not self.allow_write:
+            self._fail(
+                "Writing to Confluence is switched off on this endpoint. Set "
+                "CONFLUENCE_ALLOW_WRITE=true and restart the client to enable "
+                "creating and editing pages.")
+
+    @staticmethod
+    def _to_storage(body, content_format, task_start=1):
+        """Convert a tool's 'body' argument to storage format."""
+        fmt = str(content_format or "markdown").strip().lower()
+        if fmt in ("storage", "xhtml", "html"):
+            return body or ""
+        if fmt not in ("markdown", "md"):
+            raise ConfluenceError(
+                "'content_format' must be 'markdown' (default) or 'storage' "
+                "(got {!r}).".format(content_format))
+        return markdown_to_storage(body or "", task_start=task_start)
+
+    def _write_summary(self, verb, page):
+        """One reply for a create/update/append: what changed and where."""
+        link = self._abs_link(page, (page.get("_links") or {}).get("webui", ""))
+        lines = [
+            "{} page{}:".format(verb, self._on_server()),
+            "Title: {}".format(page.get("title", "(untitled)")),
+            "ID: {}".format(page.get("id", "?")),
+            "Space: {}".format((page.get("space") or {}).get("key", "?")),
+            "Version: {}".format((page.get("version") or {}).get("number", "?")),
+            "URL: {}".format(link or "(unknown)"),
+        ]
+        return "\n".join(lines)
+
+    def _put_page(self, page, title, storage, version_message=None,
+                  minor_edit=False):
+        """Save a new version of an existing page."""
+        current = (page.get("version") or {}).get("number")
+        if not isinstance(current, int):
+            self._fail("Could not read the current version of page {}.".format(
+                page.get("id", "?")))
+        version = {"number": current + 1, "minorEdit": bool(minor_edit)}
+        if version_message:
+            version["message"] = str(version_message)
+        payload = {
+            "id": str(page.get("id")),
+            "type": page.get("type") or "page",
+            "title": title,
+            "space": {"key": (page.get("space") or {}).get("key")},
+            "version": version,
+            "body": {"storage": {"value": storage, "representation": "storage"}},
+        }
+        return self._request(
+            "PUT", "/rest/api/content/" + urllib.parse.quote(str(page.get("id")), safe=""),
+            payload=payload)
+
+    def create_page(self, space, title, body, parent_id=None, parent_title=None,
+                    content_format=None):
+        self._require_write()
+        space = str(space or "").strip()
+        title = str(title or "").strip()
+        if not space or not title:
+            raise ConfluenceError("Both 'space' and 'title' are required.")
+        payload = {
+            "type": "page",
+            "title": title,
+            "space": {"key": space},
+            "body": {"storage": {
+                "value": self._to_storage(body, content_format),
+                "representation": "storage",
+            }},
+        }
+        if (parent_id is not None and str(parent_id).strip()) or parent_title:
+            parent = self._target_page_id(parent_id, parent_title, space)
+            payload["ancestors"] = [{"id": parent}]
+        page = self._request("POST", "/rest/api/content", payload=payload)
+        log("created page {} ({!r}) in {}".format(page.get("id"), title, space))
+        return self._write_summary("Created", page)
+
+    def update_page(self, page_id=None, title=None, space=None, body=None,
+                    new_title=None, content_format=None, version_message=None,
+                    minor_edit=False, expected_version=None):
+        self._require_write()
+        if body is None and not new_title:
+            raise ConfluenceError(
+                "Nothing to change: pass 'body' (the page's new content) "
+                "and/or 'new_title'.")
+        target = self._target_page_id(page_id, title, space)
+        page = self._fetch_for_edit(target)
+        current = (page.get("version") or {}).get("number")
+        if expected_version is not None and str(expected_version).strip():
+            try:
+                wanted = int(expected_version)
+            except (TypeError, ValueError):
+                raise ConfluenceError("'expected_version' must be a whole number.")
+            if wanted != current:
+                raise ConfluenceError(
+                    "Page {} is at version {}, not {} - it has changed since "
+                    "it was read, so it was NOT updated. Read it again before "
+                    "rewriting it.".format(target, current, wanted))
+        if body is None:
+            storage = ((page.get("body") or {}).get("storage") or {}).get("value") or ""
+        else:
+            storage = self._to_storage(body, content_format)
+        saved = self._put_page(page, str(new_title).strip() if new_title else page.get("title"),
+                               storage, version_message, minor_edit)
+        log("updated page {} to version {}".format(
+            target, (saved.get("version") or {}).get("number")))
+        return self._write_summary("Updated", saved)
+
+    def append_to_page(self, page_id=None, title=None, space=None, body=None,
+                       position=None, content_format=None, version_message=None,
+                       minor_edit=False):
+        self._require_write()
+        if not body or not str(body).strip():
+            raise ConfluenceError("'body' (the content to add) is required.")
+        where = str(position or "end").strip().lower()
+        if where not in ("end", "start"):
+            raise ConfluenceError("'position' must be 'end' (default) or 'start'.")
+        target = self._target_page_id(page_id, title, space)
+        page = self._fetch_for_edit(target)
+        existing = ((page.get("body") or {}).get("storage") or {}).get("value") or ""
+        # The existing body is kept byte-for-byte - macros, layouts and all -
+        # and only the new content is converted. New inline tasks continue the
+        # page's task numbering so they cannot collide with the old ones.
+        addition = self._to_storage(body, content_format,
+                                    task_start=next_task_id(existing))
+        storage = (existing + addition) if where == "end" else (addition + existing)
+        saved = self._put_page(page, page.get("title"), storage,
+                               version_message, minor_edit)
+        log("appended to page {} (version {})".format(
+            target, (saved.get("version") or {}).get("number")))
+        return self._write_summary(
+            "Added content to the {} of".format(where), saved)
+
+    def update_section(self, page_id=None, title=None, space=None, section=None,
+                       body=None, mode=None, content_format=None,
+                       allow_macro_removal=False, version_message=None,
+                       minor_edit=False):
+        """
+        Replace (or add to) ONE section of a page - the content under a
+        heading, or inside a titled panel/expand - sending the rest of the page
+        back byte-for-byte.
+        """
+        self._require_write()
+        if body is None or not str(body).strip():
+            raise ConfluenceError("'body' (the section's new content) is required.")
+        how = str(mode or "replace").strip().lower()
+        if how not in ("replace", "append", "prepend"):
+            raise ConfluenceError("'mode' must be 'replace' (default), 'append' or 'prepend'.")
+        target = self._target_page_id(page_id, title, space)
+        page = self._fetch_for_edit(target)
+        existing = ((page.get("body") or {}).get("storage") or {}).get("value") or ""
+        found = find_section(existing, section)
+        start, end = found["start"], found["end"]
+        old = existing[start:end]
+
+        # Replacing a section that itself holds a macro would delete that
+        # macro. Refuse unless the caller has confirmed it, naming what would go.
+        if how == "replace" and not allow_macro_removal:
+            doomed = sorted(set(storage_macro_names(old)))
+            if doomed:
+                raise ConfluenceError(
+                    "The {!r} section contains macro(s) that replacing it would "
+                    "delete: {}. Nothing was changed. Use mode='append' to add "
+                    "to the section instead, or pass allow_macro_removal=true "
+                    "once the user has agreed to lose them.".format(
+                        found["display"], ", ".join(doomed)))
+
+        addition = self._to_storage(body, content_format,
+                                    task_start=next_task_id(existing))
+        if how == "replace":
+            new_part = addition
+        elif how == "append":
+            new_part = old + addition
+        else:
+            new_part = addition + old
+        storage = existing[:start] + new_part + existing[end:]
+        saved = self._put_page(page, page.get("title"), storage,
+                               version_message, minor_edit)
+        log("{} section {!r} on page {} (version {})".format(
+            how, found["display"], target, (saved.get("version") or {}).get("number")))
+        verb = {"replace": "Replaced the content of", "append": "Added to the end of",
+                "prepend": "Added to the start of"}[how]
+        return (self._write_summary(
+            "{} the {!r} section ({}) on".format(
+                verb, found["display"],
+                found["kind"] if found["level"] is None
+                else "heading h{}".format(found["level"])), saved)
+            + "\nThe rest of the page was left exactly as it was.")
+
+    # -- attachments -------------------------------------------------------
+    def _fetch_attachments(self, page_id):
+        """Every attachment on a page, each carrying an absolute download URL."""
+        items = []
+        start = 0
+        while len(items) < MAX_ATTACHMENTS_SCAN:
+            data = self._get(
+                "/rest/api/content/{}/child/attachment".format(
+                    urllib.parse.quote(page_id, safe="")),
+                {"start": start, "limit": 100, "expand": "version"})
+            batch = data.get("results", []) or []
+            for item in batch:
+                item["_download_url"] = self._abs_link(
+                    data, (item.get("_links") or {}).get("download", ""))
+            items.extend(batch)
+            if not batch or not (data.get("_links") or {}).get("next"):
+                break
+            start += len(batch)
+        return items
+
+    def _attachment_destination(self, filename):
+        """
+        Where an attachment of this name would be downloaded to: returns
+        (folder_key, folder, reason). folder is None when it cannot be
+        downloaded, and reason then says why.
+        """
+        ext = os.path.splitext(filename or "")[1].lower()
+        key = ATTACHMENT_FOLDERS.get(ext)
+        if not key:
+            return None, None, (
+                "not a type this server downloads (it fetches {})".format(
+                    ", ".join(sorted(ATTACHMENT_FOLDERS))))
+        if key == "knowledge":
+            if not self.kb_dir:
+                return key, None, ("Markdown goes to the knowledge folder, and "
+                                   "CONFLUENCE_KB_DIR is off")
+            return key, self.kb_dir, ""
+        if not self.docs_dir:
+            return key, None, ("document downloads are off (the documents "
+                               "folder is missing, or CONFLUENCE_DOCS_DIR is off)")
+        return key, os.path.join(self.docs_dir, key), ""
+
+    def list_attachments(self, page_id=None, title=None, space=None):
+        target = self._target_page_id(page_id, title, space)
+        items = self._fetch_attachments(target)
+        header = "Page {}{} has {} attachment(s)".format(
+            target, self._on_server(), len(items))
+        if not items:
+            return header + "."
+        lines = []
+        for item in items:
+            name = item.get("title", "(unnamed)")
+            ext = item.get("extensions") or {}
+            version = item.get("version") or {}
+            _key, folder, reason = self._attachment_destination(name)
+            lines.append(
+                "- {name}\n  id={id}  type={mtype}  size={size}  version={ver}  "
+                "updated={when}\n  download: {dest}".format(
+                    name=name, id=item.get("id", "?"),
+                    mtype=ext.get("mediaType") or "?",
+                    size=_human_size(ext.get("fileSize")),
+                    ver=version.get("number", "?"),
+                    when=str(version.get("when") or "?")[:16].replace("T", " "),
+                    dest=("-> " + folder) if folder else "not available - " + reason))
+        return header + ":\n\n" + "\n\n".join(lines)
+
+    def download_attachment(self, page_id=None, title=None, space=None,
+                            filename=None, attachment_id=None, save_as=None,
+                            overwrite=False):
+        target = self._target_page_id(page_id, title, space)
+        if not filename and not attachment_id:
+            raise ConfluenceError(
+                "Name the attachment with 'filename' (see "
+                "confluence_list_attachments) or 'attachment_id'.")
+        items = self._fetch_attachments(target)
+        match = None
+        if attachment_id:
+            want = str(attachment_id).strip().lower()
+            want = want if want.startswith("att") else "att" + want
+            match = next((i for i in items
+                          if str(i.get("id", "")).lower() == want), None)
+        else:
+            want = str(filename).strip()
+            match = next((i for i in items if i.get("title") == want), None)
+            if match is None:
+                folded = [i for i in items
+                          if str(i.get("title", "")).lower() == want.lower()]
+                match = folded[0] if len(folded) == 1 else None
+        if match is None:
+            names = ", ".join(repr(i.get("title")) for i in items[:20]) or "none"
+            raise ConfluenceError(
+                "No attachment {!r} on page {}{}. Attachments: {}.".format(
+                    attachment_id or filename, target, self._on_server(), names))
+
+        name = match.get("title") or "attachment"
+        key, folder, reason = self._attachment_destination(name)
+        if not folder:
+            raise ConfluenceError(
+                "{!r} cannot be downloaded: {}.".format(name, reason))
+        ext = os.path.splitext(name)[1]
+        # basename() then safe_filename() so neither the attachment's name nor
+        # 'save_as' can climb out of the folder: "..\\x.xlsx" becomes "x.xlsx".
+        # The extension always stays the attachment's own, so 'save_as' cannot
+        # turn a PDF into something another plugin would misread.
+        source = str(save_as).replace("\\", "/") if save_as else name
+        stem = os.path.splitext(os.path.basename(source))[0]
+        path = os.path.join(folder, safe_filename(stem) + ext)
+        if os.path.exists(path) and not overwrite:
+            raise ConfluenceError(
+                "{} already exists, so nothing was downloaded - a file already "
+                "in the folder must not be replaced without asking. Pass "
+                "overwrite=true to replace it (for example with a newer version "
+                "of the attachment), or 'save_as' for a different name.".format(path))
+        url = match.get("_download_url")
+        if not url:
+            self._fail("Confluence gave no download link for {!r}.".format(name))
+
+        try:
+            os.makedirs(folder, exist_ok=True)
+        except OSError as e:
+            raise ConfluenceError("Could not create {} ({}).".format(folder, e))
+        headers = dict(self.headers)
+        headers["Accept"] = "*/*"
+        req = urllib.request.Request(url, headers=headers, method="GET")
+        partial = path + ".part"
+        written = 0
+        try:
+            with self._open(req) as resp:
+                ctype = (resp.headers.get("Content-Type") or "").lower()
+                if ctype.startswith("text/html") and ext.lower() not in (".html", ".htm"):
+                    # A login or error page instead of the file: saving it under
+                    # the attachment's name would leave a "workbook" that is
+                    # really a web page.
+                    self._fail(
+                        "Confluence returned a web page instead of {!r} - the "
+                        "account may not be able to download it.".format(name))
+                with open(partial, "wb") as fh:
+                    while True:
+                        chunk = resp.read(64 * 1024)
+                        if not chunk:
+                            break
+                        fh.write(chunk)
+                        written += len(chunk)
+            os.replace(partial, path)
+        except OSError as e:
+            try:
+                os.remove(partial)
+            except OSError:
+                pass
+            raise ConfluenceError(
+                "Could not write {} ({}). If the file is open in another "
+                "program, close it and try again.".format(path, e))
+        except ConfluenceError:
+            try:
+                os.remove(partial)
+            except OSError:
+                pass
+            raise
+
+        expected = (match.get("extensions") or {}).get("fileSize")
+        size_note = ""
+        if isinstance(expected, int) and expected != written:
+            size_note = ("\nWARNING: Confluence reported {} bytes but {} were "
+                         "received.".format(expected, written))
+        log("downloaded attachment {!r} from page {} -> {}".format(name, target, path))
+        version = (match.get("version") or {}).get("number", "?")
+        return (
+            "Downloaded {name!r} (version {ver}, {size}) from page {page}{srv} to:\n"
+            "  {path}\n\nNext: {step}.{note}".format(
+                name=name, ver=version, size=_human_size(written), page=target,
+                srv=self._on_server(), path=path,
+                step=ATTACHMENT_NEXT_STEP.get(key, "open it"), note=size_note))
+
 
 class ConfluenceServers:
     """
@@ -1619,11 +2783,288 @@ def body_format_property():
     }
 
 
-def base_tool_definitions():
+def page_ref_properties():
+    """
+    The shared 'page_id' / 'title' / 'space' arguments that identify the page a
+    write or attachment tool acts on. Returned fresh for each tool.
+    """
+    return {
+        "page_id": {
+            "type": "string",
+            "description": "Numeric ID of the page (preferred if known).",
+        },
+        "title": {
+            "type": "string",
+            "description": "Exact title of the page, if the ID is not known (needs 'space').",
+        },
+        "space": {
+            "type": "string",
+            "description": "Space key of the page (used with 'title'), e.g. 'DOCS'.",
+        },
+    }
+
+
+def content_format_property():
+    """The shared 'content_format' argument for the three write tools."""
+    return {
+        "type": "string",
+        "enum": ["markdown", "storage"],
+        "description": (
+            "How 'body' is written. 'markdown' (default): headings, "
+            "paragraphs, **bold**, *italic*, `code`, links, bullet and "
+            "numbered lists, '- [ ]' task lists (become Confluence tasks), "
+            "tables, '> quotes', '> [!NOTE] Title' / [!TIP] / [!WARNING] "
+            "panels and ```lang fenced code (becomes a code macro). "
+            "'storage': raw Confluence storage-format XHTML, for a macro "
+            "Markdown cannot express."
+        ),
+    }
+
+
+def version_properties():
+    """The shared version-note arguments for the edit tools."""
+    return {
+        "version_message": {
+            "type": "string",
+            "description": "Optional note for the page history, e.g. 'Added Q3 actions'.",
+        },
+        "minor_edit": {
+            "type": "boolean",
+            "description": "Mark as a minor edit, so watchers are not notified (default false).",
+        },
+    }
+
+
+def attachment_tool_definitions():
+    """The two attachment tools - always offered; downloading writes locally only."""
+    list_props = page_ref_properties()
+    download_props = page_ref_properties()
+    download_props.update({
+        "filename": {
+            "type": "string",
+            "description": "The attachment's file name exactly as listed, e.g. 'Budget FY26.xlsx'.",
+        },
+        "attachment_id": {
+            "type": "string",
+            "description": "The attachment's ID from confluence_list_attachments (e.g. 'att123456'), instead of 'filename'.",
+        },
+        "save_as": {
+            "type": "string",
+            "description": (
+                "Optional file name to save it under (the original "
+                "extension is always kept). Default: the attachment's own name."
+            ),
+        },
+        "overwrite": {
+            "type": "boolean",
+            "description": (
+                "Replace a file of the same name that is already in the "
+                "folder (default false). Set it only when the user wants "
+                "the local copy refreshed."
+            ),
+        },
+    })
+    return [
+        {
+            "name": "confluence_list_attachments",
+            "description": (
+                "List the files attached to a Confluence page: name, ID, "
+                "type, size, version, last update, and the local folder "
+                "each would be downloaded to. Identify the page by "
+                "'page_id', or 'title' plus 'space'."
+            ),
+            "inputSchema": {"type": "object", "properties": list_props},
+        },
+        {
+            "name": "confluence_download_attachment",
+            "description": (
+                "Download one attachment from a Confluence page into the "
+                "local folder the matching plugin reads, so it can be opened "
+                "straight away: .xlsx/.xlsm -> documents\\excel (excel "
+                "plugin), .docx -> documents\\word (word plugin), .pptx -> "
+                "documents\\powerpoint (powerpoint plugin), .pdf -> "
+                "documents\\pdf (pdf-to-md plugin), .md -> "
+                "knowledge\\confluence (knowledge base). Returns the saved "
+                "path; pass the file name to the other plugin next (e.g. "
+                "excel_list_sheets with the workbook name). Never replaces "
+                "an existing file unless 'overwrite' is true."
+            ),
+            "inputSchema": {"type": "object", "properties": download_props},
+        },
+    ]
+
+
+def write_tool_definitions():
+    """
+    The page-writing tools, offered only when CONFLUENCE_ALLOW_WRITE is on.
+    """
+    create_props = {
+        "space": {
+            "type": "string",
+            "description": "Space key to create the page in, e.g. 'DOCS'.",
+        },
+        "title": {
+            "type": "string",
+            "description": "Title of the new page (must be unique in the space).",
+        },
+        "body": {
+            "type": "string",
+            "description": "The page content, in Markdown by default (see 'content_format').",
+        },
+        "parent_id": {
+            "type": "string",
+            "description": "Optional numeric ID of the page to create it under.",
+        },
+        "parent_title": {
+            "type": "string",
+            "description": "Optional exact title of the parent page, in the same space.",
+        },
+        "content_format": content_format_property(),
+    }
+    update_props = page_ref_properties()
+    update_props.update({
+        "body": {
+            "type": "string",
+            "description": (
+                "The page's COMPLETE new content - it replaces the whole "
+                "existing body. Omit it to change only the title."
+            ),
+        },
+        "new_title": {
+            "type": "string",
+            "description": "Optional new title for the page.",
+        },
+        "expected_version": {
+            "type": "integer",
+            "description": (
+                "The version number you read the page at. If the page has "
+                "moved on since, nothing is saved - pass it whenever the new "
+                "body was written from an earlier read."
+            ),
+        },
+        "content_format": content_format_property(),
+    })
+    update_props.update(version_properties())
+    append_props = page_ref_properties()
+    append_props.update({
+        "body": {
+            "type": "string",
+            "description": "The content to add, in Markdown by default (see 'content_format').",
+        },
+        "position": {
+            "type": "string",
+            "enum": ["end", "start"],
+            "description": "Add it at the 'end' (default) or the 'start' of the page.",
+        },
+        "content_format": content_format_property(),
+    })
+    append_props.update(version_properties())
+    section_props = page_ref_properties()
+    section_props.update({
+        "section": {
+            "type": "string",
+            "description": (
+                "The heading text, or the panel/expand title, of the part to "
+                "change, e.g. \"Director's notes\" (case and punctuation "
+                "are ignored)."
+            ),
+        },
+        "body": {
+            "type": "string",
+            "description": "The new content for that section, in Markdown by default.",
+        },
+        "mode": {
+            "type": "string",
+            "enum": ["replace", "append", "prepend"],
+            "description": "'replace' the section's content (default), or add to its end/start.",
+        },
+        "allow_macro_removal": {
+            "type": "boolean",
+            "description": (
+                "Only with the user's agreement: let 'replace' delete macros "
+                "that sit inside the section (default false)."
+            ),
+        },
+        "content_format": content_format_property(),
+    })
+    section_props.update(version_properties())
+    return [
+        {
+            "name": "confluence_create_page",
+            "description": (
+                "Create a new Confluence page in a space, optionally under a "
+                "parent page, from Markdown (converted to Confluence "
+                "formatting: task lists become real tasks, fenced code a code "
+                "macro, '> [!NOTE]' an info panel). Returns the new page's "
+                "ID and URL. Only create a page the user has asked for, and "
+                "show them the content first unless they have already "
+                "approved it."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": create_props,
+                "required": ["space", "title", "body"],
+            },
+        },
+        {
+            "name": "confluence_update_page",
+            "description": (
+                "Replace the WHOLE content (and/or the title) of an existing "
+                "Confluence page, saving a new version. The new 'body' "
+                "REPLACES the whole page, so anything left out - including "
+                "macros such as task reports or Jira tables - is removed. To "
+                "change one part of a page use confluence_update_section; to "
+                "add to it, confluence_append_to_page. Use this only for a "
+                "full rewrite or a title change. Read the page first, and "
+                "pass the version you read as 'expected_version'."
+            ),
+            "inputSchema": {"type": "object", "properties": update_props},
+        },
+        {
+            "name": "confluence_update_section",
+            "description": (
+                "Change ONE part of an existing Confluence page and leave "
+                "everything else on it - macros, tables, layouts - exactly as "
+                "it was. The part is found by 'section': a heading's text (the "
+                "content under it, up to the next heading of the same or "
+                "higher level, sub-headings included) or the title of a "
+                "panel/expand/info macro (its body). mode 'replace' "
+                "(default) swaps that content for "
+                "'body'; 'append' / 'prepend' add to it. Use this, not "
+                "confluence_update_page, for 'update the X section/notes on "
+                "page Y'. If the name matches nothing, the sections that exist "
+                "are listed. Replacing a section that itself contains a macro "
+                "is refused unless allow_macro_removal is true."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": section_props,
+                "required": ["section", "body"],
+            },
+        },
+        {
+            "name": "confluence_append_to_page",
+            "description": (
+                "Add content to the end (or start) of an existing Confluence "
+                "page, keeping everything already on it - macros, layouts and "
+                "all - untouched. The safe way to add minutes, actions or a "
+                "new section. Saves a new version."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": append_props,
+                "required": ["body"],
+            },
+        },
+    ]
+
+
+def base_tool_definitions(allow_write=False):
     """
     The tools as advertised when a single server is configured (JSON-Schema
     input specs). tool_definitions() adds the 'server' argument on top when a
-    second server is configured.
+    second server is configured. The write tools are only offered when
+    writing is switched on.
     """
     return [
         {
@@ -1773,7 +3214,8 @@ def base_tool_definitions():
                 },
             },
         },
-    ]
+    ] + attachment_tool_definitions() + (
+        write_tool_definitions() if allow_write else [])
 
 
 def tool_definitions(servers):
@@ -1786,7 +3228,7 @@ def tool_definitions(servers):
     instance - and, just as importantly, lets Claude see that a second instance
     exists at all.
     """
-    tools = base_tool_definitions()
+    tools = base_tool_definitions(servers.default.allow_write)
     if not servers.multi:
         return tools
 
@@ -1880,6 +3322,60 @@ def call_tool(servers, name, arguments):
             direct_only=bool(arguments.get("direct_only", False)),
             modified_within_days=arguments.get("modified_within_days"),
             limit=limit,
+        )
+
+    if name == "confluence_list_attachments":
+        return client.list_attachments(
+            arguments.get("page_id"), arguments.get("title"), arguments.get("space"))
+
+    if name == "confluence_download_attachment":
+        return client.download_attachment(
+            arguments.get("page_id"), arguments.get("title"), arguments.get("space"),
+            filename=arguments.get("filename"),
+            attachment_id=arguments.get("attachment_id"),
+            save_as=arguments.get("save_as"),
+            overwrite=bool(arguments.get("overwrite", False)),
+        )
+
+    if name == "confluence_create_page":
+        return client.create_page(
+            arguments.get("space"), arguments.get("title"), arguments.get("body"),
+            parent_id=arguments.get("parent_id"),
+            parent_title=arguments.get("parent_title"),
+            content_format=arguments.get("content_format"),
+        )
+
+    if name == "confluence_update_page":
+        return client.update_page(
+            arguments.get("page_id"), arguments.get("title"), arguments.get("space"),
+            body=arguments.get("body"),
+            new_title=arguments.get("new_title"),
+            content_format=arguments.get("content_format"),
+            version_message=arguments.get("version_message"),
+            minor_edit=bool(arguments.get("minor_edit", False)),
+            expected_version=arguments.get("expected_version"),
+        )
+
+    if name == "confluence_update_section":
+        return client.update_section(
+            arguments.get("page_id"), arguments.get("title"), arguments.get("space"),
+            section=arguments.get("section"),
+            body=arguments.get("body"),
+            mode=arguments.get("mode"),
+            content_format=arguments.get("content_format"),
+            allow_macro_removal=bool(arguments.get("allow_macro_removal", False)),
+            version_message=arguments.get("version_message"),
+            minor_edit=bool(arguments.get("minor_edit", False)),
+        )
+
+    if name == "confluence_append_to_page":
+        return client.append_to_page(
+            arguments.get("page_id"), arguments.get("title"), arguments.get("space"),
+            body=arguments.get("body"),
+            position=arguments.get("position"),
+            content_format=arguments.get("content_format"),
+            version_message=arguments.get("version_message"),
+            minor_edit=bool(arguments.get("minor_edit", False)),
         )
 
     raise ConfluenceError("Unknown tool: {}".format(name))
@@ -2098,6 +3594,26 @@ def resolve_kb_dir():
     return os.path.join(EVA_KNOWLEDGE_DIR, SUBFOLDER)
 
 
+def resolve_docs_dir():
+    """
+    The documents ROOT attachments are downloaded into, from the environment.
+
+    Precedence: CONFLUENCE_DOCS_DIR (a path of its own, or one of the
+    DISABLE_KEYWORDS to forbid downloads), then EVA_DOCUMENTS_DIR, then the
+    EVA_DOCUMENTS_DIR fallback in the config block. Returns (path, source):
+    source names the variable the path came from, or None when it is the
+    built-in default - which decides how loudly a missing folder is reported.
+    Returns (None, <variable>) when downloads are switched off.
+    """
+    own = env_str("CONFLUENCE_DOCS_DIR")
+    if own:
+        return (None if own.lower() in DISABLE_KEYWORDS else own), "CONFLUENCE_DOCS_DIR"
+    root = env_str("EVA_DOCUMENTS_DIR")
+    if root:
+        return (None if root.lower() in DISABLE_KEYWORDS else root), "EVA_DOCUMENTS_DIR"
+    return EVA_DOCUMENTS_DIR, None
+
+
 def build_arg_parser():
     """
     The command line carries no configuration - every setting is an
@@ -2158,6 +3674,14 @@ def run_check(servers):
     else:
         log("KB save folder   : disabled - no page can be saved")
     log("Page body format : {}".format(servers.default.body_format))
+    if servers.default.docs_dir:
+        log("Attachments      : {}\\<excel|word|powerpoint|pdf> (.md -> the KB "
+            "save folder)".format(servers.default.docs_dir))
+    else:
+        log("Attachments      : document downloads disabled")
+    log("Page writing     : {}".format(
+        "ENABLED (create / update / append)" if servers.default.allow_write
+        else "off (read-only)"))
     if failed:
         log("CHECK FAILED for {} of {} server(s): {}".format(
             len(failed), len(servers.clients), ", ".join(failed)))
@@ -2219,6 +3743,25 @@ def main(argv=None):
     # "off" is how saving is switched off from a client that can only pass
     # strings, since a blank value means "not configured".
     kb_dir = resolve_kb_dir()
+    allow_write = env_bool("CONFLUENCE_ALLOW_WRITE", ALLOW_WRITE)
+
+    # The documents root for attachment downloads. Unlike a sandboxed
+    # document server this is NOT fatal when missing: downloading is two tools,
+    # and searching and reading Confluence must still work on an endpoint that
+    # has no document library. A folder the user configured is reported loudly,
+    # because a missing one is almost always a typo.
+    docs_dir, docs_source = resolve_docs_dir()
+    docs_off = docs_dir is None
+    if docs_dir and not os.path.isdir(docs_dir):
+        if docs_source:
+            log("WARNING: {} points at {}, which does not exist. Attachment "
+                "downloads (other than Markdown) are disabled until it does - "
+                "fix the path, or create the folder.".format(docs_source, docs_dir))
+        else:
+            log("documents folder {} does not exist; attachment downloads "
+                "(other than Markdown) are disabled. Copy the eva\\ folder to "
+                "H:\\Eva, or set EVA_DOCUMENTS_DIR.".format(docs_dir))
+        docs_dir = None
 
     if not base_url:
         log("FATAL: no base URL. Set CONFLUENCE_BASE_URL. (The first server is "
@@ -2277,6 +3820,8 @@ def main(argv=None):
                 kb_dir=kb_dir,
                 kb_autosave=kb_autosave,
                 body_format=body_format,
+                allow_write=allow_write,
+                docs_dir=docs_dir,
             )
             for (spec_name, spec_url, spec_token, spec_user, spec_password,
                  spec_verify, spec_ca) in specs
@@ -2303,6 +3848,17 @@ def main(argv=None):
     else:
         log("knowledge-base saving on request only (save_to_kb=true) -> {}"
             .format(servers.default.kb_dir))
+    if servers.default.docs_dir:
+        log("attachment downloads -> {} (a sub-folder per file type)".format(
+            servers.default.docs_dir))
+    elif docs_off:
+        log("attachment downloads disabled ({}=off)".format(docs_source))
+    if servers.default.allow_write:
+        log("WRITE ENABLED: pages can be created and edited "
+            "(CONFLUENCE_ALLOW_WRITE=true)")
+    else:
+        log("read-only: page writing is off (set CONFLUENCE_ALLOW_WRITE=true "
+            "to enable it)")
     if body_format == "storage":
         log("page bodies: storage only - macros that Confluence renders at "
             "display time (task reports, page properties, children lists) will "

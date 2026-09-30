@@ -1,8 +1,8 @@
 {
   "name": "jira",
-  "displayName": "Jira (read-only)",
-  "version": "3.0.1",
-  "description": "Query Jira issues, sprints and projects. Read-only (Jira Data Center v2 REST API).",
+  "displayName": "Jira",
+  "version": "3.1.0",
+  "description": "Query Jira issues, sprints and projects, and - when switched on - create, edit, comment on and transition issues (Jira Data Center v2 REST API).",
   "author": {
     "name": "mcnamee"
   },

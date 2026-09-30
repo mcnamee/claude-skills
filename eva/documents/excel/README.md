@@ -1,16 +1,22 @@
 # documents\excel\
 
-The `excel` plugin's sandbox — the workbooks it may read.
+The `excel` plugin's sandbox — the workbooks it may read and change.
 
 | | |
 |---|---|
 | **Setting** | `EVA_DOCUMENTS_DIR` (the `excel` plugin appends `\excel`) |
 | **Default** | `H:\Eva\documents\excel` |
-| **Access** | **read-only** — the plugin never writes a workbook |
+| **Access** | read **and write** — reading parses the file directly; the write tools change a workbook here (cells, Table rows, a new pivot table) or save a copy beside it |
 | **Formats** | `.xlsx`, `.xlsm` |
 
-Workbooks are parsed directly, so Excel does not need to be installed and no
-file is ever locked or modified by reading it.
+Workbooks are parsed directly for reading, so Excel does not need to be
+installed and no file is ever locked or modified by reading it. Writing is
+different: it drives the installed Excel, and a workbook open in your own Excel
+has to be closed first.
+
+Spreadsheets attached to a Confluence page download into this folder (the
+`confluence` plugin's `confluence_download_attachment`), at the top level where
+this plugin can see them.
 
 ## Keep workbooks at the top level
 
@@ -32,8 +38,11 @@ for it to be captured as a note (`kb_capture`), which puts the *summary* in
 [`..\..\knowledge\captures`](../../knowledge/captures) while the numbers stay
 here as the source.
 
-## Read-only, and worth keeping that way
+## Reading changes nothing; writing is on request
 
-Because nothing writes here, this folder can safely point at a copy of real
-finance or HR workbooks. Files with formulas, macros or external links are read
-for their stored values; opening them here changes nothing.
+Reading a workbook never changes it: files with formulas, macros or external
+links are read for their stored values. A workbook only changes when you ask
+for a change, and asking for the result to be saved as a new file (`save_as`)
+keeps the original untouched. Macros never run when a workbook is opened for a
+write. If this folder points at real finance or HR workbooks, ask for `save_as`
+by habit.

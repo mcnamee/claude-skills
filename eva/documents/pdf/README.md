@@ -1,13 +1,14 @@
 # documents\pdf\
 
 The PDF folder: source PDFs for the `pdf-to-md` plugin to convert into the
-knowledge base, and the day planners the `outlook` plugin prints.
+knowledge base, the day planners the `outlook` plugin prints, and PDFs the
+`confluence` plugin downloads from a page's attachments.
 
 | | |
 |---|---|
-| **Setting** | `EVA_DOCUMENTS_DIR` (both the `pdf-to-md` and `outlook` plugins append `\pdf`) |
+| **Setting** | `EVA_DOCUMENTS_DIR` (the `pdf-to-md`, `outlook` and `confluence` plugins all append `\pdf`) |
 | **Default** | `H:\Eva\documents\pdf` |
-| **Access** | `pdf-to-md` reads only — conversion never alters a PDF. `outlook` writes day planners here and touches nothing else |
+| **Access** | `pdf-to-md` reads only — conversion never alters a PDF. `outlook` writes day planners here, and `confluence` downloaded attachments; neither touches anything else, and neither replaces an existing file unless asked |
 | **Output** | [`..\..\knowledge\pdf`](../../knowledge/pdf) |
 
 Conversion preserves reading order, headings and tables, including borderless

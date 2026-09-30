@@ -14,6 +14,13 @@ resolves against this folder, so nobody has to type an absolute path. An exact
 filename always wins; failing that the plugin falls back to a fuzzy match, so
 `"budget policy"` still finds the file.
 
+## Confluence attachments land here too
+
+Ask the `confluence` plugin to download an attachment and a `.docx` file comes
+here, because this is the one folder the `word` plugin can open. It keeps
+the attachment's own name and never replaces a file already here unless you
+say so (or give it a different name to save as).
+
 ## What belongs here
 
 Every `.docx` in play: the contract you were sent, the policy being revised, the

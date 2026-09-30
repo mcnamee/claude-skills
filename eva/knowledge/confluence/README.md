@@ -14,6 +14,10 @@ answer never reach the index.
 
 Written by the server only; the model never chooses a path in here.
 
+A Markdown (`.md`) **attachment** downloaded from a page lands here too, under
+its own file name, so it is indexed alongside the pages you saved. Other
+attachment types go to the matching folder under `documents\` instead.
+
 ## Say when you want a page kept
 
 "Search Confluence for the retention policy" fills nothing in here. "Save the

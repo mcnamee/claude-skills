@@ -1,15 +1,29 @@
 # Excel (.xlsx)
 
-Read and analyse Excel workbooks. **Read-only** — nothing is ever written to a
-workbook — and it parses `.xlsx` directly as a zip of XML, so Excel itself does
-not need to be installed.
+Read and analyse Excel workbooks — any sheet (tab), any **Table by name**, and
+**pivot tables** — by parsing `.xlsx` directly as a zip of XML, so reading
+needs neither Excel nor any pip package. It can also **change** workbooks, like
+the `word` and `powerpoint` plugins do their documents — write cells into a tab, add and update Table rows, and
+build a real **PivotTable** — by driving the Excel installed on the endpoint.
 
 | | |
 |---|---|
-| **Server** | `excel.py` v6.0.0 |
-| **pip install** | _none_ — standard library only |
-| **Platform** | any |
-| **Writes to disk** | no |
+| **Server** | `excel.py` v6.1.0 |
+| **pip install** | _none_ to read; `pywin32` to write |
+| **Platform** | any to read; Windows with desktop Excel to write |
+| **Writes to disk** | only workbooks in its folder, when you ask for a change |
+
+## What it can do
+
+| | Read | Write *(Windows + Excel + `pywin32`)* |
+|---|---|---|
+| **A sheet (tab)** | `excel_read_range`, `excel_get_headers`, `excel_search`, `excel_column_stats` — all take `sheet` | `excel_write_cells` — a block of values or formulas from any cell; `create_sheet` adds the tab |
+| **A Table by name** | `excel_list_tables`, `excel_read_table` — by name wherever it sits, with column pick, a filter and paging | `excel_add_table_rows`, `excel_update_table_rows` (find the row by a column value, set others) |
+| **Pivot tables** | `excel_list_pivot_tables`, `excel_read_pivot_table` — layout (source, rows, columns, filters, values) and the figures shown | `excel_create_pivot_table` — a real PivotTable from a Table or range, with row/column/filter fields and sum/count/average/max/min/... values |
+
+A pivot table's figures are read from the cells Excel saved, so they are as of
+its **last refresh**; the reply gives that date. Reading can't refresh a pivot
+— only Excel can.
 
 ## Install
 
@@ -20,6 +34,41 @@ not need to be installed.
 
 This is the simplest plugin in the suite - standard library only, no prompts at
 all - so it's a good one to install first if you're confirming the flow works.
+
+## Writing
+
+The four write tools are always offered, as `word`'s and `powerpoint`'s are.
+They need **Windows, desktop Excel and `pywin32`** in the same Python; without
+them they say what to install, and every read tool still works:
+
+```powershell
+& "C:\path\to\python.exe" -m pip install pywin32
+```
+
+Why Excel and not a Python library: a workbook is a web of parts that must
+agree — formulas, Table ranges, pivot caches, charts — and only Excel keeps
+them all consistent. It is also the only thing that can build a real
+PivotTable (no Python library can). Each write call:
+
+1. **refuses up front if the workbook is open** — in your Excel or anywhere else.
+   Close it and ask again;
+2. starts a **private, invisible Excel** (never your own Excel window), with
+   alerts, events and **macros switched off**;
+3. checks every sheet, Table and column name **before changing anything**, then
+   makes the change and lets Excel recalculate;
+4. saves — in place, or with **`save_as`** as a new workbook in the same folder,
+   leaving the original untouched — and quits that Excel.
+
+Any error closes the workbook **without saving**, so a half-made change never
+reaches the file. Values starting with `=` are formulas; `null` clears a cell;
+write dates as `YYYY-MM-DD`. A row added to a Table as an object
+(`{"Region": "North", "Amount": 5}`) writes only the columns named, so
+calculated columns keep their formulas.
+
+> **Verify on the endpoint first.** The Excel automation follows Excel's
+> documented object model but cannot run in this repo's (Linux) test
+> environment. `--check` starts and quits Excel to prove automation works; then try `excel_create_pivot_table` with `save_as` on a
+> copy before relying on it.
 
 ## Configuration
 
@@ -45,7 +94,7 @@ there are no folder prompts at install time and no folder command-line flags.
 that are already running, so quit and reopen your editor afterwards.
 
 Of the four, this server uses two: `EVA_PYTHON` and `EVA_DOCUMENTS_DIR`. It
-reads no templates and writes nothing at all.
+reads no templates, and writes only when you ask for a change.
 
 ### The folders this plugin uses
 
@@ -56,7 +105,7 @@ they all do.
 
 | Folder | What it is for | Missing? |
 |---|---|---|
-| `%EVA_DOCUMENTS_DIR%\excel` | The only folder the server may read workbooks from. **Top level only** - unlike `word`, this server does not search sub-folders | **Fatal.** The server refuses to start without it |
+| `%EVA_DOCUMENTS_DIR%\excel` | The only folder the server may read workbooks from - and, with writing on, change them in or save copies into. **Top level only** - unlike `word`, this server does not search sub-folders. The `confluence` plugin downloads spreadsheet attachments here | **Fatal.** The server refuses to start without it |
 
 > **Only the top level is listed.** A workbook filed in
 > `documents\excel\Finance\` will not appear in `excel_list_workbooks`. Keep
@@ -81,7 +130,7 @@ flags are actions:
 
 | Flag | Purpose |
 |---|---|
-| `--check` | Print environment/config diagnostics and exit (no server). It reports which variable the folder came from |
+| `--check` | Print environment/config diagnostics and exit (no server). It reports which variable the folder came from, and whether Excel can be started for the write tools |
 | `--list` | List readable workbooks in the folder and exit (no server) |
 | `--version` | Print version and exit |
 
@@ -99,7 +148,8 @@ stderr for audit.
 
 Reads only inside the workbook folder. Paths are resolved (symlinks included)
 before the containment check, so a symlink dropped inside the folder cannot
-reach files outside it. Nothing is written.
+reach files outside it. Only a workbook in that folder is ever changed, and
+`save_as` is confined to the same folder (it never replaces an existing file unless `overwrite=true`).
 
 ## Usage examples
 
@@ -109,6 +159,14 @@ reach files outside it. Nothing is written.
 4. "Read rows A1:D50 from the Q3 sheet." → `excel_read_range`
 5. "Find every cell in the budget workbook that mentions 'Marketing'." → `excel_search`
 6. "Give me the sum, average, min and max of the Revenue column on the Q3 sheet." → `excel_column_stats`
+7. "What Tables are in the budget workbook?" → `excel_list_tables`
+8. "Show me the rows of tblProjects where Status is Red." → `excel_read_table` with `filter_column` / `filter_value`
+9. "What does the pivot on the Summary tab say?" → `excel_read_pivot_table`
+10. "Put these three totals into B2:B4 on the Summary tab." → `excel_write_cells`
+11. "Add a row to tblProjects for the new CRM project, owner Jane, status Green." → `excel_add_table_rows`
+12. "Set the status of project P-17 to Amber." → `excel_update_table_rows` with `match` / `set`
+13. "Make a pivot of tblSales: regions down the side, products across, total Amount." → `excel_create_pivot_table`
+14. "Grab the budget spreadsheet off the FY26 Confluence page and pivot it by cost centre." → `confluence_download_attachment`, then `excel_list_tables` and `excel_create_pivot_table` on the downloaded file
 
 ## Troubleshooting
 
