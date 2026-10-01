@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-jira.py (v3.3.0) - A single-file MCP (Model Context Protocol) server for
+jira.py (v3.4.0) - A single-file MCP (Model Context Protocol) server for
 querying - and, when switched on, updating - Jira Data Center (v2 REST API)
 using only the Python 3 standard library.
 
@@ -19,7 +19,8 @@ Tools exposed (read / query, always):
   - jira_search_jql       : advanced search using raw JQL
   - jira_get_issue        : one issue in full (description, comments, optionally
                             the change history) by its key, e.g. PROJ-123,
-                            plus any custom fields named in JIRA_EXTRA_FIELDS
+                            plus Jira Plans' Target start / Target end and any
+                            custom fields named in JIRA_EXTRA_FIELDS
   - jira_my_issues        : issues assigned to the authenticated user
   - jira_project_status   : health summary for one project (counts by status
                             category, unassigned/recently-resolved counts, and
@@ -34,8 +35,9 @@ Tools exposed (read / query, always):
 Tools exposed ONLY when JIRA_ALLOW_WRITE=true:
   - jira_create_issue     : create an issue (project, type, summary, plus
                             description, priority, assignee, labels,
-                            components, fix versions, due date, parent for a
-                            sub-task, and any custom field by id)
+                            components, fix versions, due date, Plans target
+                            start/end dates, parent for a sub-task, and any
+                            custom field by id)
   - jira_update_issue     : edit those fields on an existing issue (labels and
                             fix versions can be replaced, or added/removed),
                             reassign it, and optionally comment in the same
@@ -98,6 +100,18 @@ The rest are this server's own:
                     nothing is reported in the output rather than failing the
                     call. Blank = no extra fields. --check lists how each
                     entry resolved, which is the quickest way to catch a typo.
+  JIRA_TARGET_START_FIELD  optional field ids of Jira Plans' (Advanced
+  JIRA_TARGET_END_FIELD    Roadmaps') "Target start" / "Target end", e.g.
+                    customfield_12001. Normally left blank: the server finds
+                    the fields itself, by their Plans field type and then by
+                    name. Set them only if --check says it could not (a
+                    renamed or duplicated field).
+
+DATES. due_date, target_start and target_end accept YYYY-MM-DD, a day-first
+numeric date (15/10/2026, 15-10-2026, 15.10.2026 - Australian order, never
+month-first) or a written month (15 Oct 2026, 15 October 2026). Anything else,
+or a date that does not exist (31/02/2026), is refused before Jira is called.
+An empty string on update clears the date.
 
 INSTALLING INTO CLAUDE CODE
 ---------------------------
@@ -189,10 +203,11 @@ failed transfer" rule):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "3.3.0"
+__version__ = "3.4.0"
 
 import argparse
 import base64
+import datetime
 import json
 import os
 import re
@@ -228,6 +243,21 @@ CUSTOM_FIELD_ID_RE = re.compile(r"^customfield_\d+$")
 # Jira Server/DC (before Jira 8 on some instances) returns a sprint as a Java
 # toString(), e.g. "com.atlassian.greenhopper...Sprint@1a2b[id=5,...,name=Sprint
 # 12,startDate=...]". Pull out just the name so it reads like the UI.
+# Jira Plans (Advanced Roadmaps) target dates: matched first by the custom
+# field TYPE Plans registers them with, then by their default name.
+TARGET_FIELDS = {
+    "start": ("com.atlassian.jpo:jpo-custom-field-baseline-start", "Target start",
+              "JIRA_TARGET_START_FIELD"),
+    "end": ("com.atlassian.jpo:jpo-custom-field-baseline-end", "Target end",
+            "JIRA_TARGET_END_FIELD"),
+}
+
+MONTHS = {name: i + 1 for i, names in enumerate((
+    ("jan", "january"), ("feb", "february"), ("mar", "march"), ("apr", "april"),
+    ("may",), ("jun", "june"), ("jul", "july"), ("aug", "august"),
+    ("sep", "sept", "september"), ("oct", "october"), ("nov", "november"),
+    ("dec", "december"))) for name in names}
+
 SPRINT_NAME_RE = re.compile(r"greenhopper\.service\.sprint\.Sprint@.*?\bname=([^,\]]*)")
 
 # Whether the issue-writing tools (create / update / comment / transition) are
@@ -312,6 +342,48 @@ def _fmt_field_value(value):
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
+def parse_date(value, label):
+    """
+    A date argument -> "YYYY-MM-DD", or "" for "clear it".
+
+    Accepts ISO (2026-10-15), a DAY-FIRST numeric date (15/10/2026, 15-10-2026,
+    15.10.2026 - this suite is Australian, so 03/04 is 3 April, never March 4)
+    and a written month (15 Oct 2026, 15 October, 2026). Two-digit years are
+    refused rather than guessed, and so is a date that does not exist.
+    """
+    text = str(value).strip()
+    if not text:
+        return ""
+    year = month = day = None
+    m = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})$", text)
+    if m:
+        year, month, day = (int(g) for g in m.groups())
+    m = m or re.match(r"^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$", text)
+    if m and year is None:
+        day, month, year = (int(g) for g in m.groups())
+    if not m:
+        m = re.match(r"^(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]+)\.?,?\s+(\d{4})$", text)
+        if m and m.group(2).lower() in MONTHS:
+            day, month, year = int(m.group(1)), MONTHS[m.group(2).lower()], int(m.group(3))
+    if year is None:
+        raise JiraError(
+            "'{}' must be a date like 2026-10-15, 15/10/2026 or 15 Oct 2026 "
+            "(day first, four-digit year), not {!r}.".format(label, text))
+    try:
+        return datetime.date(year, month, day).isoformat()
+    except ValueError:
+        hint = (" Numeric dates are read DAY first (15/10/2026), so this looks "
+                "month-first." if month > 12 and day <= 12 else "")
+        raise JiraError("'{}': {!r} is not a real date.{}".format(label, text, hint))
+
+
+def _date_part(value):
+    """The YYYY-MM-DD of a Jira date or datetime string, else the value as is."""
+    if isinstance(value, str) and re.match(r"^\d{4}-\d{2}-\d{2}", value):
+        return value[:10]
+    return _fmt_field_value(value)
+
+
 def clamp_limit(value, default=25, lo=1, hi=50):
     """Coerce a user-supplied limit into a sane integer range."""
     try:
@@ -358,7 +430,8 @@ def _jira_error_detail(http_error):
 class JiraClient:
     def __init__(self, base_url, token=None, user=None, password=None,
                  projects=None, verify_ssl=True, ca_cert=None, timeout=30,
-                 max_body=0, allow_write=False, extra_fields=None):
+                 max_body=0, allow_write=False, extra_fields=None,
+                 target_start_field=None, target_end_field=None):
         if not base_url:
             raise ValueError("base_url is required")
         self.base_url = base_url.rstrip("/")
@@ -378,6 +451,16 @@ class JiraClient:
             if entry and entry.lower() not in [e.lower() for e in self.extra_fields]:
                 self.extra_fields.append(entry)
         self._extra_resolved = None   # cache: (list of (id, label), notes)
+        self._catalogue = None        # cache of /rest/api/2/field
+
+        # Jira Plans target-date field ids: given explicitly (rarely needed),
+        # or found in the field list on first use (see _target_fields).
+        self._target_override = {"start": target_start_field, "end": target_end_field}
+        for which, fid in self._target_override.items():
+            if fid and not CUSTOM_FIELD_ID_RE.match(fid):
+                raise ValueError("{} must be a field id like customfield_12001, "
+                                 "not {!r}".format(TARGET_FIELDS[which][2], fid))
+        self._targets = None          # cache: {"start": field|None, "end": ...}
 
         # Optional project-key allowlist confining every tool.
         self.projects = []
@@ -524,6 +607,94 @@ class JiraClient:
 
     # -- extra (custom) fields ----------------------------------------------
 
+    def _field_catalogue(self):
+        """Jira's field list, fetched once (a failure is retried next call)."""
+        if self._catalogue is None:
+            catalogue = self._get("/rest/api/2/field")
+            if not isinstance(catalogue, list):
+                raise JiraError("Jira's field list (/rest/api/2/field) was not a list.")
+            self._catalogue = catalogue
+        return self._catalogue
+
+    def _target_fields(self):
+        """
+        Find Jira Plans' Target start / Target end fields.
+
+        Returns {"start": field, "end": field}, each the field's entry from
+        /rest/api/2/field (id, name, schema) or None when the instance has no
+        such field. An explicit JIRA_TARGET_*_FIELD id wins; otherwise the
+        field is matched by its Plans field type, then by its default name.
+        More than one match is an error naming the candidates - writing a date
+        into the wrong field is worse than refusing.
+        """
+        if self._targets is not None:
+            return self._targets
+        catalogue = self._field_catalogue()
+        found = {}
+        for which, (ftype, name, env_name) in TARGET_FIELDS.items():
+            override = self._target_override.get(which)
+            if override:
+                match = [f for f in catalogue if f.get("id") == override]
+                if not match:
+                    raise JiraError("{}={} is not a field on this Jira.".format(
+                        env_name, override))
+            else:
+                match = [f for f in catalogue
+                         if (f.get("schema") or {}).get("custom") == ftype]
+                match = match or [f for f in catalogue
+                                  if (f.get("name") or "").lower() == name.lower()]
+            if len(match) > 1:
+                raise JiraError(
+                    "More than one '{}' field on this Jira: {}. Set {} to the "
+                    "one to use.".format(name, ", ".join(
+                        "{} ({})".format(f.get("name"), f.get("id")) for f in match),
+                        env_name))
+            found[which] = match[0] if match else None
+        self._targets = found
+        return found
+
+    def _target_values(self, args):
+        """
+        target_start / target_end tool arguments -> {field_id: value}.
+
+        A date-only field takes "YYYY-MM-DD"; if this instance made them
+        date-time fields, midnight in the endpoint's own time zone is sent.
+        """
+        wanted = {w: args.get("target_" + w) for w in ("start", "end")
+                  if args.get("target_" + w) is not None}
+        if not wanted:
+            return {}
+        dates = {w: parse_date(v, "target_" + w) for w, v in wanted.items()}
+        if dates.get("start") and dates.get("end") and dates["start"] > dates["end"]:
+            raise JiraError("target_start ({}) is after target_end ({}).".format(
+                dates["start"], dates["end"]))
+        targets = self._target_fields()
+        out = {}
+        for which, date in dates.items():
+            field = targets.get(which)
+            if not field:
+                raise JiraError(
+                    "This Jira has no '{}' field - is Jira Plans (Advanced "
+                    "Roadmaps) installed? If the field has another name, set "
+                    "{} to its id.".format(TARGET_FIELDS[which][1],
+                                           TARGET_FIELDS[which][2]))
+            if date and (field.get("schema") or {}).get("type") == "datetime":
+                offset = datetime.datetime.now().astimezone().strftime("%z")
+                date = "{}T00:00:00.000{}".format(date, offset)
+            out[field["id"]] = date or None
+        return out
+
+    def _render_targets(self, issue, targets):
+        """The 'Target' line of jira_get_issue, or [] without Plans fields."""
+        if not targets or not (targets.get("start") or targets.get("end")):
+            return []
+        f = issue.get("fields") or {}
+        def show(which):
+            field = targets.get(which)
+            return _date_part(f.get(field["id"])) if field else "-"
+        return ["Target    : {} -> {}   (Jira Plans start -> end)".format(
+            show("start"), show("end"))]
+
     def _resolve_extra_fields(self):
         """
         Map the JIRA_EXTRA_FIELDS entries to field ids.
@@ -540,9 +711,7 @@ class JiraClient:
         fields, notes = [], []
         catalogue = None
         if any(not CUSTOM_FIELD_ID_RE.match(e) for e in self.extra_fields):
-            catalogue = self._get("/rest/api/2/field")
-            if not isinstance(catalogue, list):
-                raise JiraError("Jira's field list (/rest/api/2/field) was not a list.")
+            catalogue = self._field_catalogue()
         for entry in self.extra_fields:
             if CUSTOM_FIELD_ID_RE.match(entry):
                 fields.append((entry, None))
@@ -568,7 +737,7 @@ class JiraClient:
         self._extra_resolved = (unique, notes)
         return self._extra_resolved
 
-    def _render_extra_fields(self, issue, resolved):
+    def _render_extra_fields(self, issue, resolved, skip=()):
         """The "Extra fields" block for jira_get_issue (empty if none set)."""
         if not self.extra_fields:
             return []
@@ -580,6 +749,8 @@ class JiraClient:
         f = issue.get("fields") or {}
         names = issue.get("names") or {}
         for fid, label in fields:
+            if fid in skip:
+                continue   # already on the Target line
             out.append("  {}: {}".format(
                 label or names.get(fid) or fid,
                 _truncate(_fmt_field_value(f.get(fid)), EXTRA_FIELD_MAX_CHARS,
@@ -661,6 +832,16 @@ class JiraClient:
                     expand.append("names")   # display names for bare ids
             except JiraError as e:
                 resolved = e
+        # Jira Plans target dates, shown whenever this Jira has them. Like the
+        # extra fields, a failed lookup must not cost the user the issue.
+        try:
+            targets = self._target_fields()
+        except JiraError as e:
+            log("could not look up the Jira Plans target fields: {}".format(e))
+            targets = None
+        for field in (targets or {}).values():
+            if field:
+                fields += "," + field["id"]
         params = {"fields": fields}
         if expand:
             params["expand"] = ",".join(expand)
@@ -668,10 +849,10 @@ class JiraClient:
             "/rest/api/2/issue/" + urllib.parse.quote(key, safe=""), params
         )
         return self._render_issue_full(issue, include_comments, include_changelog,
-                                       resolved)
+                                       resolved, targets)
 
     def _render_issue_full(self, issue, include_comments, include_changelog,
-                           extra_resolved=None):
+                           extra_resolved=None, targets=None):
         f = issue.get("fields") or {}
         assignee = (f.get("assignee") or {}).get("displayName") or "(unassigned)"
         reporter = (f.get("reporter") or {}).get("displayName") or "-"
@@ -725,7 +906,10 @@ class JiraClient:
                 out.append("  - {} {} ({})".format(
                     verb, other.get("key", "?"),
                     ((other.get("fields") or {}).get("summary")) or ""))
-        out.extend(self._render_extra_fields(issue, extra_resolved))
+        out.extend(self._render_targets(issue, targets))
+        out.extend(self._render_extra_fields(
+            issue, extra_resolved,
+            skip={f["id"] for f in (targets or {}).values() if f}))
 
         out.append("")
         out.append("--- Description ---")
@@ -1035,10 +1219,8 @@ class JiraClient:
         if versions is not None:
             fields["fixVersions"] = versions
         if args.get("due_date") is not None:
-            due = str(args["due_date"]).strip()
-            if due and not re.match(r"^\d{4}-\d{2}-\d{2}$", due):
-                raise JiraError("'due_date' must be YYYY-MM-DD (or empty to clear it).")
-            fields["duedate"] = due or None
+            fields["duedate"] = parse_date(args["due_date"], "due_date") or None
+        fields.update(self._target_values(args))
         return fields
 
     def create_issue(self, args):
@@ -1223,7 +1405,23 @@ def _issue_field_properties():
         },
         "due_date": {
             "type": "string",
-            "description": "Due date as YYYY-MM-DD ('' on update clears it).",
+            "description": "Due date: YYYY-MM-DD, 15/10/2026 (day first) or "
+                           "15 Oct 2026. '' on update clears it.",
+        },
+        "target_start": {
+            "type": "string",
+            "description": (
+                "Jira Plans (Advanced Roadmaps) 'Target start' date, same "
+                "formats as due_date; '' on update clears it. The field is "
+                "found automatically - do not also pass it in 'fields'."
+            ),
+        },
+        "target_end": {
+            "type": "string",
+            "description": (
+                "Jira Plans 'Target end' date, same formats as due_date; '' on "
+                "update clears it. Must not be before target_start."
+            ),
         },
         "fields": {
             "type": "object",
@@ -1433,7 +1631,9 @@ def read_tool_definitions():
                 "'PROJ-123'): summary, status, people, dates, labels, links, "
                 "subtasks, the description, and recent comments. Set "
                 "include_changelog=true to also see the change history "
-                "(status transitions, reassignments). Custom fields appear "
+                "(status transitions, reassignments). Jira Plans' Target "
+                "start / end dates are shown when the instance has them. "
+                "Other custom fields appear "
                 "under 'Extra fields' only when listed in the server's "
                 "JIRA_EXTRA_FIELDS setting."
             ),
@@ -1843,6 +2043,13 @@ def run_check(client):
         log("Projects visible : {}".format(visible))
         if client.projects:
             log("Allowlist        : {}".format(", ".join(client.projects)))
+        try:
+            targets = client._target_fields()
+            log("Plans targets    : {}".format(", ".join(
+                "{} -> {}".format(TARGET_FIELDS[w][1], f["id"] if f else "not found")
+                for w, f in targets.items())))
+        except JiraError as e:
+            log("  WARNING: Jira Plans target fields: {}".format(e))
         if client.extra_fields:
             fields, notes = client._resolve_extra_fields()
             log("Extra fields     : {}".format(
@@ -1884,6 +2091,8 @@ def main(argv=None):
     max_body = env_int("JIRA_MAX_BODY", 0)
     allow_write = env_bool("JIRA_ALLOW_WRITE", ALLOW_WRITE)
     extra_fields = env_str("JIRA_EXTRA_FIELDS")
+    target_start_field = env_str("JIRA_TARGET_START_FIELD")
+    target_end_field = env_str("JIRA_TARGET_END_FIELD")
 
     if not base_url:
         log("FATAL: no base URL. Set the JIRA_BASE_URL environment variable.")
@@ -1906,6 +2115,8 @@ def main(argv=None):
             max_body=max_body,
             allow_write=allow_write,
             extra_fields=extra_fields,
+            target_start_field=target_start_field,
+            target_end_field=target_end_field,
         )
     except (ValueError, ssl.SSLError, OSError) as e:
         log("FATAL: could not initialise client: {}".format(e))

@@ -75,14 +75,22 @@ Anything written to Jira is posted as the user and seen by their team, so:
    resolution takes `resolution`.
 7. **Labels:** `add_labels` / `remove_labels` keep the others; `labels`
    replaces the whole set - use it only when the user wants that.
-8. **Fix versions (releases):** look the names up with `jira_list_versions`
+8. **Plans target dates:** use `target_start` / `target_end`, never `fields`.
+   Pass the date as the user said it if it is day first or has a written month
+   ("1/11/2026", "20 Dec 2026"); resolve relative dates ("next Friday", "end of
+   the month") against today's date yourself and pass YYYY-MM-DD. If the user
+   gives an ambiguous numeric date that only makes sense month-first, ask
+   rather than swap the numbers. If the tool says the field is missing or
+   duplicated, pass that on - it is fixed with `JIRA_TARGET_START_FIELD` /
+   `JIRA_TARGET_END_FIELD`, not by guessing an id.
+9. **Fix versions (releases):** look the names up with `jira_list_versions`
    first - Jira only accepts a release that already exists in the issue's
    project, spelled exactly. `add_fix_versions` / `remove_fix_versions` keep
    the others; `fix_versions` replaces the whole set. When matching by a
    "similar" name (e.g. to an issue's "delivers" links), show the user the
    proposed issue → release pairs, and any name with no clear match, before
    changing anything. Never pick between two plausible releases; ask.
-9. **Report back** with the issue key and URL the tool returns.
+10. **Report back** with the issue key and URL the tool returns.
 
 ## Notes
 

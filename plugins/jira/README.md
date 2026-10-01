@@ -8,7 +8,7 @@ issue.
 
 | | |
 |---|---|
-| **Server** | `jira.py` v3.3.0 |
+| **Server** | `jira.py` v3.4.0 |
 | **pip install** | _none_ — standard library only (HTTP via stdlib `urllib`) |
 | **Platform** | any |
 | **Writes to disk** | no |
@@ -69,13 +69,13 @@ completely (a window reload is not enough) and reopen it. Check it took in a
 |---|---|
 | `jira_search` | Free-text search (safely quoted into JQL) |
 | `jira_search_jql` | Advanced search with raw JQL |
-| `jira_get_issue` | One issue in full: fields, description, comments, optionally the change history, plus any custom fields listed in `JIRA_EXTRA_FIELDS` |
+| `jira_get_issue` | One issue in full: fields, description, comments, optionally the change history, Jira Plans target start/end dates, plus any custom fields listed in `JIRA_EXTRA_FIELDS` |
 | `jira_my_issues` | Issues assigned to you |
 | `jira_project_status` | Health summary of one project |
 | `jira_list_projects` | The project keys you can see |
 | `jira_list_transitions` | An issue's status and the transitions available from it (and any field each needs) |
 | `jira_list_versions` | A project's releases (fix versions): name, id, released/archived, dates. `query` filters by part of the name, ignoring case, spaces, hyphens, underscores and dots; archived ones are hidden unless `include_archived=true` |
-| `jira_create_issue` | *(writing on)* New issue: project, type, summary, plus description, priority, assignee, labels, components, fix versions, due date, `parent` for a sub-task, and any custom field via `fields` |
+| `jira_create_issue` | *(writing on)* New issue: project, type, summary, plus description, priority, assignee, labels, components, fix versions, due date, Jira Plans `target_start` / `target_end`, `parent` for a sub-task, and any custom field via `fields` |
 | `jira_update_issue` | *(writing on)* Edit any of those fields; `labels` replaces, `add_labels` / `remove_labels` adjust; `fix_versions` replaces, `add_fix_versions` / `remove_fix_versions` adjust; `assignee: "none"` unassigns; optional `comment` in the same call |
 | `jira_add_comment` | *(writing on)* Comment on an issue |
 | `jira_transition_issue` | *(writing on)* Move an issue by transition name, id, **or target status** ("move it to Done"), with an optional `resolution` and `comment`. No match lists what is available |
@@ -104,6 +104,33 @@ completely (a window reload is not enough) and reopen it. Check it took in a
   name is refused by Jira, never created.
 - A comment added alongside a transition is posted separately after the move,
   because Jira refuses a comment inside a transition that has no screen.
+
+## Jira Plans target dates
+
+Jira Plans (Advanced Roadmaps) keeps an issue's schedule in two custom fields,
+**Target start** and **Target end**. The plugin handles them for you:
+
+- **Reading:** `jira_get_issue` shows them on their own line whenever your Jira
+  has them, with no setting needed:
+  `Target    : 2026-11-01 -> 2026-12-20   (Jira Plans start -> end)`
+- **Writing** *(writing on)*: `jira_create_issue` and `jira_update_issue` take
+  `target_start` and `target_end`. The plugin finds the fields itself (by the
+  field type Plans registers, then by name), so there are no ids to look up.
+  `""` on update clears a date. An end date before the start date is refused.
+- **Dates are forgiving, day first.** `2026-11-01`, `1/11/2026`, `1-11-2026`,
+  `1.11.2026`, `1 Nov 2026` and `1st November, 2026` all mean 1 November.
+  Numeric dates are always read **day first**, so `03/04/2026` is 3 April. A
+  two-digit year, a month-first date (`11/15/2026`) or a date that doesn't exist
+  (`31/02/2026`) is refused before anything is sent to Jira. The same rules now
+  apply to `due_date`.
+- **Date-time fields:** if your admin set these up as date-time fields, the
+  plugin sends midnight in the endpoint's own time zone.
+- **If `--check` can't find them**, it says why. "Not found" means Plans isn't
+  installed or the fields have been renamed; "more than one" means a duplicate
+  field. Either way, set `JIRA_TARGET_START_FIELD` / `JIRA_TARGET_END_FIELD` to
+  the right `customfield_NNNNN` id.
+- **Filtering** works in `jira_search_jql`, e.g.
+  `"Target end" <= 2026-12-31 AND statusCategory != Done`.
 
 ## Reading custom fields
 
@@ -175,6 +202,7 @@ it uses only `EVA_PYTHON` - there is nothing here that has to exist on disk.
 | `JIRA_TIMEOUT` | Request timeout in seconds (default 30) |
 | `JIRA_MAX_BODY` | Truncate issue descriptions to N chars, 0 = unlimited (default) |
 | `JIRA_ALLOW_WRITE=true` | Offer the write tools (create, update, comment, transition) — see [Writing issues](#writing-issues). Default off: read-only |
+| `JIRA_TARGET_START_FIELD` / `JIRA_TARGET_END_FIELD` | Field ids of Jira Plans' Target start / Target end, e.g. `customfield_12001`. Leave blank: they are found automatically. Set only if `--check` says it couldn't — see [Jira Plans target dates](#jira-plans-target-dates) |
 | `JIRA_EXTRA_FIELDS` | Optional comma-separated list of extra fields `jira_get_issue` shows, e.g. `"customfield_10010,Story Points,Team"` — see [Reading custom fields](#reading-custom-fields). Blank = none |
 
 ### Command-line flags
@@ -213,6 +241,7 @@ to be saved and Claude writes a note with the `knowledge-base` plugin's
 12. "What can ABC-123 move to from here?" → `jira_list_transitions`
 13. "Which releases does ABC have coming up?" → `jira_list_versions`
 14. "For each 'delivers' link on ABC-10, add ABC-10 to the release with the closest name - show me the pairs first." → `jira_get_issue` + `jira_list_versions`, then `jira_update_issue` with `add_fix_versions` *(writing on)*
+15. "Push ABC-123's target end out to 20 Dec and start it on 1/11." → `jira_update_issue` with `target_start` / `target_end` *(writing on)*
 
 ## Troubleshooting
 

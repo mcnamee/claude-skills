@@ -76,6 +76,8 @@
     "JIRA_TIMEOUT": "",
     "JIRA_MAX_BODY": "",
     "JIRA_EXTRA_FIELDS": "",
+    "JIRA_TARGET_START_FIELD": "",
+    "JIRA_TARGET_END_FIELD": "",
     "KB_EMBED_URL": "",
     "KB_EMBED_MODEL": "",
     "KB_EMBED_API_KEY": "",

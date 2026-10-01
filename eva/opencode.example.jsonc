@@ -198,7 +198,10 @@
         // by id or name, e.g. "customfield_10010,Story Points".
         "JIRA_TIMEOUT": "",
         "JIRA_MAX_BODY": "",
-        "JIRA_EXTRA_FIELDS": ""
+        "JIRA_EXTRA_FIELDS": "",
+        // Jira Plans target date field ids - only if --check can't find them.
+        "JIRA_TARGET_START_FIELD": "",
+        "JIRA_TARGET_END_FIELD": ""
       },
       "enabled": true,
       "timeout": 300000
