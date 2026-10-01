@@ -194,9 +194,11 @@
         // "true" lets it create, edit, comment on and transition issues.
         // Blank = read-only.
         "JIRA_ALLOW_WRITE": "",
-        // Tuning.
+        // Tuning. JIRA_EXTRA_FIELDS: custom fields jira_get_issue shows,
+        // by id or name, e.g. "customfield_10010,Story Points".
         "JIRA_TIMEOUT": "",
-        "JIRA_MAX_BODY": ""
+        "JIRA_MAX_BODY": "",
+        "JIRA_EXTRA_FIELDS": ""
       },
       "enabled": true,
       "timeout": 300000

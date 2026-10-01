@@ -75,6 +75,7 @@
     "JIRA_ALLOW_WRITE": "",
     "JIRA_TIMEOUT": "",
     "JIRA_MAX_BODY": "",
+    "JIRA_EXTRA_FIELDS": "",
     "KB_EMBED_URL": "",
     "KB_EMBED_MODEL": "",
     "KB_EMBED_API_KEY": "",

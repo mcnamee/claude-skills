@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-jira.py (v3.2.0) - A single-file MCP (Model Context Protocol) server for
+jira.py (v3.3.0) - A single-file MCP (Model Context Protocol) server for
 querying - and, when switched on, updating - Jira Data Center (v2 REST API)
 using only the Python 3 standard library.
 
@@ -18,7 +18,8 @@ Tools exposed (read / query, always):
   - jira_search           : free-text search for issues (safely quoted into JQL)
   - jira_search_jql       : advanced search using raw JQL
   - jira_get_issue        : one issue in full (description, comments, optionally
-                            the change history) by its key, e.g. PROJ-123
+                            the change history) by its key, e.g. PROJ-123,
+                            plus any custom fields named in JIRA_EXTRA_FIELDS
   - jira_my_issues        : issues assigned to the authenticated user
   - jira_project_status   : health summary for one project (counts by status
                             category, unassigned/recently-resolved counts, and
@@ -87,6 +88,16 @@ The rest are this server's own:
                     MAX_COMMENTS / COMMENT_MAX_CHARS constants below.
   JIRA_ALLOW_WRITE  "true" to offer the write tools (create, update, comment,
                     transition). Default off: read-only.
+  JIRA_EXTRA_FIELDS optional comma-separated list of extra fields that
+                    jira_get_issue shows in an "Extra fields" block, e.g.
+                    "customfield_10010,Story Points,Team". Each entry is a
+                    field id (customfield_NNNNN) or a field NAME as Jira shows
+                    it (case-insensitive). Names are looked up once, on first
+                    use, via /rest/api/2/field; a name two fields share shows
+                    both, labelled with their ids. An entry that matches
+                    nothing is reported in the output rather than failing the
+                    call. Blank = no extra fields. --check lists how each
+                    entry resolved, which is the quickest way to catch a typo.
 
 INSTALLING INTO CLAUDE CODE
 ---------------------------
@@ -178,7 +189,7 @@ failed transfer" rule):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "3.2.0"
+__version__ = "3.3.0"
 
 import argparse
 import base64
@@ -208,6 +219,16 @@ MAX_COMMENTS = 20          # most-recent comments shown by jira_get_issue
 COMMENT_MAX_CHARS = 2000   # each comment body is truncated to this length
 MAX_CHANGELOG = 20         # most-recent changelog entries shown
 STATUS_TOP_ISSUES = 10     # open issues listed by jira_project_status
+EXTRA_FIELD_MAX_CHARS = 500  # each JIRA_EXTRA_FIELDS value is truncated to this
+
+# A field id that needs no lookup. Anything else in JIRA_EXTRA_FIELDS is
+# matched against Jira's field list (by id first, then by name).
+CUSTOM_FIELD_ID_RE = re.compile(r"^customfield_\d+$")
+
+# Jira Server/DC (before Jira 8 on some instances) returns a sprint as a Java
+# toString(), e.g. "com.atlassian.greenhopper...Sprint@1a2b[id=5,...,name=Sprint
+# 12,startDate=...]". Pull out just the name so it reads like the UI.
+SPRINT_NAME_RE = re.compile(r"greenhopper\.service\.sprint\.Sprint@.*?\bname=([^,\]]*)")
 
 # Whether the issue-writing tools (create / update / comment / transition) are
 # offered at all. Off unless JIRA_ALLOW_WRITE=true: this server was read-only
@@ -259,6 +280,38 @@ def _truncate(text, limit, label="text"):
     return text or ""
 
 
+def _fmt_field_value(value):
+    """
+    Render a field value of unknown type (custom fields come in many shapes)
+    as one short line: an option's value, a user's display name, a list joined
+    with commas, a sprint's name. Anything unrecognised falls back to compact
+    JSON, so nothing is silently dropped.
+    """
+    if value is None or value == "" or value == []:
+        return "-"
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))   # story points arrive as 5.0
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, str):
+        match = SPRINT_NAME_RE.search(value)
+        return match.group(1) if match else value
+    if isinstance(value, list):
+        return ", ".join(_fmt_field_value(v) for v in value)
+    if isinstance(value, dict):
+        for key in ("value", "displayName", "name", "key"):
+            if value.get(key) not in (None, ""):
+                text = str(value[key])
+                # A cascading select carries its second level as "child".
+                child = value.get("child")
+                if isinstance(child, dict) and child.get("value"):
+                    text += " / " + str(child["value"])
+                return text
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
 def clamp_limit(value, default=25, lo=1, hi=50):
     """Coerce a user-supplied limit into a sane integer range."""
     try:
@@ -305,7 +358,7 @@ def _jira_error_detail(http_error):
 class JiraClient:
     def __init__(self, base_url, token=None, user=None, password=None,
                  projects=None, verify_ssl=True, ca_cert=None, timeout=30,
-                 max_body=0, allow_write=False):
+                 max_body=0, allow_write=False, extra_fields=None):
         if not base_url:
             raise ValueError("base_url is required")
         self.base_url = base_url.rstrip("/")
@@ -315,6 +368,16 @@ class JiraClient:
         # by default: an install that has only ever read Jira must not gain the
         # power to change it just because the plugin updated.
         self.allow_write = bool(allow_write)
+
+        # JIRA_EXTRA_FIELDS entries, de-duplicated, in the order given. They
+        # are resolved to field ids lazily (see _resolve_extra_fields) so a
+        # server start never waits on Jira.
+        self.extra_fields = []
+        for entry in (extra_fields or "").split(","):
+            entry = entry.strip()
+            if entry and entry.lower() not in [e.lower() for e in self.extra_fields]:
+                self.extra_fields.append(entry)
+        self._extra_resolved = None   # cache: (list of (id, label), notes)
 
         # Optional project-key allowlist confining every tool.
         self.projects = []
@@ -459,6 +522,72 @@ class JiraClient:
             )
         return key
 
+    # -- extra (custom) fields ----------------------------------------------
+
+    def _resolve_extra_fields(self):
+        """
+        Map the JIRA_EXTRA_FIELDS entries to field ids.
+
+        Returns (fields, notes): fields is a list of (field_id, label) pairs,
+        label None meaning "use the name Jira reports for the id"; notes lists
+        entries that matched nothing. A customfield_NNNNN entry needs no
+        lookup; any other entry fetches /rest/api/2/field once. A successful
+        result is cached for the life of the server; a failed lookup raises
+        JiraError and is retried on the next call.
+        """
+        if self._extra_resolved is not None:
+            return self._extra_resolved
+        fields, notes = [], []
+        catalogue = None
+        if any(not CUSTOM_FIELD_ID_RE.match(e) for e in self.extra_fields):
+            catalogue = self._get("/rest/api/2/field")
+            if not isinstance(catalogue, list):
+                raise JiraError("Jira's field list (/rest/api/2/field) was not a list.")
+        for entry in self.extra_fields:
+            if CUSTOM_FIELD_ID_RE.match(entry):
+                fields.append((entry, None))
+                continue
+            by_id = [f for f in catalogue if f.get("id") == entry]
+            matches = by_id or [f for f in catalogue
+                                if (f.get("name") or "").lower() == entry.lower()]
+            if not matches:
+                notes.append("'{}' matches no Jira field id or name".format(entry))
+            for f in matches:
+                # Two fields sharing a name are both shown, told apart by id,
+                # rather than one being picked at random.
+                label = f.get("name") or f.get("id")
+                if len(matches) > 1:
+                    label = "{} ({})".format(label, f.get("id"))
+                fields.append((f.get("id"), label))
+        # Drop a field reached twice (e.g. by its id and by its name).
+        seen, unique = set(), []
+        for fid, label in fields:
+            if fid and fid not in seen:
+                seen.add(fid)
+                unique.append((fid, label))
+        self._extra_resolved = (unique, notes)
+        return self._extra_resolved
+
+    def _render_extra_fields(self, issue, resolved):
+        """The "Extra fields" block for jira_get_issue (empty if none set)."""
+        if not self.extra_fields:
+            return []
+        out = ["Extra fields:"]
+        if isinstance(resolved, JiraError):
+            out.append("  (could not look up JIRA_EXTRA_FIELDS: {})".format(resolved))
+            return out
+        fields, notes = resolved
+        f = issue.get("fields") or {}
+        names = issue.get("names") or {}
+        for fid, label in fields:
+            out.append("  {}: {}".format(
+                label or names.get(fid) or fid,
+                _truncate(_fmt_field_value(f.get(fid)), EXTRA_FIELD_MAX_CHARS,
+                          "value")))
+        for note in notes:
+            out.append("  (JIRA_EXTRA_FIELDS: {})".format(note))
+        return out
+
     # -- rendering helpers ----------------------------------------------------
 
     @staticmethod
@@ -519,15 +648,30 @@ class JiraClient:
                   "components,fixVersions,parent,subtasks,issuelinks")
         if include_comments:
             fields += ",comment"
+        expand = ["changelog"] if include_changelog else []
+        # JIRA_EXTRA_FIELDS: a failed name lookup is reported in the output
+        # instead of costing the user the whole issue.
+        resolved = None
+        if self.extra_fields:
+            try:
+                resolved = self._resolve_extra_fields()
+                ids = [fid for fid, _ in resolved[0]]
+                if ids:
+                    fields += "," + ",".join(ids)
+                    expand.append("names")   # display names for bare ids
+            except JiraError as e:
+                resolved = e
         params = {"fields": fields}
-        if include_changelog:
-            params["expand"] = "changelog"
+        if expand:
+            params["expand"] = ",".join(expand)
         issue = self._get(
             "/rest/api/2/issue/" + urllib.parse.quote(key, safe=""), params
         )
-        return self._render_issue_full(issue, include_comments, include_changelog)
+        return self._render_issue_full(issue, include_comments, include_changelog,
+                                       resolved)
 
-    def _render_issue_full(self, issue, include_comments, include_changelog):
+    def _render_issue_full(self, issue, include_comments, include_changelog,
+                           extra_resolved=None):
         f = issue.get("fields") or {}
         assignee = (f.get("assignee") or {}).get("displayName") or "(unassigned)"
         reporter = (f.get("reporter") or {}).get("displayName") or "-"
@@ -581,6 +725,7 @@ class JiraClient:
                 out.append("  - {} {} ({})".format(
                     verb, other.get("key", "?"),
                     ((other.get("fields") or {}).get("summary")) or ""))
+        out.extend(self._render_extra_fields(issue, extra_resolved))
 
         out.append("")
         out.append("--- Description ---")
@@ -1288,7 +1433,9 @@ def read_tool_definitions():
                 "'PROJ-123'): summary, status, people, dates, labels, links, "
                 "subtasks, the description, and recent comments. Set "
                 "include_changelog=true to also see the change history "
-                "(status transitions, reassignments)."
+                "(status transitions, reassignments). Custom fields appear "
+                "under 'Extra fields' only when listed in the server's "
+                "JIRA_EXTRA_FIELDS setting."
             ),
             "inputSchema": {
                 "type": "object",
@@ -1696,6 +1843,13 @@ def run_check(client):
         log("Projects visible : {}".format(visible))
         if client.projects:
             log("Allowlist        : {}".format(", ".join(client.projects)))
+        if client.extra_fields:
+            fields, notes = client._resolve_extra_fields()
+            log("Extra fields     : {}".format(
+                ", ".join("{} -> {}".format(label or fid, fid)
+                          for fid, label in fields) or "(none resolved)"))
+            for note in notes:
+                log("  WARNING: JIRA_EXTRA_FIELDS {}".format(note))
         log("Issue writing    : {}".format(
             "ENABLED (create / update / comment / transition)"
             if client.allow_write else "off (read-only)"))
@@ -1729,6 +1883,7 @@ def main(argv=None):
     timeout = env_int("JIRA_TIMEOUT", 30)
     max_body = env_int("JIRA_MAX_BODY", 0)
     allow_write = env_bool("JIRA_ALLOW_WRITE", ALLOW_WRITE)
+    extra_fields = env_str("JIRA_EXTRA_FIELDS")
 
     if not base_url:
         log("FATAL: no base URL. Set the JIRA_BASE_URL environment variable.")
@@ -1750,6 +1905,7 @@ def main(argv=None):
             timeout=timeout,
             max_body=max_body,
             allow_write=allow_write,
+            extra_fields=extra_fields,
         )
     except (ValueError, ssl.SSLError, OSError) as e:
         log("FATAL: could not initialise client: {}".format(e))
@@ -1765,6 +1921,9 @@ def main(argv=None):
     else:
         log("read-only: issue writing is off (set JIRA_ALLOW_WRITE=true to "
             "enable it)")
+    if client.extra_fields:
+        log("extra fields for jira_get_issue: {}".format(
+            ", ".join(client.extra_fields)))
     log("configured for base URL {}".format(client.base_url))
 
     if args.check:

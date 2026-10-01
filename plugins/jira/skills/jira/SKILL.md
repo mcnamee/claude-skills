@@ -17,7 +17,7 @@ by default; the write tools exist only when the endpoint sets
 | `jira_my_issues` | "What's assigned to me?" — the user's open issues |
 | `jira_search` | Free-text search (safely quoted into JQL) |
 | `jira_search_jql` | Advanced search with raw JQL |
-| `jira_get_issue` | One issue in full (set `include_changelog=true` for history) |
+| `jira_get_issue` | One issue in full (set `include_changelog=true` for history); custom fields appear under "Extra fields" only if listed in `JIRA_EXTRA_FIELDS` |
 | `jira_project_status` | Health summary of one project (counts by status, unassigned, top open) |
 | `jira_list_projects` | Which project keys are visible |
 | `jira_list_transitions` | An issue's status and the moves available from it |
@@ -41,6 +41,11 @@ block, then a restart) turns it on. Do not work around it.
    `project = ABC AND resolved >= -7d ORDER BY resolved DESC`.
 4. Deep-dive on one ticket → `jira_get_issue` (add the changelog only when
    the user asks who changed what).
+   Custom fields show under "Extra fields" only when the user has listed them
+   in `JIRA_EXTRA_FIELDS`. If they ask for one that isn't there, say it isn't
+   shown and that adding its name or id to `JIRA_EXTRA_FIELDS` (then
+   restarting) will show it - never guess the value. A line saying an entry
+   "matches no Jira field" means a typo in that setting.
 5. Reports: combine `jira_my_issues`/`jira_search_jql` results, then (if the
    word server is available) draft the report as a .docx with tracked
    changes.

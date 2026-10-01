@@ -1,7 +1,7 @@
 {
   "name": "jira",
   "displayName": "Jira",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "description": "Query Jira issues, sprints and projects, and - when switched on - create, edit, comment on and transition issues (Jira Data Center v2 REST API).",
   "author": {
     "name": "mcnamee"

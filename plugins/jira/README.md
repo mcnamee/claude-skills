@@ -8,7 +8,7 @@ issue.
 
 | | |
 |---|---|
-| **Server** | `jira.py` v3.2.0 |
+| **Server** | `jira.py` v3.3.0 |
 | **pip install** | _none_ — standard library only (HTTP via stdlib `urllib`) |
 | **Platform** | any |
 | **Writes to disk** | no |
@@ -69,7 +69,7 @@ completely (a window reload is not enough) and reopen it. Check it took in a
 |---|---|
 | `jira_search` | Free-text search (safely quoted into JQL) |
 | `jira_search_jql` | Advanced search with raw JQL |
-| `jira_get_issue` | One issue in full: fields, description, comments, optionally the change history |
+| `jira_get_issue` | One issue in full: fields, description, comments, optionally the change history, plus any custom fields listed in `JIRA_EXTRA_FIELDS` |
 | `jira_my_issues` | Issues assigned to you |
 | `jira_project_status` | Health summary of one project |
 | `jira_list_projects` | The project keys you can see |
@@ -104,6 +104,36 @@ completely (a window reload is not enough) and reopen it. Check it took in a
   name is refused by Jira, never created.
 - A comment added alongside a transition is posted separately after the move,
   because Jira refuses a comment inside a transition that has no screen.
+
+## Reading custom fields
+
+`jira_get_issue` shows the standard fields only, unless you list others in
+`JIRA_EXTRA_FIELDS`. They then appear in an **Extra fields** block above the
+description:
+
+```
+Extra fields:
+  Story Points: 5
+  Team: Blue
+  Sprint: Sprint 12
+```
+
+- **Each entry is a field id or a name.** `customfield_10010` is used as is;
+  anything else (`Story Points`, `environment`) is matched against Jira's field
+  list by id, then by name ignoring case. The list is fetched once per server
+  start, and only if an entry needs it.
+- **A name two fields share shows both**, each labelled with its id, so you can
+  swap the name for the id you meant.
+- **An entry that matches nothing** is noted in the output rather than failing
+  the call. Run `--check` after setting the variable: it lists how each entry
+  resolved and warns about any that didn't.
+- **Values are shown the way the UI shows them**: an option's value (a
+  cascading select as `Parent / Child`), a user's display name, a list joined
+  with commas, a sprint's name, `5` rather than `5.0`. Anything else is shown
+  as compact JSON, and each value is capped at 500 characters.
+- Search results stay one line per issue and do not include these fields. To
+  *filter* on a custom field, use JQL in `jira_search_jql`, e.g.
+  `cf[10010] = "Blue"` or `"Story Points" > 3`.
 
 ## Configuration
 
@@ -145,6 +175,7 @@ it uses only `EVA_PYTHON` - there is nothing here that has to exist on disk.
 | `JIRA_TIMEOUT` | Request timeout in seconds (default 30) |
 | `JIRA_MAX_BODY` | Truncate issue descriptions to N chars, 0 = unlimited (default) |
 | `JIRA_ALLOW_WRITE=true` | Offer the write tools (create, update, comment, transition) — see [Writing issues](#writing-issues). Default off: read-only |
+| `JIRA_EXTRA_FIELDS` | Optional comma-separated list of extra fields `jira_get_issue` shows, e.g. `"customfield_10010,Story Points,Team"` — see [Reading custom fields](#reading-custom-fields). Blank = none |
 
 ### Command-line flags
 
