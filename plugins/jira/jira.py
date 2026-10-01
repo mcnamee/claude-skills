@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-jira.py (v3.1.0) - A single-file MCP (Model Context Protocol) server for
+jira.py (v3.2.0) - A single-file MCP (Model Context Protocol) server for
 querying - and, when switched on, updating - Jira Data Center (v2 REST API)
 using only the Python 3 standard library.
 
@@ -26,15 +26,19 @@ Tools exposed (read / query, always):
   - jira_list_projects    : the project keys/names visible to the account
   - jira_list_transitions : an issue's status and the workflow transitions
                             available from it
+  - jira_list_versions    : a project's releases (fix versions): name, id,
+                            released/archived state and dates, optionally
+                            filtered by part of the name
 
 Tools exposed ONLY when JIRA_ALLOW_WRITE=true:
   - jira_create_issue     : create an issue (project, type, summary, plus
                             description, priority, assignee, labels,
                             components, fix versions, due date, parent for a
                             sub-task, and any custom field by id)
-  - jira_update_issue     : edit those fields on an existing issue (labels can
-                            be replaced, or added/removed), reassign it, and
-                            optionally comment in the same call
+  - jira_update_issue     : edit those fields on an existing issue (labels and
+                            fix versions can be replaced, or added/removed),
+                            reassign it, and optionally comment in the same
+                            call
   - jira_add_comment      : comment on an issue
   - jira_transition_issue : move an issue through its workflow, by transition
                             name, id, or target status ("move it to Done"),
@@ -174,7 +178,7 @@ failed transfer" rule):
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "3.1.0"
+__version__ = "3.2.0"
 
 import argparse
 import base64
@@ -716,6 +720,70 @@ class JiraClient:
         return "{} is in status {!r}. Available transitions:\n{}".format(
             key, status, "\n".join(self._transition_line(t) for t in transitions))
 
+    # -- releases (read) ------------------------------------------------------
+
+    @staticmethod
+    def _squash(text):
+        """Lower-case and drop spaces, hyphens, underscores and dots, so a
+        filter of 'customer-portal' still finds 'Customer Portal 2.0'."""
+        return re.sub(r"[\s_.\-]+", "", str(text or "").lower())
+
+    def list_versions(self, project, query=None, include_released=True,
+                      include_archived=False):
+        """
+        A project's versions (releases), in the order Jira keeps them. Archived
+        ones are hidden by default because they can no longer be assigned to
+        new work; released ones are shown, since a late fix version is common.
+        """
+        project = self._check_project_key(project)
+        data = self._get("/rest/api/2/project/{}/versions".format(
+            urllib.parse.quote(project, safe="")))
+        if not isinstance(data, list):
+            raise JiraError("Unexpected response listing versions for {}.".format(project))
+        want = self._squash(query) if query else ""
+        rows = []
+        hidden = 0
+        for ver in data:
+            name = ver.get("name") or "?"
+            if want and want not in self._squash(name):
+                continue
+            if (ver.get("archived") and not include_archived) or \
+                    (ver.get("released") and not include_released):
+                hidden += 1
+                continue
+            if ver.get("archived"):
+                state = "archived"
+            elif ver.get("released"):
+                state = "released"
+            else:
+                state = "unreleased"
+            # e.g. "released 2026-03-01" or "unreleased, start ..., due ...".
+            if ver.get("released") and ver.get("releaseDate"):
+                state += " " + str(ver["releaseDate"])
+            parts = [state]
+            if ver.get("startDate"):
+                parts.append("start " + str(ver["startDate"]))
+            if ver.get("releaseDate") and not ver.get("released"):
+                parts.append("due " + str(ver["releaseDate"]))
+            if ver.get("overdue"):
+                parts.append("OVERDUE")
+            line = "- {}  [{}]  (id {})".format(name, ", ".join(parts), ver.get("id", "?"))
+            if ver.get("description"):
+                line += "\n    " + str(ver["description"]).strip()
+            rows.append(line)
+        what = "Versions in {}".format(project)
+        if query:
+            what += " matching {!r}".format(str(query))
+        note = ""
+        if hidden:
+            note = ("\n({} more hidden: {}.)".format(hidden, " / ".join(
+                n for n, on in (("archived", not include_archived),
+                                ("released", not include_released)) if on)))
+        if not rows:
+            return "No versions found in {}{}.{}".format(
+                project, " matching {!r}".format(str(query)) if query else "", note)
+        return "{} ({}):\n{}{}".format(what, len(rows), "\n".join(rows), note)
+
     # -- writing (only offered when JIRA_ALLOW_WRITE is on) -------------------
 
     def _require_write(self):
@@ -866,6 +934,17 @@ class JiraClient:
                                 "'add_labels'/'remove_labels', not both.")
             update["labels"] = ([{"add": v} for v in add]
                                 + [{"remove": v} for v in remove])
+        add_ver = self._name_list(args.get("add_fix_versions"), "add_fix_versions") or []
+        remove_ver = self._name_list(args.get("remove_fix_versions"),
+                                     "remove_fix_versions") or []
+        if add_ver or remove_ver:
+            if "fixVersions" in fields:
+                raise JiraError("Pass 'fix_versions' (replace all) OR "
+                                "'add_fix_versions'/'remove_fix_versions', not both.")
+            # Same "update" verbs as labels, so the issue's other fix
+            # versions are left alone.
+            update["fixVersions"] = ([{"add": v} for v in add_ver]
+                                     + [{"remove": v} for v in remove_ver])
         has_assignee = "assignee" in args and args.get("assignee") is not None
         comment = str(args.get("comment") or "").strip()
         if not fields and not update and not has_assignee and not comment:
@@ -991,7 +1070,11 @@ def _issue_field_properties():
         },
         "fix_versions": {
             "type": "array", "items": {"type": "string"},
-            "description": "Fix version names. On update this replaces them.",
+            "description": (
+                "Fix version (release) names, exactly as the project names "
+                "them - jira_list_versions shows them. On update this "
+                "REPLACES all fix versions."
+            ),
         },
         "due_date": {
             "type": "string",
@@ -1034,6 +1117,17 @@ def write_tool_definitions():
             "type": "array", "items": {"type": "string"},
             "description": "Labels to remove, keeping the rest.",
         },
+        "add_fix_versions": {
+            "type": "array", "items": {"type": "string"},
+            "description": (
+                "Fix version names to add, keeping the existing ones. Each "
+                "must already exist in the issue's project (jira_list_versions)."
+            ),
+        },
+        "remove_fix_versions": {
+            "type": "array", "items": {"type": "string"},
+            "description": "Fix version names to remove, keeping the rest.",
+        },
         "comment": {
             "type": "string",
             "description": "Optional comment to add in the same call (wiki markup).",
@@ -1060,8 +1154,8 @@ def write_tool_definitions():
             "name": "jira_update_issue",
             "description": (
                 "Edit an existing Jira issue: summary, description, priority, "
-                "assignee, labels (replace, or add/remove), components, fix "
-                "versions, due date or custom fields, and optionally add a "
+                "assignee, labels and fix versions (replace, or add/remove), "
+                "components, due date or custom fields, and optionally add a "
                 "comment in the same call. Only the fields passed change. To "
                 "change the STATUS use jira_transition_issue instead."
             ),
@@ -1281,6 +1375,37 @@ def read_tool_definitions():
                 "required": ["key"],
             },
         },
+        {
+            "name": "jira_list_versions",
+            "description": (
+                "List a project's versions (releases / fix versions): name, "
+                "id, whether released or archived, and start/release dates. "
+                "Use it to find the exact release name before setting fix "
+                "versions on an issue. 'query' keeps only names containing "
+                "that text, ignoring case, spaces, hyphens, underscores and "
+                "dots - for a fuzzier match, list them all and compare. "
+                "Archived versions are hidden unless include_archived=true."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "project": {"type": "string", "description": "The project key, e.g. 'ABC'."},
+                    "query": {
+                        "type": "string",
+                        "description": "Optional part of the version name to filter by.",
+                    },
+                    "include_released": {
+                        "type": "boolean",
+                        "description": "Include released versions (default true).",
+                    },
+                    "include_archived": {
+                        "type": "boolean",
+                        "description": "Include archived versions (default false).",
+                    },
+                },
+                "required": ["project"],
+            },
+        },
     ]
 
 
@@ -1334,6 +1459,17 @@ def call_tool(client, name, arguments):
 
     if name == "jira_list_transitions":
         return client.list_transitions(arguments.get("key"))
+
+    if name == "jira_list_versions":
+        project = arguments.get("project")
+        if not project:
+            raise JiraError("'project' is required")
+        return client.list_versions(
+            project,
+            query=arguments.get("query"),
+            include_released=bool(arguments.get("include_released", True)),
+            include_archived=bool(arguments.get("include_archived", False)),
+        )
 
     if name == "jira_create_issue":
         return client.create_issue(arguments)

@@ -205,7 +205,7 @@ from memory.
 | Put a file on a wiki page, or replace an image on one | `confluence_upload_attachment` (from `documents\` or `knowledge\confluence` only); `overwrite: true` uploads a new version of the attachment of the same name, so the page shows it without an edit. Only when I ask |
 | Draw an org chart from staffing data | `/org-chart`: it writes the chart to `documents\images` as `.json` plus `.svg` |
 | Change one part of a wiki page | `confluence_update_section`, naming the heading or panel title; everything else on the page is left alone. `confluence_update_page` replaces the whole page, so only for a full rewrite. Only when I ask |
-| Project or sprint status | `jira_my_issues`, `jira_project_status`, `jira_search` |
+| Project, sprint or release status | `jira_my_issues`, `jira_project_status`, `jira_search`, `jira_list_versions` |
 | Raise, update, comment on or move a ticket | `jira_create_issue`, `jira_update_issue`, `jira_add_comment`, `jira_transition_issue`. Only when I ask |
 | Read mail and the diary | `outlook_search_recent`, `outlook_get_email`, `outlook_get_calendar` |
 | Print a day's diary to take with me | `outlook_print_calendar` |

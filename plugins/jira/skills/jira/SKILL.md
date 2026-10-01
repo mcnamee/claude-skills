@@ -21,8 +21,9 @@ by default; the write tools exist only when the endpoint sets
 | `jira_project_status` | Health summary of one project (counts by status, unassigned, top open) |
 | `jira_list_projects` | Which project keys are visible |
 | `jira_list_transitions` | An issue's status and the moves available from it |
+| `jira_list_versions` | A project's releases (fix versions), to find the exact name |
 | `jira_create_issue` | Raise a new issue *(writing on)* |
-| `jira_update_issue` | Change fields, labels, assignee; optional comment *(writing on)* |
+| `jira_update_issue` | Change fields, labels, fix versions, assignee; optional comment *(writing on)* |
 | `jira_add_comment` | Comment on an issue *(writing on)* |
 | `jira_transition_issue` | Move an issue to another status *(writing on)* |
 
@@ -69,7 +70,14 @@ Anything written to Jira is posted as the user and seen by their team, so:
    resolution takes `resolution`.
 7. **Labels:** `add_labels` / `remove_labels` keep the others; `labels`
    replaces the whole set - use it only when the user wants that.
-8. **Report back** with the issue key and URL the tool returns.
+8. **Fix versions (releases):** look the names up with `jira_list_versions`
+   first - Jira only accepts a release that already exists in the issue's
+   project, spelled exactly. `add_fix_versions` / `remove_fix_versions` keep
+   the others; `fix_versions` replaces the whole set. When matching by a
+   "similar" name (e.g. to an issue's "delivers" links), show the user the
+   proposed issue → release pairs, and any name with no clear match, before
+   changing anything. Never pick between two plausible releases; ask.
+9. **Report back** with the issue key and URL the tool returns.
 
 ## Notes
 

@@ -8,7 +8,7 @@ issue.
 
 | | |
 |---|---|
-| **Server** | `jira.py` v3.1.0 |
+| **Server** | `jira.py` v3.2.0 |
 | **pip install** | _none_ — standard library only (HTTP via stdlib `urllib`) |
 | **Platform** | any |
 | **Writes to disk** | no |
@@ -74,8 +74,9 @@ completely (a window reload is not enough) and reopen it. Check it took in a
 | `jira_project_status` | Health summary of one project |
 | `jira_list_projects` | The project keys you can see |
 | `jira_list_transitions` | An issue's status and the transitions available from it (and any field each needs) |
+| `jira_list_versions` | A project's releases (fix versions): name, id, released/archived, dates. `query` filters by part of the name, ignoring case, spaces, hyphens, underscores and dots; archived ones are hidden unless `include_archived=true` |
 | `jira_create_issue` | *(writing on)* New issue: project, type, summary, plus description, priority, assignee, labels, components, fix versions, due date, `parent` for a sub-task, and any custom field via `fields` |
-| `jira_update_issue` | *(writing on)* Edit any of those fields; `labels` replaces, `add_labels` / `remove_labels` adjust; `assignee: "none"` unassigns; optional `comment` in the same call |
+| `jira_update_issue` | *(writing on)* Edit any of those fields; `labels` replaces, `add_labels` / `remove_labels` adjust; `fix_versions` replaces, `add_fix_versions` / `remove_fix_versions` adjust; `assignee: "none"` unassigns; optional `comment` in the same call |
 | `jira_add_comment` | *(writing on)* Comment on an issue |
 | `jira_transition_issue` | *(writing on)* Move an issue by transition name, id, **or target status** ("move it to Done"), with an optional `resolution` and `comment`. No match lists what is available |
 
@@ -98,6 +99,9 @@ completely (a window reload is not enough) and reopen it. Check it took in a
   or issue key outside the allowlist is refused before anything is sent.
 - Jira's own permissions still apply: the account can only do what it could do
   in the browser.
+- **Fix versions** must already exist in the issue's own project, named
+  exactly as Jira has them; `jira_list_versions` shows the names. An unknown
+  name is refused by Jira, never created.
 - A comment added alongside a transition is posted separately after the move,
   because Jira refuses a comment inside a transition that has no screen.
 
@@ -176,6 +180,8 @@ to be saved and Claude writes a note with the `knowledge-base` plugin's
 10. "Comment on ABC-123 that the fix is in the 2.4 build." → `jira_add_comment` *(writing on)*
 11. "Move ABC-123 to In Progress." / "Resolve ABC-123 as Done." → `jira_transition_issue` (with `resolution` for the second) *(writing on)*
 12. "What can ABC-123 move to from here?" → `jira_list_transitions`
+13. "Which releases does ABC have coming up?" → `jira_list_versions`
+14. "For each 'delivers' link on ABC-10, add ABC-10 to the release with the closest name - show me the pairs first." → `jira_get_issue` + `jira_list_versions`, then `jira_update_issue` with `add_fix_versions` *(writing on)*
 
 ## Troubleshooting
 
