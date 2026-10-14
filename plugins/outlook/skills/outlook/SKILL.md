@@ -1,6 +1,6 @@
 ---
 name: outlook
-description: Read Outlook mail and calendar via the outlook MCP server (COM automation, Windows; cannot send anything), and print a day's calendar as a PDF day planner. Use when the user asks about their emails, wants mail searched or summarised, asks what's on their calendar, asks for a printable/printed calendar, day planner or agenda for today or tomorrow, or asks for an email to be saved into the knowledge base. For scheduling a meeting with someone, use the meeting-scheduler skill instead.
+description: Read Outlook mail and calendar via the outlook MCP server (COM automation, Windows; cannot send anything), put an agreed email or reply into Outlook as an unsent draft, and print a day's calendar as a PDF day planner. Use when the user asks about their emails, wants mail searched or summarised, says to put a drafted email into Outlook ("ok, send that to Outlook", "open it in Outlook"), asks what's on their calendar, asks for a printable/printed calendar, day planner or agenda for today or tomorrow, or asks for an email to be saved into the knowledge base. For scheduling a meeting with someone, use the meeting-scheduler skill instead.
 ---
 
 # Outlook (via the `outlook` MCP server)
@@ -30,6 +30,7 @@ printing.
 | `outlook_find_people` | Fuzzy-find a person or room in the directory — see `meeting-scheduler` |
 | `outlook_suggest_meeting_times` | When everyone is free — see `meeting-scheduler` |
 | `outlook_draft_meeting` | Save an **unsent** meeting draft — see `meeting-scheduler` |
+| `outlook_draft_email` | Open an agreed email / reply / forward in Outlook **unsent**, with the user's signature — see below |
 
 ## Workflow
 
@@ -43,6 +44,41 @@ printing.
    **not** `outlook_get_calendar`. Pass `date: "today"` or `date: "tomorrow"`
    rather than working the date out yourself: the server resolves those words
    against the endpoint's own clock, so the sheet cannot come out a day wrong.
+
+## Drafting an email: chat first, Outlook on request
+
+"Draft an email to…", "draft a reply to Josh", "write a response to that" →
+**write it in the chat** (use `/email-writer` where it is installed, so it is in
+the user's voice) and iterate there: each round, return the whole email again.
+**Do not call `outlook_draft_email` while iterating.** A compose window popping
+open on every round is noise, and the user has not agreed the words yet.
+
+Call it only when the user hands it over: "ok, send that to Outlook", "put that
+in Outlook", "open it as a draft", "pop it into Outlook". Then:
+
+1. **Reply when it answers an email.** If the email responds to a message the
+   user received, pass `mode: "reply"` (or `"reply_all"` if they want everyone
+   on the thread, `"forward"` to forward it) with that message's `entry_id`.
+   That keeps the thread, the quoted original, the `RE:` subject and the
+   user's reply signature. Find the EntryID with a list/search if you do not
+   already have it. Leave `subject` out on a reply unless the user changed it.
+   A brand-new email is `mode: "new"` with `subject` and `to`.
+2. **Pass the latest agreed text, unchanged.** `body` is the body only: no
+   `Subject:` line, and no signature block or typed name at the end, because
+   Outlook adds the user's own signature. Keep Markdown bold, bullets and links
+   as they were shown; the server turns them into Outlook formatting and puts
+   the text in the user's own Outlook font.
+3. **Recipients** are full email addresses or `invite_as` values from
+   `outlook_find_people`. On a reply, `to` / `cc` ADD to the people Outlook
+   already addresses. If anything will not resolve, nothing is opened: find the
+   person and try again.
+4. **Report back in one or two lines**: it is open in Outlook, unsent, and in
+   Drafts. Never say it was sent. If the reply says the text went in through the
+   message body rather than the editor, tell the user to check the font.
+
+If `outlook_draft_email` is not in your tools, drafting is switched off on this
+endpoint (`OUTLOOK_ALLOW_DRAFTS=false`): say so, and leave the agreed text in
+the chat for them to paste into Outlook.
 
 ## Printing a day planner
 
@@ -108,9 +144,10 @@ KB". The file lands in `H:\Eva\knowledge\email` and the tool reports the path.
 
 - **It cannot send anything** — not mail, not a reply, not a meeting
   invitation — and cannot accept, delete or move anything. Never promise to.
-  It writes three things, each only when asked: a saved email, a printed
-  planner, and an **unsent** meeting draft (`outlook_draft_meeting`, which
-  the user then sends themselves).
+  It writes four things, each only when asked: a saved email, a printed
+  planner, an **unsent** meeting draft (`outlook_draft_meeting`) and an
+  **unsent** email draft (`outlook_draft_email`), both of which the user then
+  sends themselves.
 - A compliance blacklist may withhold messages/folders entirely; blocked
   items appear only as a withheld count. Do not speculate about their content,
   and never try to work around the filter.

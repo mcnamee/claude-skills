@@ -1,21 +1,24 @@
 #!/usr/bin/env python3
 """
-outlook.py (v11.0.0)
+outlook.py (v11.1.0)
 ======================
 
 A single-file MCP (Model Context Protocol) server giving an LLM near-read-only
 access to a locally installed *classic* Microsoft Outlook client (mail +
 calendar) on Windows, via COM automation, plus enough of Outlook's scheduling
 machinery to get a meeting into the diary: fuzzy directory search, free/busy,
-and an UNSENT meeting draft.
+and an UNSENT meeting draft - and an UNSENT email draft, opened in Outlook's
+own compose window.
 
 NOTHING HERE CAN SEND. Not an email, not a reply, not a meeting invitation.
-Nor can it accept, move or delete anything in the mailbox. As of v8.0.0 there
-is exactly ONE write to the mailbox - outlook_draft_meeting saves a meeting
-into the Calendar with its invitations unsent, the state Outlook labels
-"invitations have not been sent for this meeting", for the user to open, edit
-and send themselves. Set OUTLOOK_ALLOW_DRAFTS=false and even that is gone, at
-which point the mailbox is strictly read-only again. The other two things it
+Nor can it accept, move or delete anything in the mailbox. There are exactly
+TWO writes to the mailbox, both drafts the user sends themselves:
+outlook_draft_meeting saves a meeting into the Calendar with its invitations
+unsent (the state Outlook labels "invitations have not been sent for this
+meeting"), and outlook_draft_email (v11.1.0) opens an email, reply or forward
+in Outlook's compose window with the agreed text in it and saves it to Drafts.
+Set OUTLOOK_ALLOW_DRAFTS=false and both are gone, at which point the mailbox is
+strictly read-only again. The other two things it
 writes are local files and only on request: an email kept as Markdown for the
 knowledge base, and a printable PDF day planner.
 
@@ -36,7 +39,7 @@ REQUIREMENTS
 - Classic Win32 Outlook (NOT "New Outlook", which has no COM support).
 - Outlook installed, running, and logged into a profile.
 
-TOOLS EXPOSED (all read-only on the mailbox itself)
+TOOLS EXPOSED (read-only on the mailbox, apart from the two draft tools)
 ---------------------------------------------------
 - outlook_list_recent_emails : recent Inbox messages
 - outlook_search_emails      : search Inbox by subject / sender
@@ -61,7 +64,11 @@ TOOLS FOR SCHEDULING A MEETING  (new in v8.0.0 - see MEETING SCHEDULING below)
 - outlook_find_people           : fuzzy-find a person or room in the directory
 - outlook_suggest_meeting_times : times everyone (and the room) is free
 - outlook_draft_meeting         : save an UNSENT meeting into the calendar
-                                  (the ONLY tool here that writes to the mailbox)
+
+TOOL FOR DRAFTING AN EMAIL  (new in v11.1.0 - see EMAIL DRAFTS below)
+---------------------------------------------------------------------
+- outlook_draft_email           : open an UNSENT email / reply / forward in
+                                  Outlook's compose window, saved to Drafts
 
 Markdown export for a RAG knowledge base (ON REQUEST)
 -----------------------------------------------------
@@ -175,6 +182,36 @@ that order, and the middle one will not take a name - only an address.
    #-headings, and normalises * and + bullets to -. It does no more than that
    on purpose: a lone asterisk is as likely to be a footnote mark as emphasis,
    and "C#" is not a heading.
+
+EMAIL DRAFTS
+------------
+The wording of an email is agreed in the CONVERSATION; outlook_draft_email is
+the hand-off, called only when the user says to put it in Outlook ("ok, send
+that to Outlook"). Its tool description tells the model so, because a compose
+window popping open on every round of a draft is noise.
+
+- mode 'new', or 'reply' / 'reply_all' / 'forward' with the EntryID of the
+  message being answered. Outlook itself builds the reply, so the thread, the
+  quoted original, the RE:/FW: subject and the reply signature are Outlook's.
+- THE SIGNATURE AND THE FONT ARE OUTLOOK'S. The compose window is created
+  first (that is the moment Outlook adds the signature for the account and the
+  kind of message), then the text is written through the window's Word editor
+  at the top of the message, where the cursor sits. Text put there takes the
+  formatting of that line: the user's own new-mail font, or their reply font.
+  Writing HTMLBody instead makes a reply pick up the ORIGINAL message's style
+  (the familiar "why is my reply in Times New Roman"), so it is only a
+  fallback for when the editor cannot be reached, and the reply says so.
+- Markdown is converted, not pasted: **bold**, *italic*, "- " bullets, "1. "
+  numbered lists, [text](url) and bare URLs as links, "# heading" as a bold
+  line. A plain-text email (the user's setting, or a reply to a plain-text
+  message) drops the formatting and writes bullets as "- ".
+- The window is left OPEN for the user to edit, and the draft is also Saved
+  to Drafts so closing Outlook cannot lose it. Save() only - Send() is never
+  called anywhere in this file and must not be added.
+- Any To/Cc/Bcc that will not resolve means NOTHING is put into Outlook, as
+  for a meeting. The content blacklist applies on the way in (subject, body,
+  recipients), and a message the blacklist withholds cannot be replied to or
+  forwarded from here.
 
 RECURRING SERIES  (why a meeting can be in Outlook but not in the results)
 --------------------------------------------------------------------------
@@ -497,10 +534,11 @@ Server-specific settings, all optional and all environment variables:
                                 search may read before giving up (default
                                 20000). Raise it on a very large GAL if people
                                 go missing; a search that stops early says so.
-    OUTLOOK_ALLOW_DRAFTS=false  remove outlook_draft_meeting altogether. The
-                                server is then read-only on the mailbox again
-                                and the tool is not offered at all, so nothing
-                                can promise the user a draft.
+    OUTLOOK_ALLOW_DRAFTS=false  remove outlook_draft_meeting and
+                                outlook_draft_email altogether. The server is
+                                then read-only on the mailbox again and neither
+                                tool is offered at all, so nothing can promise
+                                the user a draft.
 
 There are NO configuration command-line flags: everything above is an
 environment variable, so two settings can never disagree. The only flags this
@@ -547,7 +585,7 @@ IMPORTANT (stdio-on-Windows pitfalls)
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "11.0.0"
+__version__ = "11.1.0"
 
 import os
 import re
@@ -690,10 +728,11 @@ MEETING_END_HOUR = 17
 # says so in its reply. Override with OUTLOOK_GAL_SCAN_CAP.
 GAL_SCAN_CAP = 20000
 
-# Whether outlook_draft_meeting exists at all. It is the only tool in this
-# server that writes to the MAILBOX - an unsent meeting saved into the
-# Calendar, which the user then opens and sends themselves. Set it False (or
-# OUTLOOK_ALLOW_DRAFTS=false) and the tool is not offered, leaving the server
+# Whether outlook_draft_meeting and outlook_draft_email exist at all. They are
+# the only tools in this server that write to the MAILBOX - an unsent meeting
+# saved into the Calendar, and an unsent email opened in Outlook and saved to
+# Drafts - which the user then reviews and sends themselves. Set it False (or
+# OUTLOOK_ALLOW_DRAFTS=false) and neither is offered, leaving the server
 # read-only on the mailbox. Nothing here can ever SEND.
 ALLOW_DRAFTS = True
 
@@ -4723,7 +4762,8 @@ def tool_suggest_meeting_times(args):
 # Meeting scheduling - part 3: saving an UNSENT meeting draft
 # ---------------------------------------------------------------------------
 #
-# This is the ONE thing in this server that writes to the mailbox, and it is
+# One of the two things in this server that write to the mailbox (the other
+# is the email draft below), and it is
 # deliberately the smallest write that is useful: a meeting saved into the
 # Calendar with its invitations NOT sent - the state Outlook labels
 # "Invitations have not been sent for this meeting". The user opens it, edits
@@ -4974,6 +5014,589 @@ def tool_draft_meeting(args):
                          start.date().isoformat()))
     lines.append("No invitation has gone out: this server cannot send, and "
                  "nobody has been notified.")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Email drafting: an UNSENT email, opened in Outlook's own compose window
+# ---------------------------------------------------------------------------
+#
+# The second write to the mailbox, and the same kind as the meeting draft: the
+# smallest write that is useful. A new email, a reply, a reply-all or a forward
+# is opened in Outlook's compose window with the agreed text in it, and saved
+# to Drafts so it cannot be lost. The user reads it, edits it and presses Send
+# themselves. Send() is never called anywhere in this file, and must not be
+# added. OUTLOOK_ALLOW_DRAFTS=false removes this tool along with the meeting
+# draft.
+#
+# The wording is agreed in the CONVERSATION first; this tool is only the
+# hand-off, called when the user says to put it in Outlook. Its description
+# says so, because a tool that pops a window open on every iteration of a
+# draft is noise.
+#
+# HOW THE TEXT LOOKS LIKE THE USER'S OWN EMAIL
+# Outlook adds the user's signature when a compose window is created for an
+# item - the new-message signature on a new email, the replies/forwards one on
+# a reply or forward, and for the account the item belongs to. So the item is
+# created by Outlook itself (CreateItem, or Reply()/ReplyAll()/Forward() on the
+# original, which also keeps the quoted thread and the conversation threading),
+# its inspector is created to trigger the signature, and only THEN is the text
+# written in.
+#
+# The text goes in through the compose window's Word editor
+# (Inspector.WordEditor), at the very top of the message, where the cursor sits
+# when the user starts typing. Text inserted there takes the formatting of that
+# empty first line - the user's own compose font for a new email, their reply
+# font for a reply - which is exactly what typing it would have done. Writing
+# HTMLBody instead is the common approach and the wrong one for a reply: the
+# inserted paragraphs pick up the ORIGINAL message's Normal style, which is how
+# replies come out in Times New Roman. HTMLBody is kept only as a fallback for
+# when the Word editor cannot be reached, and the reply says which was used.
+#
+# Markdown from the conversation is translated, not pasted: **bold**, *italic*,
+# "- " / "* " bullets and "1. " numbered lists become real Outlook formatting,
+# a "# heading" becomes a bold line, `code` loses its backticks, and
+# [text](url) and bare http(s) URLs become links. Each source line becomes one
+# line in the email and a blank line stays a blank line, so the spacing is the
+# spacing that was agreed. In a PLAIN TEXT email (the user's setting, or a
+# reply to a plain-text message) the formatting is dropped and bullets are
+# written as "- ".
+
+OL_MAIL_ITEM = 0            # CreateItem(olMailItem)
+OL_FORMAT_PLAIN = 1         # MailItem.BodyFormat
+OL_FORMAT_HTML = 2
+OL_FORMAT_RICH_TEXT = 3
+OL_DISCARD = 1              # MailItem.Close(olDiscard)
+
+# Recipient.Type on a MailItem (same numbers as the meeting ones, different
+# meaning, so they get their own names).
+OL_MAIL_TO = 1
+OL_MAIL_CC = 2
+OL_MAIL_BCC = 3
+
+EMAIL_MAX_BODY_CHARS = 20000
+
+EMAIL_DRAFT_MODES = ("new", "reply", "reply_all", "forward")
+
+_MD_EMAIL_HEADING = re.compile(r"^[ \t]{0,3}#{1,6}[ \t]+(.*?)[ \t]*#*[ \t]*$")
+_MD_EMAIL_BULLET = re.compile(r"^[ \t]*[-*+][ \t]+(.*)$")
+_MD_EMAIL_NUMBER = re.compile(r"^[ \t]*\d{1,3}[.)][ \t]+(.*)$")
+
+# Inline Markdown, tried left to right. A lone asterisk (a footnote, "5 * 3")
+# is left alone: emphasis needs a non-space on the inside of both marks and
+# no letter on the outside, so "file*name*" is not italic either.
+_MD_EMAIL_INLINE = re.compile(
+    r"\[(?P<ltext>[^\]\n]+)\]\((?P<lurl>[^)\s]+)\)"
+    r"|(?P<bmark>\*\*|__)(?=\S)(?P<bold>.+?)(?<=\S)(?P=bmark)"
+    r"|(?<![\w*])\*(?=[^\s*])(?P<ital>.+?)(?<=[^\s*])\*(?![\w*])"
+    r"|`(?P<code>[^`\n]+)`"
+    r"|(?P<url>https?://[^\s<>()\[\]]*[^\s<>()\[\].,;:!?'\"])"
+)
+
+
+def _md_runs(text, bold=False, italic=False):
+    """
+    Split one line of Markdown into formatted runs.
+
+    Returns a list of dicts: text, bold, italic, url (None unless a link).
+    Bold and italic content is parsed again so a link inside **bold** still
+    becomes a link; anything else is kept as typed.
+    """
+    runs = []
+    pos = 0
+    for match in _MD_EMAIL_INLINE.finditer(text):
+        if match.start() > pos:
+            runs.append({"text": text[pos:match.start()], "bold": bold,
+                         "italic": italic, "url": None})
+        if match.group("ltext") is not None:
+            runs.append({"text": match.group("ltext"), "bold": bold,
+                         "italic": italic, "url": match.group("lurl")})
+        elif match.group("bold") is not None:
+            runs.extend(_md_runs(match.group("bold"), True, italic))
+        elif match.group("ital") is not None:
+            runs.extend(_md_runs(match.group("ital"), bold, True))
+        elif match.group("code") is not None:
+            runs.append({"text": match.group("code"), "bold": bold,
+                         "italic": italic, "url": None})
+        else:
+            url = match.group("url")
+            runs.append({"text": url, "bold": bold, "italic": italic,
+                         "url": url})
+        pos = match.end()
+    if pos < len(text):
+        runs.append({"text": text[pos:], "bold": bold, "italic": italic,
+                     "url": None})
+    return [run for run in runs if run["text"]]
+
+
+def markdown_to_email_blocks(text):
+    """
+    Turn a Markdown email body into one block per line.
+
+    Each block is {"kind": "para" | "bullet" | "number" | "blank", "runs": [...]}.
+    Leading and trailing blank lines are dropped (Outlook already leaves a gap
+    above the signature); blank lines in between are kept, because that is how
+    the paragraphs of an email are spaced.
+    """
+    blocks = []
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    for raw in lines:
+        line = raw.rstrip()
+        if not line.strip():
+            blocks.append({"kind": "blank", "runs": []})
+            continue
+        heading = _MD_EMAIL_HEADING.match(line)
+        bullet = _MD_EMAIL_BULLET.match(line)
+        number = _MD_EMAIL_NUMBER.match(line)
+        if heading:
+            blocks.append({"kind": "para",
+                           "runs": _md_runs(heading.group(1), bold=True)})
+        elif bullet:
+            blocks.append({"kind": "bullet", "runs": _md_runs(bullet.group(1))})
+        elif number:
+            blocks.append({"kind": "number", "runs": _md_runs(number.group(1))})
+        else:
+            blocks.append({"kind": "para", "runs": _md_runs(line.strip())})
+    while blocks and blocks[0]["kind"] == "blank":
+        blocks.pop(0)
+    while blocks and blocks[-1]["kind"] == "blank":
+        blocks.pop()
+    return blocks
+
+
+def _run_plain_text(run):
+    """A run as plain text: a link keeps its address beside its words."""
+    if run["url"] and run["text"] != run["url"]:
+        return "{0} ({1})".format(run["text"], run["url"])
+    return run["text"]
+
+
+def email_blocks_plain_lines(blocks):
+    """The blocks as plain-text lines, bullets as '- ' and numbers counted."""
+    lines = []
+    counter = 0
+    for block in blocks:
+        counter = counter + 1 if block["kind"] == "number" else 0
+        text = "".join(_run_plain_text(run) for run in block["runs"])
+        if block["kind"] == "bullet":
+            text = "- " + text
+        elif block["kind"] == "number":
+            text = "{0}. {1}".format(counter, text)
+        lines.append(text)
+    return lines
+
+
+def _utf16_len(text):
+    """Length as Word counts it: UTF-16 code units, so an emoji counts as 2."""
+    return len(text.encode("utf-16-le")) // 2
+
+
+def _list_groups(blocks):
+    """Runs of consecutive bullet / number blocks: (kind, first, last) indexes."""
+    groups = []
+    index = 0
+    while index < len(blocks):
+        kind = blocks[index]["kind"]
+        if kind in ("bullet", "number"):
+            first = index
+            while index + 1 < len(blocks) and blocks[index + 1]["kind"] == kind:
+                index += 1
+            groups.append((kind, first, index))
+        index += 1
+    return groups
+
+
+def insert_email_via_word(inspector, blocks, plain):
+    """
+    Write the blocks into the top of an open compose window's Word editor.
+
+    Everything is inserted in ONE call at position 0 and then formatted by
+    offset. Bold, italic and list formatting add no characters, so the offsets
+    stay true; links DO change the document (a hyperlink is a field), so they
+    go in last and from the end backwards, which leaves every earlier offset
+    untouched. The final line is not followed by a paragraph mark: it joins
+    the empty line the cursor was sitting on, so the gap Outlook leaves above
+    the signature survives exactly as it was.
+
+    On a failure part-way through, the inserted text is removed again before
+    the error is raised, so the caller's fallback never writes the email twice.
+    """
+    document = inspector.WordEditor
+    if document is None:
+        raise RuntimeError("the compose window has no Word editor")
+
+    if plain:
+        texts = email_blocks_plain_lines(blocks)
+    else:
+        texts = ["".join(run["text"] for run in block["runs"])
+                 for block in blocks]
+    content = "\r".join(texts)
+
+    document.Range(0, 0).InsertBefore(content)
+    inserted_end = _utf16_len(content)
+    try:
+        # Where each line starts, in Word's character positions.
+        starts = []
+        offset = 0
+        for text in texts:
+            starts.append(offset)
+            offset += _utf16_len(text) + 1        # +1 for the "\r"
+
+        links = []
+        if not plain:
+            for block, start in zip(blocks, starts):
+                at = start
+                for run in block["runs"]:
+                    length = _utf16_len(run["text"])
+                    if run["bold"] or run["italic"]:
+                        span = document.Range(at, at + length)
+                        if run["bold"]:
+                            span.Font.Bold = True
+                        if run["italic"]:
+                            span.Font.Italic = True
+                    if run["url"]:
+                        links.append((at, at + length, run["url"]))
+                    at += length
+
+            for kind, first, last in _list_groups(blocks):
+                span = document.Range(
+                    starts[first],
+                    starts[last] + _utf16_len(texts[last]))
+                if kind == "bullet":
+                    span.ListFormat.ApplyBulletDefault()
+                else:
+                    span.ListFormat.ApplyNumberDefault()
+
+        # Links last, from the end backwards (see the docstring). A link that
+        # will not go in keeps its address as text, so nothing is lost.
+        for start, end, url in reversed(links):
+            try:
+                document.Hyperlinks.Add(document.Range(start, end), url)
+            except Exception as exc:
+                log("Could not add a link to {0}: {1}".format(url, exc))
+                document.Range(end, end).InsertAfter(" ({0})".format(url))
+    except Exception:
+        try:
+            document.Range(0, inserted_end).Delete()
+        except Exception:
+            pass
+        raise
+
+    # Leave the cursor at the end of the text, where the user would carry on.
+    try:
+        document.Range(inserted_end, inserted_end).Select()
+    except Exception:
+        pass
+
+
+def _html_escape(text):
+    return (text.replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;").replace('"', "&quot;"))
+
+
+def email_blocks_html(blocks):
+    """The blocks as Outlook-flavoured HTML, for the HTMLBody fallback."""
+    def runs_html(runs):
+        out = []
+        for run in runs:
+            piece = _html_escape(run["text"])
+            if run["url"]:
+                piece = '<a href="{0}">{1}</a>'.format(
+                    _html_escape(run["url"]), piece)
+            if run["italic"]:
+                piece = "<i>" + piece + "</i>"
+            if run["bold"]:
+                piece = "<b>" + piece + "</b>"
+            out.append(piece)
+        return "".join(out)
+
+    html = []
+    groups = {first: (kind, last) for kind, first, last in _list_groups(blocks)}
+    index = 0
+    while index < len(blocks):
+        if index in groups:
+            kind, last = groups[index]
+            tag = "ul" if kind == "bullet" else "ol"
+            items = "".join("<li class=MsoNormal>{0}</li>".format(
+                runs_html(blocks[i]["runs"])) for i in range(index, last + 1))
+            html.append("<{0} style='margin-top:0cm;margin-bottom:0cm'>{1}"
+                        "</{0}>".format(tag, items))
+            index = last + 1
+            continue
+        block = blocks[index]
+        if block["kind"] == "blank":
+            html.append("<p class=MsoNormal><o:p>&nbsp;</o:p></p>")
+        else:
+            html.append("<p class=MsoNormal>{0}</p>".format(
+                runs_html(block["runs"])))
+        index += 1
+    return "".join(html)
+
+
+_HTML_SECTION_OPEN = re.compile(r"<div\s+class=[\"']?WordSection1[\"']?[^>]*>",
+                                re.IGNORECASE)
+_HTML_BODY_OPEN = re.compile(r"<body[^>]*>", re.IGNORECASE)
+
+
+def insert_email_via_body(mail, blocks, plain):
+    """
+    Fallback when the Word editor cannot be reached: write Body / HTMLBody.
+
+    The text goes in ahead of whatever Outlook already put there (the
+    signature, and on a reply the quoted thread), at the top of the message
+    section so it sits where the user would have typed it.
+    """
+    if plain:
+        existing = mail.Body or ""
+        content = "\r\n".join(email_blocks_plain_lines(blocks))
+        if not existing.startswith("\r\n"):
+            content += "\r\n\r\n"
+        mail.Body = content + existing
+        return
+    existing = mail.HTMLBody or ""
+    fragment = email_blocks_html(blocks)
+    anchor = _HTML_SECTION_OPEN.search(existing) or _HTML_BODY_OPEN.search(existing)
+    if anchor:
+        mail.HTMLBody = (existing[:anchor.end()] + fragment
+                         + existing[anchor.end():])
+    else:
+        mail.HTMLBody = fragment + existing
+
+
+def _email_recipient_list(args, name):
+    value = args.get(name) or []
+    if isinstance(value, str):
+        # ";" only: a directory name is often "Smith, Josh".
+        value = value.split(";")
+    return [str(one).strip() for one in value if str(one).strip()]
+
+
+def _add_email_recipients(mail, specs, recipient_type, label, failures):
+    """Attach one class of recipient, recording anything that will not resolve."""
+    for spec in specs:
+        try:
+            recipient = mail.Recipients.Add(spec)
+            recipient.Type = recipient_type
+            recipient.Resolve()
+            if not recipient.Resolved:
+                failures.append("{0} ({1})".format(spec, label))
+        except Exception as exc:
+            log("Could not add {0} '{1}': {2}".format(label, spec, exc))
+            failures.append("{0} ({1})".format(spec, label))
+
+
+def _discard_mail(mail):
+    """Throw away an unsaved draft without leaving anything in Drafts."""
+    try:
+        mail.Close(OL_DISCARD)
+    except Exception:
+        try:
+            mail.Delete()
+        except Exception:
+            pass
+
+
+def tool_draft_email(args):
+    if not _ALLOW_DRAFTS:
+        return ("Email drafting is switched off on this endpoint "
+                "(OUTLOOK_ALLOW_DRAFTS=false), so nothing can be put into "
+                "Outlook. Give the user the agreed subject and text to copy "
+                "into Outlook themselves.")
+
+    mode = (args.get("mode") or "new").strip().lower().replace("-", "_")
+    if mode not in EMAIL_DRAFT_MODES:
+        return "Error: 'mode' must be one of: {0}.".format(
+            ", ".join(EMAIL_DRAFT_MODES))
+    entry_id = (args.get("entry_id") or "").strip()
+    if mode != "new" and not entry_id:
+        return ("Error: mode '{0}' needs 'entry_id' - the EntryID of the "
+                "message being answered, from a list/search result.".format(mode))
+    if mode == "new" and entry_id:
+        return ("Error: 'entry_id' was given with mode 'new'. Use mode "
+                "'reply', 'reply_all' or 'forward' to answer that message.")
+
+    raw_body = args.get("body") or ""
+    if not raw_body.strip():
+        return "Error: 'body' is required - the text agreed in the conversation."
+    if len(raw_body) > EMAIL_MAX_BODY_CHARS:
+        return "Error: 'body' is longer than {0} characters.".format(
+            EMAIL_MAX_BODY_CHARS)
+    blocks = markdown_to_email_blocks(raw_body)
+
+    subject = (args.get("subject") or "").strip()
+    if mode == "new" and not subject:
+        return "Error: 'subject' is required for a new email."
+
+    to_specs = _email_recipient_list(args, "to")
+    cc_specs = _email_recipient_list(args, "cc")
+    bcc_specs = _email_recipient_list(args, "bcc")
+
+    # The content blacklist applies in BOTH directions, as for a meeting: a
+    # marking must not be routed through the AI on its way into Outlook.
+    outgoing = "\n".join([subject, raw_body] + to_specs + cc_specs + bcc_specs)
+    marking = blacklisted_match(outgoing)
+    if marking:
+        log("Refused to draft an email (blacklist match: {0}).".format(marking))
+        return ("Refused: this email contains content the local content "
+                "policy withholds from the AI. Write it in Outlook directly.")
+
+    ns = get_namespace()
+    original_subject = ""
+    if mode == "new":
+        mail = ns.Application.CreateItem(OL_MAIL_ITEM)
+    else:
+        try:
+            original = ns.GetItemFromID(entry_id)
+        except Exception:
+            return ("Error: no message found for that EntryID (it may have "
+                    "moved or been deleted).")
+        try:
+            is_mail = original.Class == OL_CLASS_MAIL
+        except Exception:
+            is_mail = False
+        if not is_mail:
+            return ("Error: that EntryID is not an email, so it cannot be "
+                    "replied to or forwarded from here.")
+        # A message the AI may not read may not be answered through it either:
+        # its reply carries the original underneath.
+        reason = email_block_reason(original)
+        if reason:
+            log("Refused draft_email {0} (blacklist match: {1}) for EntryID "
+                "{2}.".format(mode, reason, entry_id))
+            return ("Refused: the message being answered is withheld under "
+                    "the content blacklist. Reply to it in Outlook directly.")
+        try:
+            original_subject = original.Subject or ""
+        except Exception:
+            original_subject = ""
+        if mode == "reply":
+            mail = original.Reply()
+        elif mode == "reply_all":
+            mail = original.ReplyAll()
+        else:
+            mail = original.Forward()
+
+    failures = []
+    _add_email_recipients(mail, to_specs, OL_MAIL_TO, "to", failures)
+    _add_email_recipients(mail, cc_specs, OL_MAIL_CC, "cc", failures)
+    _add_email_recipients(mail, bcc_specs, OL_MAIL_BCC, "bcc", failures)
+    if failures:
+        # As for a meeting: a half-addressed draft looks finished and goes out
+        # without the person it was for.
+        _discard_mail(mail)
+        return ("Error: Outlook could not resolve {0}. Nothing was put into "
+                "Outlook.\nRun outlook_find_people on each one and pass the "
+                "'invite_as' value it returns, or use a full email "
+                "address.".format(", ".join(failures)))
+
+    if subject:
+        mail.Subject = subject
+
+    # Creating the inspector is what makes Outlook add the signature, so it
+    # comes BEFORE any text goes in. Display() is modeless: it returns at once
+    # and leaves the window open on the user's screen.
+    inspector = None
+    try:
+        inspector = mail.GetInspector
+    except Exception as exc:
+        log("Could not create the compose window: {0}".format(exc))
+    opened = False
+    if bool(args.get("open_in_outlook", True)):
+        try:
+            mail.Display(False)
+            opened = True
+        except Exception as exc:
+            log("Could not open the draft in Outlook: {0}".format(exc))
+
+    try:
+        plain = mail.BodyFormat == OL_FORMAT_PLAIN
+    except Exception:
+        plain = False
+
+    method = None
+    if inspector is not None:
+        try:
+            insert_email_via_word(inspector, blocks, plain)
+            method = "word"
+        except Exception as exc:
+            log("Word editor insert failed, falling back to the message body: "
+                "{0}".format(exc))
+    if method is None:
+        try:
+            insert_email_via_body(mail, blocks, plain)
+            method = "body"
+        except Exception as exc:
+            log("Could not write the email body: {0}".format(exc))
+            if opened:
+                return ("Error: the email opened in Outlook but its text could "
+                        "not be written in ({0}). Nothing was saved to Drafts; "
+                        "close that window or paste the agreed text into it."
+                        .format(exc))
+            _discard_mail(mail)
+            return ("Error: the text could not be written into Outlook ({0}). "
+                    "Nothing was saved.".format(exc))
+
+    saved = True
+    try:
+        mail.Save()   # Save, never Send. See the note at the top of this part.
+    except Exception as exc:
+        saved = False
+        log("Could not save the draft: {0}".format(exc))
+
+    if opened and inspector is not None:
+        try:
+            inspector.Activate()     # bring it to the front
+        except Exception:
+            pass
+
+    def safe(getter):
+        try:
+            return getter() or ""
+        except Exception:
+            return ""
+
+    kind = {"new": "New email",
+            "reply": "Reply",
+            "reply_all": "Reply all",
+            "forward": "Forward"}[mode]
+    lines = ["Email DRAFT {0} - NOT sent.".format(
+        "open in Outlook" if opened else "saved to Drafts"), ""]
+    if mode == "new":
+        lines.append("  Type     : {0}".format(kind))
+    else:
+        lines.append("  Type     : {0} to \"{1}\"".format(kind, original_subject))
+    lines.append("  Subject  : {0}".format(safe(lambda: mail.Subject)))
+    for label, getter in (("To      ", lambda: mail.To),
+                          ("Cc      ", lambda: mail.CC),
+                          ("Bcc     ", lambda: mail.BCC)):
+        value = safe(getter)
+        if value:
+            lines.append("  {0} : {1}".format(label, value))
+    if method == "word":
+        lines.append("  Written  : into Outlook's editor above your signature, "
+                     "in your own {0} font".format(
+                         "compose" if mode == "new" else "reply"))
+    else:
+        lines.append("  Written  : into the message body (the editor could not "
+                     "be reached, so check the font matches your usual one)")
+    lines.append("  Format   : {0}".format(
+        "plain text (formatting dropped)" if plain else "HTML"))
+    if saved:
+        lines.append("  Saved    : in Drafts as well, so closing the window "
+                     "does not lose it")
+    else:
+        lines.append("  Saved    : NOT saved to Drafts - Outlook will ask when "
+                     "the window is closed")
+    lines.append("")
+    if not opened:
+        lines.append("It could not be opened on screen. Open it from Drafts, "
+                     "edit anything you want, then press Send.")
+    else:
+        lines.append("It is open in Outlook now. Edit anything you want, then "
+                     "press Send yourself.")
+    if mode == "forward" and not to_specs:
+        lines.append("Nobody is addressed yet - add recipients before sending.")
+    lines.append("Nothing has gone out: this server cannot send.")
     return "\n".join(lines)
 
 
@@ -5280,9 +5903,8 @@ TOOLS = [
         "description": (
             "Save a meeting invitation into the user's calendar WITHOUT sending it - "
             "Outlook's 'invitations have not been sent' state - and open it for them "
-            "to review, edit and send. This is the ONLY tool here that writes to the "
-            "mailbox, and it cannot send: nobody is notified until the user presses "
-            "Send themselves. Use it once they have chosen a time, with the exact "
+            "to review, edit and send. It cannot send: nobody is notified until "
+            "the user presses Send themselves. Use it once they have chosen a time, with the exact "
             "start and duration from outlook_suggest_meeting_times and the "
             "'invite_as' addresses from outlook_find_people. If any attendee will "
             "not resolve, nothing at all is saved. Never invent attendees, a time, "
@@ -5370,6 +5992,81 @@ TOOLS = [
         },
     },
     {
+        "name": "outlook_draft_email",
+        "description": (
+            "Open an UNSENT email in Outlook's own compose window - a new email, a "
+            "reply, a reply-all or a forward - with the agreed text written in above "
+            "the user's signature, in their own Outlook font, and leave it open for "
+            "them to review, edit and send. Also saved to Drafts. It cannot send. "
+            "ONLY call this when the user asks for the draft to go into Outlook "
+            "('put that in Outlook', 'ok, send that to Outlook', 'open it as a "
+            "draft'). Asked to draft, write or reply to an email, write it in the "
+            "CHAT and iterate there; do not call this tool on each round. When they "
+            "hand it over, pass the latest agreed text exactly, without changing a "
+            "word. If any recipient will not resolve, nothing is put into Outlook."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "enum": list(EMAIL_DRAFT_MODES),
+                    "description": (
+                        "'new' (default) for a fresh email; 'reply', 'reply_all' or "
+                        "'forward' to answer the message named by 'entry_id'. A "
+                        "reply keeps the thread, the quoted original and Outlook's "
+                        "reply signature - use it whenever the email answers one "
+                        "the user received, rather than a new email."
+                    ),
+                },
+                "entry_id": {
+                    "type": "string",
+                    "description": "EntryID of the message being answered (reply / reply_all / forward), from a list or search result.",
+                },
+                "subject": {
+                    "type": "string",
+                    "description": (
+                        "Subject line. Required for a new email. Leave it out on a "
+                        "reply or forward to keep Outlook's own 'RE:' / 'FW:' "
+                        "subject; set it only if the user changed it."
+                    ),
+                },
+                "body": {
+                    "type": "string",
+                    "description": (
+                        "The email text as agreed in the conversation - the body "
+                        "only: no 'Subject:' line, and no sign-off name or "
+                        "signature block, because Outlook adds the user's own "
+                        "signature. Markdown is converted to Outlook formatting: "
+                        "**bold**, *italic*, '- ' bullets, '1. ' numbered lists, "
+                        "[text](url) links. One line per line and blank lines "
+                        "between paragraphs, exactly as shown to the user."
+                    ),
+                },
+                "to": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "To recipients: email addresses, or 'invite_as' values from "
+                        "outlook_find_people. On a reply these are ADDED to the "
+                        "people Outlook already addresses."
+                    ),
+                },
+                "cc": {"type": "array", "items": {"type": "string"}, "description": "Cc recipients, as for 'to'."},
+                "bcc": {"type": "array", "items": {"type": "string"}, "description": "Bcc recipients, as for 'to'."},
+                "open_in_outlook": {
+                    "type": "boolean",
+                    "description": (
+                        "Default true: open the compose window on the user's "
+                        "screen. Set false only if they ask for it to go straight "
+                        "to Drafts."
+                    ),
+                },
+            },
+            "required": ["body"],
+        },
+    },
+    {
         "name": "outlook_list_folders",
         "description": (
             "List every mail folder across all Outlook stores (main mailbox, online "
@@ -5398,19 +6095,24 @@ TOOL_DISPATCH = {
     "outlook_find_people": tool_find_people,
     "outlook_suggest_meeting_times": tool_suggest_meeting_times,
     "outlook_draft_meeting": tool_draft_meeting,
+    "outlook_draft_email": tool_draft_email,
 }
 
-# outlook_draft_meeting is the one tool that writes to the mailbox, so it is
+# The two draft tools are the only ones that write to the mailbox, so they are
 # removed outright - from the tool list as well as the dispatch table - when
-# drafting is switched off. Hiding it is better than refusing it later: a
+# drafting is switched off. Hiding them is better than refusing them later: a
 # model cannot promise the user a draft it was never offered.
+DRAFT_TOOLS = ("outlook_draft_meeting", "outlook_draft_email")
+
+
 def apply_draft_setting():
-    """Drop the meeting-draft tool when OUTLOOK_ALLOW_DRAFTS turns it off."""
+    """Drop the draft tools when OUTLOOK_ALLOW_DRAFTS turns them off."""
     global TOOLS
     if _ALLOW_DRAFTS:
         return
-    TOOLS = [tool for tool in TOOLS if tool["name"] != "outlook_draft_meeting"]
-    TOOL_DISPATCH.pop("outlook_draft_meeting", None)
+    TOOLS = [tool for tool in TOOLS if tool["name"] not in DRAFT_TOOLS]
+    for name in DRAFT_TOOLS:
+        TOOL_DISPATCH.pop(name, None)
 
 
 # ---------------------------------------------------------------------------
@@ -5536,8 +6238,8 @@ def report_directory_health():
     log("Meeting hours       : {0:02d}:00-{1:02d}:00".format(
         _MEETING_START_HOUR, _MEETING_END_HOUR))
     log("Directory scan cap  : {0} entries".format(_GAL_SCAN_CAP))
-    log("Meeting drafting    : {0}".format(
-        "ON - can save an UNSENT meeting to the calendar (never send one)"
+    log("Drafting            : {0}".format(
+        "ON - can save an UNSENT meeting or email draft (never send one)"
         if _ALLOW_DRAFTS else "OFF - read-only on the mailbox"))
 
     try:
@@ -5721,8 +6423,9 @@ def main():
         description=(
             "MCP server exposing local Outlook mail and calendar via COM, with a "
             "content blacklist that withholds classified/marked items. It can "
-            "never send anything; its one write to the mailbox is an UNSENT "
-            "meeting draft (OUTLOOK_ALLOW_DRAFTS=false removes even that). With "
+            "never send anything; its only writes to the mailbox are UNSENT "
+            "meeting and email drafts (OUTLOOK_ALLOW_DRAFTS=false removes "
+            "those). With "
             "no check flag it runs as an stdio MCP server. Configuration is "
             "environment variables only: EVA_KNOWLEDGE_DIR (this server saves "
             "into its 'email' sub-folder), EVA_DOCUMENTS_DIR (it prints the "
@@ -5867,15 +6570,16 @@ def main():
             log("WARNING: OUTLOOK_GAL_SCAN_CAP='{0}' is not a number of 100 or "
                 "more; keeping {1}.".format(scan_cap, _GAL_SCAN_CAP))
 
-    # The one write to the mailbox this server can make.
+    # The only writes to the mailbox this server can make.
     _ALLOW_DRAFTS = env_flag("OUTLOOK_ALLOW_DRAFTS", ALLOW_DRAFTS)
     apply_draft_setting()
     if _ALLOW_DRAFTS:
-        log("Meeting drafting ON: outlook_draft_meeting can SAVE an unsent "
-            "meeting into the calendar. It can never send one.")
+        log("Drafting ON: outlook_draft_meeting can SAVE an unsent meeting "
+            "into the calendar and outlook_draft_email can open an unsent "
+            "email in Outlook. Neither can ever send.")
     else:
-        log("Meeting drafting OFF (OUTLOOK_ALLOW_DRAFTS=false): the server is "
-            "read-only on the mailbox and outlook_draft_meeting is not offered.")
+        log("Drafting OFF (OUTLOOK_ALLOW_DRAFTS=false): the server is "
+            "read-only on the mailbox and neither draft tool is offered.")
 
     # Load any external blacklist terms and compile the filter BEFORE serving.
     extra_terms = []

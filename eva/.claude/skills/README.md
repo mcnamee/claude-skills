@@ -27,7 +27,7 @@ need nothing installed and work anywhere, including offline.
 | Skill | Invoke | What it does |
 |---|---|---|
 | [**brief-writer**](brief-writer) | `/brief-writer` | Drafts a decision or noting brief for a senior executive, following the structure of an exemplar in its own `exemplars/` folder, and finishing with `/polish` |
-| [**email-writer**](email-writer) | `/email-writer` | Drafts an email in your voice, classifying what the email is for and matching that intent to your own sent mail in its `exemplars/` folder, then running `/unslop` |
+| [**email-writer**](email-writer) | `/email-writer` | Drafts an email in your voice, classifying what the email is for and matching that intent to your own sent mail in its `exemplars/` folder, then running `/unslop`; puts the agreed email into Outlook as an unsent draft when you say so |
 | [**exemplar-writer**](exemplar-writer) | `/exemplar-writer` | Writes a document in the shape of one you already have — pulls the structure, section order, proportions and register out of an exemplar, then writes your material to that shape and runs `/unslop` |
 | [**org-chart**](org-chart) | `/org-chart` | Draws an organisation chart as an SVG in the house design from staffing data (often a spreadsheet on a Confluence page), ready to upload back to the page. Ships `orgchart.py`, a standard-library script it runs under `EVA_PYTHON` |
 | [**polish**](polish) | `/polish` | Rewrites a draft into Australian Public Service style — the Australian Government Style Manual — asking who the reader is and what the medium is, then picking the register from them |

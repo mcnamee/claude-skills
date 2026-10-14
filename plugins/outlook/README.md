@@ -2,16 +2,16 @@
 
 Access to your local classic Outlook mail and calendar over COM, with a content
 blacklist that withholds classified/compliance-marked items from the AI entirely
-— plus meeting scheduling against the enterprise directory, and a printable PDF
-day planner for any day.
+— plus meeting scheduling against the enterprise directory, email drafts opened
+in Outlook's own compose window, and a printable PDF day planner for any day.
 
 | | |
 |---|---|
-| **Server** | `outlook.py` v11.0.0 |
+| **Server** | `outlook.py` v11.1.0 |
 | **pip install** | `pywin32` |
 | **Platform** | **Windows only** — requires classic Win32 Outlook (not "New Outlook") installed, running, and logged into a profile |
 | **Sends** | **never.** Not an email, not a reply, not a meeting invitation. It cannot accept, move or delete anything either |
-| **Writes to the mailbox** | one thing: an **unsent** meeting draft in your calendar, which you review and send yourself (`OUTLOOK_ALLOW_DRAFTS=false` removes even that) |
+| **Writes to the mailbox** | two things, both **unsent** drafts you review and send yourself: a meeting in your calendar, and an email (new, reply or forward) opened in Outlook and saved to Drafts (`OUTLOOK_ALLOW_DRAFTS=false` removes both) |
 | **Writes to disk** | only on request: an email saved as Markdown in `H:\Eva\knowledge\email`, or a day planner PDF in `H:\Eva\documents\pdf` |
 
 ## Install
@@ -48,7 +48,7 @@ touch, all optional:
 | `OUTLOOK_CALENDAR_COLOURS` | No | Usually leave unset — the planner already uses your Outlook category colours. Only overrules one, e.g. `Leadership=purple` |
 | `OUTLOOK_CALENDAR_HIDE_CATEGORIES` | No | Comma-separated Outlook categories to leave off the printed planner, e.g. `Birthdays` |
 | `OUTLOOK_MEETING_HOURS` | No | Hours a meeting may be *suggested* in, e.g. `8-18` (default `9-17`) |
-| `OUTLOOK_ALLOW_DRAFTS` | No | `false` removes `outlook_draft_meeting`, leaving the mailbox read-only |
+| `OUTLOOK_ALLOW_DRAFTS` | No | `false` removes `outlook_draft_meeting` and `outlook_draft_email`, leaving the mailbox read-only |
 | `OUTLOOK_GAL_SCAN_CAP` | No | Entries one fuzzy name search may read (default `20000`) |
 
 The full list, including the folder overrides, is under
@@ -156,6 +156,49 @@ Set `OUTLOOK_ALLOW_DRAFTS=false` and the tool is not offered at all (not
 listed, not dispatched), leaving the server read-only on the mailbox. Removing
 it beats refusing it later: nothing can promise you a draft it was never
 offered.
+
+## Drafting an email
+
+> *"Draft a reply to Josh's email saying we're on track."* … *"Make it
+> shorter."* … *"Ok, send that to Outlook."*
+
+The email is written and reworked **in the chat** (the `email-writer` skill
+does the writing, in your voice). Nothing touches Outlook until you say to put
+it there; then `outlook_draft_email` opens it in Outlook's compose window with
+exactly the agreed text, and leaves the window open for you to edit and send.
+
+| Tool | What it does |
+|---|---|
+| `outlook_draft_email` | Opens a new email, reply, reply-all or forward in Outlook **unsent**, with the agreed text above your signature, and saves it to Drafts |
+
+- **Your signature and your font.** Outlook builds the item itself
+  (`CreateItem`, or `Reply()` / `ReplyAll()` / `Forward()` on the original, so
+  the thread, the quoted message and the `RE:` subject are Outlook's own), and
+  the compose window is created **before** any text goes in, which is when
+  Outlook adds the signature: your new-message one on a new email, your
+  replies/forwards one on a reply. The text is then typed in through the
+  window's Word editor at the top of the message, where your cursor sits, so
+  it takes your own compose font (or reply font) exactly as if you had typed
+  it.
+- **Why not just set the HTML body?** That is the common approach, and it
+  makes a reply pick up the *original* message's styles, which is how replies
+  come out in Times New Roman. It is kept only as a fallback for when the
+  editor can't be reached, and the tool's reply says when it was used.
+- **Formatting carries over.** `**bold**`, `*italic*`, `-` bullets, `1.`
+  numbered lists and links become real Outlook formatting; a `#` heading
+  becomes a bold line. Each line is a line and blank lines stay blank, so the
+  spacing is the spacing you agreed. A plain-text email (your setting, or a
+  reply to a plain-text message) drops the formatting and writes bullets as
+  `- `.
+- **It is left open**, and also saved to Drafts, so closing Outlook can't lose
+  it. `Send()` is never called anywhere in the file.
+- **If any recipient won't resolve, nothing is put into Outlook** — the same
+  rule as a meeting. Use a full address, or the `invite_as` value from
+  `outlook_find_people`.
+- The content blacklist applies on the way in (subject, body, recipients), and
+  a message the blacklist withholds can't be replied to or forwarded from here.
+
+`OUTLOOK_ALLOW_DRAFTS=false` removes this tool along with the meeting draft.
 
 ## The printable day planner
 
@@ -442,7 +485,7 @@ only when an endpoint's layout really differs.
 | `OUTLOOK_REQUIRE_BLACKLIST=1` | Fail closed: refuse to start unless the content blacklist has at least one active term, so a missing or empty terms file cannot silently disable the compliance filter. Also settable via the `REQUIRE_BLACKLIST` constant in the file |
 | `OUTLOOK_MEETING_HOURS` | The hours a meeting may be **suggested** in, e.g. `8-18` (default `9-17`). Separate from `OUTLOOK_CALENDAR_HOURS` above on purpose — see [Finding a time](#finding-a-time) |
 | `OUTLOOK_GAL_SCAN_CAP` | How many address-list entries one fuzzy name search may read before giving up (default `20000`). Raise it on a very large GAL if people go missing; a search that stops early says so in its reply |
-| `OUTLOOK_ALLOW_DRAFTS=false` | Remove `outlook_draft_meeting` altogether, leaving the server read-only on the mailbox |
+| `OUTLOOK_ALLOW_DRAFTS=false` | Remove `outlook_draft_meeting` and `outlook_draft_email` altogether, leaving the server read-only on the mailbox |
 
 **Blank does not mean off.** A blank value means "not configured", so the shared
 root still applies. To forbid saving outright, set `OUTLOOK_KB_DIR=off` (`none`,
@@ -503,10 +546,11 @@ saved as Markdown inside the knowledge-base folder, or a day planner written as
 a PDF inside the documents folder. It writes nowhere else, and it reads no local
 folder at all (the optional blacklist file is read once at startup).
 
-In the **mailbox**, the one write is `outlook_draft_meeting`, which saves an
-unsent meeting into your calendar. Nothing can send, reply, accept, move or
-delete — `Send()` is never called anywhere in the file, and
-`OUTLOOK_ALLOW_DRAFTS=false` removes the draft tool as well.
+In the **mailbox**, the only writes are the two drafts: `outlook_draft_meeting`
+saves an unsent meeting into your calendar, and `outlook_draft_email` opens an
+unsent email in Outlook and saves it to Drafts. Nothing can send, accept, move
+or delete — `Send()` is never called anywhere in the file, and
+`OUTLOOK_ALLOW_DRAFTS=false` removes both draft tools.
 
 ## Usage examples
 
@@ -527,6 +571,7 @@ delete — `Send()` is never called anywhere in the file, and
 15. "When are Josh and Sam both free for an hour next week?" → `outlook_suggest_meeting_times` with `duration_minutes: 60`, `start_date: "+7"`
 16. "Book the Tuesday 10am one." → `outlook_draft_meeting` — saved to your calendar **unsent**, opened for you to review and send
 17. "Draft an agenda for the migration review." … "Now find a time with Josh Mann to discuss." → the agenda is carried into the meeting body, shown to you, then drafted
+18. "Draft a reply to Josh's email about the budget." … "Warmer." … "Ok, put that in Outlook." → written and reworked in the chat, then `outlook_draft_email` with `mode: "reply"` opens it in Outlook, signature and all, for you to send
 
 The save folder sits inside the same knowledge root the `knowledge-base` server
 indexes - which is what `EVA_KNOWLEDGE_DIR` being one shared setting buys you -

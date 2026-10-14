@@ -108,6 +108,12 @@ not seen, a commitment the material didn't clearly support.
 Then you iterate. `shorter`, `warmer`, `firmer` are adjustments within your
 voice, not licence to leave it, and each round returns the whole email again.
 
+When you're happy, say "ok, send that to Outlook" and, with the
+`outlook` plugin installed, the agreed text opens
+in Outlook as an **unsent** draft (a reply stays a reply), above your own
+signature and in your own Outlook font, for you to check and send. Nothing goes
+to Outlook before you say so.
+
 ## With the other writing skills
 
 [`/unslop`](../unslop) runs automatically as the last step, and the draft is

@@ -1,6 +1,6 @@
 ---
 name: email-writer
-description: Draft an email in the user's own voice, learned from their sent-mail exemplars. Use when asked to write, draft, reply to or reword an email, a message to a colleague or stakeholder, a note to the team, or a response to something in the inbox. Works out what the email is for (encouragement, reporting, advice, a request, an apology, a decline) and matches that intent to the user's exemplars in the skill's own exemplars folder, so a thank-you sounds like their thank-yous and a status update sounds like their status updates. Runs /unslop over the draft so it does not read as machine-written, then returns the subject line and body in the chat to iterate on.
+description: Draft an email in the user's own voice, learned from their sent-mail exemplars. Use when asked to write, draft, reply to or reword an email, a message to a colleague or stakeholder, a note to the team, or a response to something in the inbox. Works out what the email is for (encouragement, reporting, advice, a request, an apology, a decline) and matches that intent to the user's exemplars in the skill's own exemplars folder, so a thank-you sounds like their thank-yous and a status update sounds like their status updates. Runs /unslop over the draft so it does not read as machine-written, then returns the subject line and body in the chat to iterate on. When the user says to put it in Outlook ("ok, send that to Outlook"), hands the agreed text to the outlook plugin as an unsent draft.
 ---
 
 # email-writer
@@ -19,8 +19,10 @@ Two things have to be right, and they are separate problems:
 So: classify the intent, pull the exemplars for that intent, read the voice
 across all of them, then write.
 
-**Chat only.** Return the subject line and body in the conversation, ready to
-copy. You do not send anything, and you do not write files unless asked.
+**Chat first.** Return the subject line and body in the conversation and iterate
+there. You do not send anything, and you do not write files unless asked. Only
+when the user says to put it in Outlook does it leave the chat, as an unsent
+draft (see section 7).
 
 ---
 
@@ -222,9 +224,30 @@ saving. A redacted exemplar teaches voice just as well.
 
 ---
 
+## 7. Hand it to Outlook, only when asked
+
+When the user says "ok, send that to Outlook", "put it in Outlook" or similar,
+call `outlook_draft_email` (the `outlook` plugin) with the **latest agreed
+version, word for word**:
+
+- **A reply goes in as a reply**: `mode: "reply"` (or `"reply_all"`) and the
+  `entry_id` of the message it answers, so Outlook keeps the thread and the
+  user's reply signature. A new email is `mode: "new"` with `subject` and `to`.
+- **`body` is the body only.** Drop the `Subject:` line and any signature block
+  or typed name at the foot: Outlook adds the user's own signature.
+- It opens in Outlook **unsent** and is saved to Drafts. Say that in one line;
+  never say it was sent.
+
+Never call it unprompted, and never on an earlier round of the draft. If the
+tool is not there, drafting is switched off on this endpoint: say so and leave
+the text in the chat to copy.
+
+---
+
 ## Boundaries
 
-- **You draft, the user sends.** Nothing here sends mail or replies to it.
+- **You draft, the user sends.** Nothing here sends mail. Putting a draft into
+  Outlook leaves it unsent, for the user to press Send.
 - **Never invent a fact, a figure, a date, a name or a commitment.**
 - **Never carry content across from an exemplar.** Voice only.
 - **Never write on the user's behalf about something you cannot source** from
