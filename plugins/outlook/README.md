@@ -7,7 +7,7 @@ in Outlook's own compose window, and a printable PDF day planner for any day.
 
 | | |
 |---|---|
-| **Server** | `outlook.py` v11.2.0 |
+| **Server** | `outlook.py` v11.2.1 |
 | **pip install** | `pywin32` |
 | **Platform** | **Windows only** — requires classic Win32 Outlook (not "New Outlook") installed, running, and logged into a profile |
 | **Sends** | **never.** Not an email, not a reply, not a meeting invitation. It cannot accept, move or delete anything either |
@@ -292,8 +292,10 @@ Re-printing a day overwrites that day's file rather than piling up copies.
 Set `OUTLOOK_CALENDAR_TEAM` to up to four people - your manager and
 colleagues - and the PDF gets a **second page**: their calendars for the same
 day as side-by-side columns, each with the person's name at the top, in the
-same design as the front (header, hour grid, blocks, chips, footer) over one
-shared timeline, so a time reads straight across every column.
+same design as the front (hour grid, blocks, chips, footer) over one shared
+timeline, so a time reads straight across every column. There is no page
+header: the date is already on the front, so that space goes to the columns
+(the date is repeated small in the footer).
 
 ```json
 "OUTLOOK_CALENDAR_TEAM": "Jane Smith=jane.smith@agency.gov.au; Bob Jones=bob.jones@agency.gov.au; priya.k@agency.gov.au; Smith, Alex"

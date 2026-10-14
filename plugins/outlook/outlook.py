@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-outlook.py (v11.2.0)
+outlook.py (v11.2.1)
 ======================
 
 A single-file MCP (Model Context Protocol) server giving an LLM near-read-only
@@ -323,9 +323,11 @@ What ends up on the page:
 TEAM VIEW ON THE BACK (v11.2.0). Set OUTLOOK_CALENDAR_TEAM to up to four
 people - your manager and colleagues - and the PDF gets a SECOND page: their
 calendars for the same day as side-by-side columns, each with the person's
-name at the top, in the same design as the front (same header, hour grid,
-blocks, chips and footer, over one shared timeline so a time reads straight
-across). It is meant for the back of the sheet:
+name at the top, in the same design as the front (same hour grid, blocks,
+chips and footer, over one shared timeline so a time reads straight across).
+It has no page header (v11.2.1): the date is on the front, and that room goes
+to the columns, with the date repeated small in the footer. It is meant for
+the back of the sheet:
 
     PRINT DOUBLE-SIDED, FLIP ON SHORT EDGE.
 
@@ -655,7 +657,7 @@ IMPORTANT (stdio-on-Windows pitfalls)
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "11.2.0"
+__version__ = "11.2.1"
 
 import os
 import re
@@ -3860,11 +3862,16 @@ def _draw_team_page(canvas, day, team, category_colours):
     """
     Draw the team view: one day column per colleague, side by side.
 
-    The same design as the front - the header, the hour grid, the blocks, the
-    chips and the footer are all drawn the same way - over a shared timeline,
-    so a time reads straight across every column. The page is laid out in
-    the top team_page_fraction() of the sheet, above where the front's folded
-    strip lies on the back.
+    The same design as the front - the hour grid, the blocks, the chips and
+    the footer are all drawn the same way - over a shared timeline, so a time
+    reads straight across every column. The page is laid out in the top
+    team_page_fraction() of the sheet, above where the front's folded strip
+    lies on the back.
+
+    There is NO page header (v11.2.1): the date is on the front of the same
+    sheet, and the room it took goes to the columns instead, which are short
+    enough already above the fold. The person's name heading each column is
+    the first thing on the page.
     """
     page_w, page_h = canvas.width_mm, canvas.height_mm
     content_h = page_h * team_page_fraction()
@@ -3879,21 +3886,9 @@ def _draw_team_page(canvas, day, team, category_colours):
             all_events.append(event)
     hours = _planner_hours(all_events, day)
 
-    # ---- header ----------------------------------------------------------
-    canvas.text(pad_l, pad_t + 2.0, "TEAM AGENDA", 7.5, bold=True,
-                colour=_MUTED, tracking=0.85, max_width=120.0)
-    date_w = canvas.text(pad_l, pad_t + 8.6, _fmt_day_long(day), 19.0,
-                         bold=True, colour=_INK)
-    stats = "{0} calendar{1} · {2:02d}:00 — {3:02d}:00".format(
-        len(team), "" if len(team) == 1 else "s", hours[0], hours[1])
-    canvas.text(page_w - pad_r, pad_t + 8.0, stats, 7.5, bold=True,
-                colour=_FAINT, align="right",
-                max_width=page_w - pad_l - pad_r - date_w - 8.0)
-    header_rule = pad_t + 12.8
-    canvas.line(pad_l, header_rule, page_w - pad_r, header_rule, _INK, 1.2)
-
     # ---- page frame ------------------------------------------------------
-    body_top = header_rule + 5.0
+    # No header: the column headings start at the top margin.
+    body_top = pad_t
     footer_rule = content_h - pad_b - 4.6
     body_bottom = footer_rule - 2.5
     gutter = 13.0
@@ -3905,7 +3900,7 @@ def _draw_team_page(canvas, day, team, category_colours):
 
     for col_x in col_xs[1:]:
         divider = col_x - col_gap / 2.0
-        canvas.line(divider, header_rule + 4.0, divider, footer_rule - 2.0,
+        canvas.line(divider, body_top - 1.0, divider, footer_rule - 2.0,
                     _GRID, 0.6, dash=[2.2, 2.2])
 
     # ---- column headings: the person's name, and what was readable -------
@@ -3998,7 +3993,8 @@ def _draw_team_page(canvas, day, team, category_colours):
 
     # ---- footer ----------------------------------------------------------
     canvas.line(pad_l, footer_rule, page_w - pad_r, footer_rule, _RULE, 0.5)
-    canvas.text(pad_l, footer_rule + 3.4, "Outlook Calendar · Team view", 7.0,
+    canvas.text(pad_l, footer_rule + 3.4,
+                "Outlook Calendar · Team view · " + _fmt_day_long(day), 7.0,
                 bold=True, colour=_FAINT, max_width=170.0)
     printed = datetime.datetime.now()
     canvas.text(page_w - pad_r, footer_rule + 3.4,
