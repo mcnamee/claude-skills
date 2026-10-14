@@ -397,7 +397,7 @@ Personal appointment gets.
 
 An A4 landscape PDF of your direct reports' open tasks, in **eight columns,
 four a side**, gathered from the Confluence page that collates them and the
-emails you sent them:
+emails you sent them and flagged with a due date:
 
 | Front | Back |
 |---|---|
@@ -426,26 +426,31 @@ honours; check the setting in any other viewer.
 
 ```json
 "OUTLOOK_TASKS_TEAM": "Jane Smith=jane.smith@agency.gov.au; Bob Jones=bob.jones@agency.gov.au; Priya Kumar=priya.k@agency.gov.au; Alex Smith=alex.smith@agency.gov.au; Tom Lee=tom.lee@agency.gov.au; Mia Wong=mia.wong@agency.gov.au; Sam Patel=sam.patel@agency.gov.au",
-"OUTLOOK_TASKS_PAGE": "Team Task List",
-"OUTLOOK_TASKS_EMAIL_DAYS": "30"
+"OUTLOOK_TASKS_PAGE": "Team Task List"
 ```
 
 ### How the tasks are gathered
 
-This server can't read Confluence, and pulling tasks out of email prose is a
-reading job rather than a pattern match, so Claude does the gathering and the
-server does the page. The `/outlook:team-tasks` skill runs it:
+**Emailed tasks are the ones you flagged.** An Outlook rule copies every email
+you send back into your Inbox, where you either delete it (no reminder needed)
+or **flag it with a due date** (a task you want chased). So an emailed task is
+an Inbox item that you sent, flagged for follow-up and not marked complete,
+with a real due date - and the flag's date is the task's due date. Sent Items
+is never read, there is no date window, and an unflagged, undated or
+completed one is left off. **Mark the flag complete** in Outlook and the task
+drops off the next sheet.
 
-1. `outlook_get_task_team` returns the columns, the Confluence page and the
-   email window (dated on the endpoint's own clock).
-2. Claude reads the Confluence page with the **confluence** plugin, and your
-   sent mail for the window with `outlook_list_sent_emails` /
-   `outlook_get_email` (the content blacklist applies as usual). The copies
-   your Outlook rule puts back in the Inbox are the same messages, so Sent
-   Items is enough.
-3. It drops what is done, merges a task that is on both, and decides who owns
-   each one: one direct report → their column; the whole team, several
-   people or nobody → column 1.
+The `/outlook:team-tasks` skill runs it:
+
+1. `outlook_get_task_team` returns the columns and the Confluence page.
+2. `outlook_list_task_emails` returns the flagged emails you sent, soonest due
+   first, with To / Cc, subject and a short preview (the content blacklist
+   applies as usual).
+3. Claude reads the Confluence page with the **confluence** plugin, opens an
+   email with `outlook_get_email` where the subject and preview aren't enough
+   to word the task, merges a task that is on both, and decides who owns each
+   one: one direct report → their column; the whole team, several people or
+   nobody → column 1.
 4. `outlook_print_team_tasks` lays the list out. A name is matched by full
    name, email, or a first name or surname only one person has. A name that
    matches nobody still prints, in column 1 marked "For <name>", and Claude
@@ -547,7 +552,7 @@ This plugin ships three, and installing it installs all of them:
 |---|---|
 | `/outlook:outlook` | Mail, reading the calendar, printing a day planner, saving an email to the knowledge base |
 | `/outlook:meeting-scheduler` | Arranging a meeting: finding the person and the room, finding a time, saving the draft |
-| `/outlook:team-tasks` | Printing your team's open tasks from Confluence and your sent mail as a double-sided sheet |
+| `/outlook:team-tasks` | Printing your team's open tasks from Confluence and the emails you flagged as a double-sided sheet |
 
 ## Configuration
 
@@ -615,7 +620,6 @@ only when an endpoint's layout really differs.
 | `OUTLOOK_CALENDAR_TEAM` | Up to four colleagues' calendars printed on the **back** of the planner, e.g. `Jane Smith=jane.smith@agency.gov.au; bob.jones@agency.gov.au`. Semicolon-separated; `Label=` is optional. Unset means a one-page planner — see [The team view on the back](#the-team-view-on-the-back) |
 | `OUTLOOK_TASKS_TEAM` | Your direct reports, up to seven, as columns 2-8 of the team task sheet, in print order. Same form as `OUTLOOK_CALENDAR_TEAM`; more than seven are cut with a warning. Unset means the columns come from the names on the tasks - see [The team task sheet](#the-team-task-sheet) |
 | `OUTLOOK_TASKS_PAGE` | The Confluence page (title, page ID or URL) that collates the team's tasks. The server only passes it to Claude, which reads the page with the confluence plugin |
-| `OUTLOOK_TASKS_EMAIL_DAYS` | How many days of sent mail are read for tasks you emailed the team, `1`-`365` (default `30`) |
 | `OUTLOOK_KB_AUTOSAVE=true` | Save **every** email read, without being asked (default false). Needs a save folder to be on |
 | `OUTLOOK_SEARCH_FOLDERS` | Comma-separated folder names used as the **default** set for `outlook_search_recent`, overriding the `SEARCH_ALL_FOLDERS` value in the file (e.g. `"Inbox,Sent Items,Archive"`). A per-call `folders` argument still takes priority |
 | `OUTLOOK_BLACKLIST_FILE` | Path to a file of extra content-blacklist terms (one per line, `#` for comments), added to the built-in list |
@@ -671,7 +675,7 @@ top of `outlook.py` directly (there are no CLI flags/env vars for these):
 | `CALENDAR_CATEGORY_COLOURS` | Category → colour overrides in the file itself, merged with (and beaten by) `OUTLOOK_CALENDAR_COLOURS`. Both sit on top of the colours read from Outlook |
 | `CALENDAR_HIDDEN_CATEGORIES` | Categories left off the printed planner, in the file itself. Added to `OUTLOOK_CALENDAR_HIDE_CATEGORIES` |
 | `CALENDAR_TEAM` | The team view's people, in the file itself. `OUTLOOK_CALENDAR_TEAM` **replaces** it rather than adding to it |
-| `TASKS_TEAM`, `TASKS_CONFLUENCE_PAGE`, `TASKS_EMAIL_DAYS` | The team task sheet's people, Confluence page and email window, in the file itself. `OUTLOOK_TASKS_TEAM`, `OUTLOOK_TASKS_PAGE` and `OUTLOOK_TASKS_EMAIL_DAYS` override them |
+| `TASKS_TEAM`, `TASKS_CONFLUENCE_PAGE` | The team task sheet's people and Confluence page, in the file itself. `OUTLOOK_TASKS_TEAM` and `OUTLOOK_TASKS_PAGE` override them |
 | `TEAM_MAX_COLUMNS` / `TEAM_LOOKBACK_DAYS` / `TEAM_MIN_CONTENT_FRACTION` | The team view's limits: four columns, 31 days back for something still running, and the back page never smaller than 45% of the sheet |
 | `PLANNER_COLOURS` / `OL_CATEGORY_COLOURS` | The bold palette, and which Outlook category colour maps to which name |
 | `PLANNER_TITLE_PT` | The one type size every event subject on the page is set at (7pt) |
@@ -706,7 +710,7 @@ or delete — `Send()` is never called anywhere in the file, and
 10. "Give me today's calendar to print." → `outlook_print_calendar` — an A4 landscape day planner in `H:\Eva\documents\pdf`
 11. "Print tomorrow's planner with the whole week down the side." → `outlook_print_calendar` with `date: "tomorrow"`, `lookahead_days: 6`
 11a. "Print today's calendar, just mine, no team page." → `outlook_print_calendar` with `include_team: false`
-11b. "Print my team's tasks." → `outlook_get_task_team`, the Confluence page and your sent mail, then `outlook_print_team_tasks` - eight columns over two sides of A4
+11b. "Print my team's tasks." → `outlook_get_task_team`, the Confluence page and `outlook_list_task_emails`, then `outlook_print_team_tasks` - eight columns over two sides of A4
 12. "Who's Josh Smith in the directory?" → `outlook_find_people` — returns the `invite_as` address the scheduling tools need
 13. "Is there a room called R5-3-84?" → `outlook_find_people` with `kind: "room"`
 14. "Find a suitable time with Josh Smith in Room R5-3-84." → `outlook_find_people` twice, then `outlook_suggest_meeting_times`

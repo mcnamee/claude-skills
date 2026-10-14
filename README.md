@@ -72,7 +72,7 @@ source material with something invented.
   library alone, so printing adds no dependency to an airgapped endpoint.
 - **Your team's tasks on one sheet.** `outlook` gathers your direct reports'
   open tasks from the Confluence page that collates them and the emails you
-  sent them, and prints them double-sided: unassigned and whole-team tasks
+  sent them and flagged with a due date, and prints them double-sided: unassigned and whole-team tasks
   first, then a column per person, overdue items in red.
 - **They compose.** `word` and `powerpoint` mirror what they open into one
   Markdown folder, `confluence` and `outlook` save the pages and emails you ask
@@ -93,7 +93,7 @@ source material with something invented.
 | [**word**](plugins/word) | 10.0.0 | Read, edit and create `.docx` — real Word tracked changes, native styles, filling out templates | `python-docx` |
 | [**powerpoint**](plugins/powerpoint) | 6.0.0 | Build sectioned `.pptx` decks that inherit your own template's layouts and theme, with formatted speaker notes, audited against the 10/20/30 rule | `python-pptx` |
 | [**excel**](plugins/excel) | 6.1.0 | Read and analyse workbooks - sheets, Tables by name, pivot tables - by parsing `.xlsx` directly; write cells and Table rows and create real PivotTables through Excel | _none_ (`pywin32` to write) |
-| [**outlook**](plugins/outlook) | 11.3.0 | Read local Outlook mail and calendar via COM, with a content blacklist; schedules a meeting (fuzzy directory search, free/busy, and an **unsent** draft you send yourself); opens an agreed email or reply in Outlook as an **unsent** draft, with your signature; prints a day as an A4 PDF planner in your own category colours (with up to four colleagues' calendars on the back), prints your team's open tasks from Confluence and your sent mail as a double-sided sheet, and saves an email to the knowledge base when you ask | `pywin32` |
+| [**outlook**](plugins/outlook) | 11.3.0 | Read local Outlook mail and calendar via COM, with a content blacklist; schedules a meeting (fuzzy directory search, free/busy, and an **unsent** draft you send yourself); opens an agreed email or reply in Outlook as an **unsent** draft, with your signature; prints a day as an A4 PDF planner in your own category colours (with up to four colleagues' calendars on the back), prints your team's open tasks from Confluence and the emails you flagged as a double-sided sheet, and saves an email to the knowledge base when you ask | `pywin32` |
 | [**confluence**](plugins/confluence) | 7.3.0 | Search and read Confluence pages, across one or two instances, with macro content included; download attachments into the folder the matching plugin reads; saves a page to the knowledge base when you ask; when switched on, create pages, update one section, edit a table's figures in place (even inside a table filter or column macro), append, and upload an attachment (replacing an image on a page) | _none_ |
 | [**jira**](plugins/jira) | 3.4.0 | Query issues, sprints and projects; when switched on, create, edit, comment on and transition issues (Jira Data Center v2 API) | _none_ |
 | [**knowledge-base**](plugins/knowledge-base) | 6.0.0 | True RAG over your own Markdown: local ChromaDB index + your embeddings API, and capture notes back into it | `chromadb` |
@@ -468,7 +468,7 @@ Two plugins ship more than one, split by the question each skill answers.
 
 `outlook` ships **three**. `/outlook:outlook` is mail, calendar reading and
 printing a day. `/outlook:team-tasks` gathers your team's open tasks from
-Confluence and your sent mail and prints them. `/outlook:meeting-scheduler` is
+Confluence and the emails you flagged, and prints them. `/outlook:meeting-scheduler` is
 the separate job of arranging a meeting — fuzzy-finding a person or room in the enterprise directory, reading
 everyone's free/busy, and saving an unsent draft for you to send. They are
 split because scheduling has its own workflow and its own sharp edges (never

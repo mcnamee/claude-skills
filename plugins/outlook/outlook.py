@@ -58,8 +58,10 @@ TOOLS EXPOSED (read-only on the mailbox, apart from the two draft tools)
 - outlook_print_calendar     : a PRINTABLE PDF day planner for one day, with an
                                optional team view of up to four colleagues on
                                the back (v11.2.0) - see below
-- outlook_get_task_team      : the team task sheet's columns, Confluence page
-                               and email window (v11.3.0) - see below
+- outlook_get_task_team      : the team task sheet's columns and Confluence
+                               page (v11.3.0) - see below
+- outlook_list_task_emails   : emails you sent, flagged in your Inbox with a due
+                               date - the emailed tasks (v11.3.0)
 - outlook_print_team_tasks   : a PRINTABLE PDF of the team's open tasks, eight
                                columns over two sides of A4 (v11.3.0)
 - outlook_list_sent_emails   : messages you SENT, in a date range (e.g. "what did I do last week")
@@ -418,19 +420,25 @@ column with more than fits ends in "+N more not shown" rather than shrinking
 its type, and the reply says which. The whole sheet is used - there is no
 strip to fold, since a task list is pinned up or filed, not kept in a diary.
 
-The tasks come from two places this server cannot both read, so the work is
-split between two tools and the model in the middle:
+The tasks come from the Confluence page that collates them (which this server
+cannot read) and from emails you flagged, so the work is split between three
+tools and the model in the middle:
 
-1. outlook_get_task_team returns the columns, the Confluence page that
-   collates the tasks (OUTLOOK_TASKS_PAGE) and the window of SENT mail to read
-   (OUTLOOK_TASKS_EMAIL_DAYS, default 30), dated on this endpoint's clock. It
-   reads configuration only.
-2. The model reads the Confluence page through the confluence plugin and the
-   sent mail through outlook_list_sent_emails / outlook_get_email (so the
-   content blacklist applies as usual), drops what is done, de-duplicates the
-   two, and decides who owns each task. Pulling tasks out of email prose is a
-   reading job, not a regular expression.
-3. outlook_print_team_tasks takes that list as {person, task, due, status,
+1. outlook_get_task_team returns the columns and the Confluence page that
+   collates the tasks (OUTLOOK_TASKS_PAGE). It reads configuration only.
+2. outlook_list_task_emails returns the emailed tasks. An Outlook rule copies
+   every email you send back into your Inbox, where you either delete it or
+   FLAG it with a due date to be reminded. So an emailed task is an Inbox item
+   that you sent, flagged (not complete) with a real due date - nothing else.
+   Sent Items is never read, there is no date window, and marking the flag
+   complete in Outlook takes the task off the next sheet. The flag is found
+   with a DASL filter on PR_FLAG_STATUS (an integer, so no locale fault); if
+   Outlook rejects it the Inbox is walked instead, up to 5000 items. The
+   content blacklist applies as usual.
+3. The model reads the Confluence page through the confluence plugin, opens
+   an email with outlook_get_email where the subject and preview are not
+   enough, de-duplicates the two sources, and decides who owns each task.
+4. outlook_print_team_tasks takes that list as {person, task, due, status,
    source, detail} and lays it out. A 'person' is matched case-insensitively
    against the roster by full name, email address, or a first name or surname
    only one person has; a name that matches nobody goes into column 1 marked
@@ -501,12 +509,10 @@ just below this docstring. Edit them there; nothing else needs changing.
    the sheet's height the page uses. All of them have an environment variable
    so a plugin install never needs the file edited.
 
-3c. Team task sheet (TASKS_TEAM / TASKS_CONFLUENCE_PAGE / TASKS_EMAIL_DAYS,
-    overridden by OUTLOOK_TASKS_TEAM / OUTLOOK_TASKS_PAGE /
-    OUTLOOK_TASKS_EMAIL_DAYS)
-   Your direct reports in column order, the Confluence page that collates
-   their tasks, and how many days of sent mail to read. See "Printable team
-   task sheet" above.
+3c. Team task sheet (TASKS_TEAM / TASKS_CONFLUENCE_PAGE, overridden by
+    OUTLOOK_TASKS_TEAM / OUTLOOK_TASKS_PAGE)
+   Your direct reports in column order, and the Confluence page that collates
+   their tasks. See "Printable team task sheet" above.
 
 4. SEARCH_ALL_FOLDERS  (DEFAULT folders the combined outlook_search_recent covers)
    A list of folder NAMES matched across every store in the profile (main
@@ -650,8 +656,6 @@ Server-specific settings, all optional and all environment variables:
     OUTLOOK_TASKS_PAGE          the Confluence page (title, ID or URL) that
                                 collates the team's tasks. Passed to the model,
                                 which reads it with the confluence plugin.
-    OUTLOOK_TASKS_EMAIL_DAYS    days of sent mail read for emailed tasks,
-                                1-365 (default 30).
     OUTLOOK_SEARCH_FOLDERS      comma-separated folder names for
                                 outlook_search_recent, e.g.
                                 "Inbox,Sent Items,Archive".
@@ -872,11 +876,10 @@ TASKS_TEAM = [
 #        The Confluence page that collates the team's tasks (title, page ID or
 #        URL). This server cannot read Confluence; it only hands the value to
 #        the model, which reads the page through the confluence plugin.
-#        Override with OUTLOOK_TASKS_PAGE.
+#        Override with OUTLOOK_TASKS_PAGE. The emailed tasks need no setting:
+#        they are the emails you sent that sit flagged, with a due date, in
+#        your Inbox (see outlook_list_task_emails).
 TASKS_CONFLUENCE_PAGE = ""
-#        How many days of SENT mail to read for tasks you emailed the team.
-#        Override with OUTLOOK_TASKS_EMAIL_DAYS (1-365).
-TASKS_EMAIL_DAYS = 30
 
 # --- 6. KB_AUTOSAVE. Whether reading an email saves it WITHOUT being asked.
 #        False means a message is saved only when the call passes
@@ -1172,11 +1175,10 @@ _HIDDEN_CATEGORIES = set()
 # CALENDAR_TEAM or OUTLOOK_CALENDAR_TEAM. Empty means a one-page planner.
 _CALENDAR_TEAM = []
 
-# The team task sheet's roster, Confluence page and email window, from the
-# TASKS_* settings above or their OUTLOOK_TASKS_* environment variables.
+# The team task sheet's roster and Confluence page, from the TASKS_* settings
+# above or their OUTLOOK_TASKS_* environment variables.
 _TASKS_TEAM = []
 _TASKS_PAGE = ""
-_TASKS_EMAIL_DAYS = TASKS_EMAIL_DAYS
 
 # Effective default folder set for outlook_search_recent. Initialised from
 # SEARCH_ALL_FOLDERS; may be replaced by OUTLOOK_SEARCH_FOLDERS. A per-call
@@ -4541,12 +4543,13 @@ def tool_print_calendar(args):
 # owns (an email to the whole team, a Confluence row with no assignee); the
 # other seven are the people in OUTLOOK_TASKS_TEAM, in that order.
 #
-# This server cannot read Confluence, and should not try to pull "tasks" out of
-# email prose with regular expressions: the wording varies too much to do that
-# honestly. So the work is split. outlook_get_task_team hands the model the
-# roster, the Confluence page and the email window; the model reads the page
-# (through the confluence plugin) and the sent mail (through the tools above),
-# turns them into one list of {person, task, due, ...}; and
+# This server cannot read Confluence, and should not try to word a task from
+# email prose with regular expressions. So the work is split.
+# outlook_get_task_team hands the model the roster and the Confluence page;
+# outlook_list_task_emails finds the emailed tasks by their follow-up flag
+# (the user's own decision, so no guessing there); the model reads the page
+# (through the confluence plugin), turns both into one list of
+# {person, task, due, ...}; and
 # outlook_print_team_tasks lays that list out. Everything about the PAGE - the
 # columns, their order, sorting, overdue colouring, overflow - is decided here,
 # so the sheet comes out the same way every time.
@@ -4970,11 +4973,10 @@ def render_team_tasks(columns, identity, sources=""):
 def tool_get_task_team(args):
     """
     Everything the model needs before it gathers tasks: the columns in print
-    order, the Confluence page to read, and the window of sent mail to read,
-    with the dates worked out on the endpoint's own clock.
+    order, the Confluence page to read, and where the emailed tasks come from,
+    with today's date from the endpoint's own clock.
     """
     today = datetime.date.today()
-    since = today - datetime.timedelta(days=_TASKS_EMAIL_DAYS)
     lines = ["Team task sheet - set-up on this endpoint", ""]
     lines.append("Columns, in print order (four a side, column 1 first):")
     lines.append("  1. {0} - tasks for the whole team, for several people, or "
@@ -5003,15 +5005,162 @@ def tool_get_task_team(args):
     else:
         lines.append("Confluence task page: not set (OUTLOOK_TASKS_PAGE) - ask "
                      "the user which page collates the team's tasks.")
-    lines.append("Email window: mail sent from {0} to {1} ({2} days, "
-                 "OUTLOOK_TASKS_EMAIL_DAYS).".format(
-                     since.isoformat(), today.isoformat(), _TASKS_EMAIL_DAYS))
+    lines.append("Emailed tasks: outlook_list_task_emails - emails YOU sent "
+                 "that are in your Inbox (your rule copies them back) and that "
+                 "you flagged with a due date. Unflagged, completed and "
+                 "undated ones are not tasks. Do not read Sent Items.")
     lines.append("Today on this endpoint: {0}.".format(_fmt_day_long(today)))
     if not PDF_DIR:
         lines.append("")
         lines.append("PRINTING IS OFF on this endpoint (OUTLOOK_DOCS_DIR=off): "
                      "outlook_print_team_tasks will refuse. Say so before "
                      "gathering anything.")
+    return "\n".join(lines)
+
+
+# The emailed half of the task sheet. The user's Outlook rule copies every email
+# they send back into the Inbox; there they either DELETE it (no reminder
+# needed) or FLAG it with a due date (a task they want chased). So the emailed
+# tasks are exactly the Inbox items that the user sent, that are flagged and
+# not complete, and that carry a real due date - no date window, no guessing
+# from the wording, and marking the flag complete in Outlook takes the task off
+# the next sheet.
+#
+# MAPI PR_FLAG_STATUS (0x1090, a long): 2 = flagged, 1 = complete. A DASL
+# filter on an integer formats no date, so it is safe from the regional-
+# settings fault that keeps Restrict() off dates elsewhere in this file. If
+# Outlook rejects it anyway, the Inbox is walked and FlagStatus checked in
+# Python instead, up to TASK_EMAIL_SCAN_CAP items.
+TASK_EMAIL_FLAG_FILTER = (
+    '@SQL="http://schemas.microsoft.com/mapi/proptag/0x10900003" = 2')
+OL_FLAG_MARKED = 2
+TASK_EMAIL_SCAN_CAP = 5000
+TASK_EMAIL_PREVIEW_CHARS = 400
+# Outlook stores "no date" as 1 January 4501; anything from 4500 on is none.
+OUTLOOK_NO_DATE_YEAR = 4500
+
+
+def _sent_by_me(item, identity):
+    """
+    Whether `item` was sent by the mailbox owner.
+
+    The SMTP address is compared first (an Exchange sender is resolved to its
+    SMTP form by sender_smtp), and the display name only when no address is
+    known, because two people can share a name but not an address.
+    """
+    name, address = identity
+    if address:
+        return sender_smtp(item).strip().lower() == address.strip().lower()
+    if name:
+        try:
+            return _one_line(item.SenderName or "").lower() == name.lower()
+        except Exception:
+            return False
+    return False
+
+
+def tool_list_task_emails(args):
+    ns = get_namespace()
+    identity = current_user_identity(ns)
+    if not identity[0] and not identity[1]:
+        return ("Error: could not work out the mailbox owner's name or address, "
+                "so emails you sent cannot be told apart from the rest of the "
+                "Inbox. Run python outlook.py --check on the endpoint.")
+
+    inbox = ns.GetDefaultFolder(OL_FOLDER_INBOX)
+    filtered = True
+    try:
+        candidates = inbox.Items.Restrict(TASK_EMAIL_FLAG_FILTER)
+    except Exception as exc:
+        log("Flag filter rejected ({0}); walking the Inbox instead.".format(exc))
+        candidates = inbox.Items
+        filtered = False
+
+    found = []
+    no_date = 0
+    not_mine = 0
+    withheld = 0
+    scanned = 0
+    capped = False
+    for item in candidates:
+        if scanned >= TASK_EMAIL_SCAN_CAP:
+            capped = True
+            break
+        scanned += 1
+        try:
+            if item.Class != OL_CLASS_MAIL:
+                continue
+            if int(item.FlagStatus) != OL_FLAG_MARKED:
+                continue                     # unflagged, or flag completed
+        except Exception:
+            continue
+        if not _sent_by_me(item, identity):
+            not_mine += 1                    # someone else's email you flagged
+            continue
+        try:
+            due = _com_to_naive(item.TaskDueDate)
+        except Exception:
+            due = None
+        if due is None or due.year >= OUTLOOK_NO_DATE_YEAR:
+            no_date += 1
+            continue
+        reason = email_block_reason(item)
+        if reason:
+            withheld += 1
+            log("Withheld a flagged email (blacklist match: {0}).".format(reason))
+            continue
+        try:
+            preview = _one_line(item.Body or "")[:TASK_EMAIL_PREVIEW_CHARS]
+        except Exception:
+            preview = ""
+        try:
+            found.append({
+                "due": due.date(),
+                "sent": _com_to_naive(item.SentOn),
+                "to": _one_line(item.To or ""),
+                "cc": _one_line(item.CC or ""),
+                "subject": _one_line(item.Subject or "") or "(no subject)",
+                "preview": preview,
+                "entry_id": item.EntryID,
+            })
+        except Exception:
+            continue
+
+    found.sort(key=lambda entry: (entry["due"], entry["sent"]
+                                  or datetime.datetime.min))
+    today = datetime.date.today()
+    lines = ["Flagged emails you sent, in your Inbox, with a due date: {0} "
+             "(soonest due first; today is {1}).".format(
+                 len(found), today.isoformat())]
+    for entry in found:
+        lines.append("- Due {0}{1} | Sent {2} | To: {3}{4}".format(
+            entry["due"].isoformat(),
+            " (OVERDUE)" if entry["due"] < today else "",
+            fmt_dt(entry["sent"]) if entry["sent"] else "?",
+            entry["to"] or "(no recipient)",
+            " | Cc: " + entry["cc"] if entry["cc"] else ""))
+        lines.append("    Subject : {0}".format(entry["subject"]))
+        if entry["preview"]:
+            lines.append("    Preview : {0}".format(entry["preview"]))
+        lines.append("    EntryID : {0}".format(entry["entry_id"]))
+    notes = []
+    if no_date:
+        notes.append("{0} flagged email(s) you sent have no due date and are "
+                     "not tasks for the sheet".format(no_date))
+    if not_mine:
+        notes.append("{0} flagged email(s) were sent by someone else and are "
+                     "left out".format(not_mine))
+    if withheld:
+        notes.append("{0} withheld by the content blacklist".format(withheld))
+    if capped:
+        notes.append("the scan stopped after {0} items{1}, so older flagged "
+                     "emails may be missing".format(
+                         TASK_EMAIL_SCAN_CAP,
+                         "" if filtered else " (Outlook rejected the flag "
+                         "filter, so the whole Inbox was walked)"))
+    if notes:
+        lines.append("")
+        lines.append("[" + "; ".join(notes) + ".]")
     return "\n".join(lines)
 
 
@@ -7081,10 +7230,23 @@ TOOLS = [
             "First step of a printable TEAM TASK SHEET: returns the columns in "
             "print order (column 1 'Team / unassigned', then the user's direct "
             "reports from OUTLOOK_TASKS_TEAM), the Confluence page that collates "
-            "their tasks (OUTLOOK_TASKS_PAGE), and the window of sent mail to "
-            "read for tasks the user emailed them, with dates from the "
+            "their tasks (OUTLOOK_TASKS_PAGE), and today's date from the "
             "endpoint's own clock. Reads configuration only - no mail. Call it "
             "before gathering tasks for outlook_print_team_tasks."
+        ),
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "outlook_list_task_emails",
+        "description": (
+            "The EMAILED half of the team task sheet: emails the user SENT that "
+            "sit in their Inbox (an Outlook rule copies sent mail back there) "
+            "FLAGGED for follow-up with a due date - the user flags the ones "
+            "they want chased and deletes the rest. Returns each one's due "
+            "date (the flag's), sent time, To, Cc, subject, a short body "
+            "preview and EntryID, soonest due first. Unflagged, completed, "
+            "undated and other people's emails are left out and counted. Use "
+            "this, not outlook_list_sent_emails, for team tasks."
         ),
         "inputSchema": {"type": "object", "properties": {}},
     },
@@ -7096,7 +7258,7 @@ TOOLS = [
             "owner (whole team, several people, or nobody assigned), then one "
             "column per direct report in OUTLOOK_TASKS_TEAM order, with the "
             "printed date in the header. YOU supply the tasks, already gathered "
-            "from the Confluence task page and the user's sent mail and "
+            "from the Confluence task page and outlook_list_task_emails and "
             "de-duplicated, with done items left out; the server sorts each "
             "column by due date, marks overdue ones, puts a tick box on each, "
             "and reports the path, the per-column counts, any column that ran "
@@ -7163,8 +7325,7 @@ TOOLS = [
                     "type": "string",
                     "description": (
                         "Optional one-line note for the footer saying what was "
-                        "read, e.g. 'Confluence: Team Tasks · sent mail since "
-                        "14 Sep'."
+                        "read, e.g. 'Confluence: Team Tasks · flagged emails'."
                     ),
                 },
                 "filename": {
@@ -7528,6 +7689,7 @@ TOOL_DISPATCH = {
     "outlook_get_calendar": tool_get_calendar,
     "outlook_print_calendar": tool_print_calendar,
     "outlook_get_task_team": tool_get_task_team,
+    "outlook_list_task_emails": tool_list_task_emails,
     "outlook_print_team_tasks": tool_print_team_tasks,
     "outlook_list_sent_emails": tool_list_sent_emails,
     "outlook_search_recent": tool_search_recent,
@@ -7868,9 +8030,9 @@ def run_check():
             ", ".join(_tasks_column_label(label, spec)
                       for label, spec in _TASKS_TEAM)
             or "not set (OUTLOOK_TASKS_TEAM) - columns come from the task names"))
-        log("Task sheet sources  : Confluence page {0}; sent mail, last {1} "
-            "days".format(_TASKS_PAGE or "not set (OUTLOOK_TASKS_PAGE)",
-                          _TASKS_EMAIL_DAYS))
+        log("Task sheet sources  : Confluence page {0}; flagged emails you "
+            "sent, in the Inbox, with a due date".format(
+                _TASKS_PAGE or "not set (OUTLOOK_TASKS_PAGE)"))
         if KB_DIR:
             log("KB save folder      : {0} ({1})".format(
                 KB_DIR,
@@ -7900,7 +8062,7 @@ def run_check():
 
 def main():
     global KB_DIR, KB_AUTOSAVE, PDF_DIR, _CATEGORY_COLOURS, _HIDDEN_CATEGORIES
-    global _CALENDAR_TEAM, _TASKS_TEAM, _TASKS_PAGE, _TASKS_EMAIL_DAYS
+    global _CALENDAR_TEAM, _TASKS_TEAM, _TASKS_PAGE
     global CALENDAR_DAY_START_HOUR, CALENDAR_DAY_END_HOUR
     global PLANNER_CONTENT_FRACTION
     global _MEETING_START_HOUR, _MEETING_END_HOUR, _GAL_SCAN_CAP, _ALLOW_DRAFTS
@@ -8012,7 +8174,7 @@ def main():
 
     # The team task sheet: direct reports (replacing the file's list, for the
     # same reason as above - it is an ordered set of columns), the Confluence
-    # page that collates their tasks, and how far back to read sent mail.
+    # page that collates their tasks.
     tasks_raw = env("OUTLOOK_TASKS_TEAM")
     if tasks_raw is None:
         tasks_raw = ";".join(str(entry) for entry in TASKS_TEAM)
@@ -8023,17 +8185,6 @@ def main():
         log("Task sheet columns: {0}.".format(", ".join(
             _tasks_column_label(label, spec) for label, spec in _TASKS_TEAM)))
     _TASKS_PAGE = env("OUTLOOK_TASKS_PAGE") or _one_line(TASKS_CONFLUENCE_PAGE)
-    days_raw = env("OUTLOOK_TASKS_EMAIL_DAYS")
-    if days_raw is not None:
-        try:
-            days = int(days_raw.strip())
-            if not 1 <= days <= 365:
-                raise ValueError
-            _TASKS_EMAIL_DAYS = days
-        except ValueError:
-            log("WARNING: OUTLOOK_TASKS_EMAIL_DAYS='{0}' is not a whole number "
-                "of days from 1 to 365; keeping {1}.".format(
-                    days_raw, _TASKS_EMAIL_DAYS))
 
     # Working-day window for the printed timeline, e.g. OUTLOOK_CALENDAR_HOURS="7-19".
     hours_raw = env("OUTLOOK_CALENDAR_HOURS")
