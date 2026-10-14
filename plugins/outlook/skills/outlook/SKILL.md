@@ -25,7 +25,7 @@ printing.
 | `outlook_search_recent` | Search across Inbox/Sent/Archive in a date range (per-call `folders` override) |
 | `outlook_list_sent_emails` | What the user sent in a date range |
 | `outlook_get_calendar` | Calendar events in a date range (recurring expanded) |
-| `outlook_print_calendar` | A **printable** PDF day planner for ONE day |
+| `outlook_print_calendar` | A **printable** PDF day planner for ONE day, with colleagues on the back when `OUTLOOK_CALENDAR_TEAM` is set |
 | `outlook_list_folders` | Real folder names across all stores |
 | `outlook_find_people` | Fuzzy-find a person or room in the directory — see `meeting-scheduler` |
 | `outlook_suggest_meeting_times` | When everyone is free — see `meeting-scheduler` |
@@ -92,12 +92,28 @@ line from the tool's reply** rather than assuming a fifth. Tell the user the
 path, that it prints single-sided at 100% (it is still a full A4 landscape
 page), and how the reply says to fold it.
 
+**The team view on the back.** When the endpoint sets `OUTLOOK_CALENDAR_TEAM`,
+the PDF has a second page: up to four colleagues' calendars for the same day,
+side by side, each column headed with the person's name. The reply then says
+"Page 2 (the back)" and lists each person with a count, and the sheet must be
+printed **double-sided, flip on short edge** - tell the user exactly that
+(not "single-sided"), and that Adobe Reader picks the setting up from the PDF
+while other viewers need it set by hand. Pass the reply's per-person notes on
+when one says "free/busy only", "NOT FOUND" or "neither ... could be read":
+those are things the user can fix (share the calendar, correct the entry).
+The reply gives counts, never colleagues' subjects - do not try to fill them
+in from `outlook_get_calendar`, which only reads the user's own calendar
+anyway. "Just mine" / "no team page" → `include_team: false`. If the user asks
+for a team page and the reply says `OUTLOOK_CALENDAR_TEAM` is not set, tell
+them to set it (semicolon-separated, `Name=address`, up to four) and restart.
+
 | They say | Call |
 |---|---|
 | "Print today's calendar" | `date: "today"` |
 | "Tomorrow's planner" | `date: "tomorrow"` |
 | "A planner for Friday" | `date: "+N"` if you can count the days, else `YYYY-MM-DD` |
 | "Show me the next week down the side" | `lookahead_days: 6` |
+| "Just my calendar, no team page" | `include_team: false` |
 
 - **One day per sheet.** There is no week or month layout; for a range, print
   each day or use `outlook_get_calendar` and answer in chat instead.

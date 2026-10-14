@@ -208,7 +208,7 @@ from memory.
 | Project, sprint or release status | `jira_my_issues`, `jira_project_status`, `jira_search`, `jira_list_versions` |
 | Raise, update, comment on or move a ticket | `jira_create_issue`, `jira_update_issue`, `jira_add_comment`, `jira_transition_issue`. Only when I ask |
 | Read mail and the diary | `outlook_search_recent`, `outlook_get_email`, `outlook_get_calendar` |
-| Print a day's diary to take with me | `outlook_print_calendar` |
+| Print a day's diary to take with me | `outlook_print_calendar` (with my team's calendars on the back if `OUTLOOK_CALENDAR_TEAM` is set: print double-sided, flip on short edge) |
 | Find someone or a room in the directory | `outlook_find_people` |
 | Find a time that suits everyone | `outlook_suggest_meeting_times` |
 | Set up a meeting for me to send | `outlook_draft_meeting` - it saves an UNSENT draft; I press Send |

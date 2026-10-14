@@ -7,7 +7,7 @@ in Outlook's own compose window, and a printable PDF day planner for any day.
 
 | | |
 |---|---|
-| **Server** | `outlook.py` v11.1.0 |
+| **Server** | `outlook.py` v11.2.0 |
 | **pip install** | `pywin32` |
 | **Platform** | **Windows only** — requires classic Win32 Outlook (not "New Outlook") installed, running, and logged into a profile |
 | **Sends** | **never.** Not an email, not a reply, not a meeting invitation. It cannot accept, move or delete anything either |
@@ -47,6 +47,7 @@ touch, all optional:
 | `OUTLOOK_CALENDAR_PAGE_FILL` | No | How much of the sheet's height the planner uses: `0.8` (default), `80`, or `off` for the whole sheet |
 | `OUTLOOK_CALENDAR_COLOURS` | No | Usually leave unset — the planner already uses your Outlook category colours. Only overrules one, e.g. `Leadership=purple` |
 | `OUTLOOK_CALENDAR_HIDE_CATEGORIES` | No | Comma-separated Outlook categories to leave off the printed planner, e.g. `Birthdays` |
+| `OUTLOOK_CALENDAR_TEAM` | No | Up to four colleagues' calendars printed on the **back** of the planner, semicolon-separated, e.g. `Jane Smith=jane.smith@agency.gov.au; bob.jones@agency.gov.au` |
 | `OUTLOOK_MEETING_HOURS` | No | Hours a meeting may be *suggested* in, e.g. `8-18` (default `9-17`) |
 | `OUTLOOK_ALLOW_DRAFTS` | No | `false` removes `outlook_draft_meeting` and `outlook_draft_email`, leaving the mailbox read-only |
 | `OUTLOOK_GAL_SCAN_CAP` | No | Entries one fuzzy name search may read (default `20000`) |
@@ -206,7 +207,9 @@ Ask for "today's printable calendar", "tomorrow's planner" or "an agenda I can
 take into the meeting" and `outlook_print_calendar` writes an **A4 landscape
 PDF** into `H:\Eva\documents\pdf`. Print it single-sided and fold it in half:
 the day itself runs down the left panel on an hour-by-hour timeline, the
-following days are summarised on the right.
+following days are summarised on the right. With
+[a team view](#the-team-view-on-the-back) configured it has a second page for
+the back, and prints **double-sided, flip on short edge** instead.
 
 The sheet prints on its **top four fifths**. The bottom fifth comes out blank
 with a hairline to fold against, so you can fold it up behind the page and the
@@ -283,6 +286,61 @@ because the model's idea of today was stale.
   outright, because its whole output goes to the model.
 
 Re-printing a day overwrites that day's file rather than piling up copies.
+
+### The team view on the back
+
+Set `OUTLOOK_CALENDAR_TEAM` to up to four people - your manager and
+colleagues - and the PDF gets a **second page**: their calendars for the same
+day as side-by-side columns, each with the person's name at the top, in the
+same design as the front (header, hour grid, blocks, chips, footer) over one
+shared timeline, so a time reads straight across every column.
+
+```json
+"OUTLOOK_CALENDAR_TEAM": "Jane Smith=jane.smith@agency.gov.au; Bob Jones=bob.jones@agency.gov.au; priya.k@agency.gov.au; Smith, Alex"
+```
+
+- Entries are separated by **semicolons**, because a directory name like
+  `Smith, Alex` has a comma in it. Commas also work between plain email
+  addresses.
+- `Label=` is optional and is the name printed over the column. Without it
+  the directory's display name is used, with `Smith, Jane` turned round to
+  `Jane Smith`.
+- Fewer than four makes fewer, wider columns; more than four are cut to the
+  first four with a warning.
+- Ask for the front alone ("just my calendar") and Claude passes
+  `include_team: false`.
+
+**Print it double-sided, flip on short edge.** The PDF carries that as a
+print-dialog preset, which Adobe Reader and Acrobat honour; other viewers
+(Edge, a browser) may ignore it, so check the setting there. Flipping on the
+short edge keeps the top of the back at the top of the front.
+
+**It sits above the fold.** When the blank bottom strip of the front is folded
+up behind the page, it lies across the back from 60% to 80% of the sheet (at
+the default page fill of 0.8). So the team view is laid out in the **top 60%**
+of the back, where the folded strip can't cover it. With
+`OUTLOOK_CALENDAR_PAGE_FILL=off` it uses the whole back; it never shrinks below
+45% of the sheet, and at a page fill that small the reply says to unfold the
+strip to read the bottom of it.
+
+**Each column falls back on its own:**
+
+| What you can see of their calendar | What the column shows |
+|---|---|
+| Their calendar is shared with you, or you're a delegate | Subjects, locations and colours, exactly like the front. Recurring meetings are included, and so is something still running from an earlier day (a fortnight's leave booked as one item). Anything running past either end of the day is an all-day chip. A **private** appointment prints as "Private appointment", with no location |
+| Free/busy only | Blocks saying **Busy**, **Tentative** (hollow), **Out of office** (purple) or **Working elsewhere**, and nothing about what. The heading says "free/busy only". This is also used when the calendar opens but shows nothing while free/busy shows them booked, which is what free/busy-only permission can look like |
+| Neither | "Calendar not available" |
+| The name doesn't resolve | "Not found in the directory" |
+
+One person failing never stops the rest of the sheet printing. The tool's
+reply lists the team view as **counts per person, never subjects** - these
+are other people's diaries, and what's in them is for the sheet on your desk,
+not for the AI. Hidden categories (`OUTLOOK_CALENDAR_HIDE_CATEGORIES`) are left
+off the back too.
+
+Run `python outlook.py --check` after setting it: for each person it says
+whether their calendar or only their free/busy is readable, and how many items
+today has.
 
 ### Category colours
 
@@ -479,6 +537,7 @@ only when an endpoint's layout really differs.
 | `OUTLOOK_CALENDAR_PAGE_FILL` | How much of the sheet's **height** the printed planner uses: a fraction (`0.8`, the default), a percentage (`80` or `80%`), or `off` (`none`, `no`, `false`, `disabled`) for the whole sheet with nothing left to fold. Accepts `0.5` to `1.0`; anything else is refused with a warning and the default kept |
 | `OUTLOOK_CALENDAR_COLOURS` | Overrules the colour Outlook already holds against a category, e.g. `Leadership=purple,Client=green` — see [Category colours](#category-colours). An unknown colour name is ignored with a warning |
 | `OUTLOOK_CALENDAR_HIDE_CATEGORIES` | Comma-separated Outlook categories to leave **off** the printed planner, e.g. `Birthdays,Public Holidays`. Case-insensitive, whole category name. Printing only — `outlook_get_calendar` is unaffected |
+| `OUTLOOK_CALENDAR_TEAM` | Up to four colleagues' calendars printed on the **back** of the planner, e.g. `Jane Smith=jane.smith@agency.gov.au; bob.jones@agency.gov.au`. Semicolon-separated; `Label=` is optional. Unset means a one-page planner — see [The team view on the back](#the-team-view-on-the-back) |
 | `OUTLOOK_KB_AUTOSAVE=true` | Save **every** email read, without being asked (default false). Needs a save folder to be on |
 | `OUTLOOK_SEARCH_FOLDERS` | Comma-separated folder names used as the **default** set for `outlook_search_recent`, overriding the `SEARCH_ALL_FOLDERS` value in the file (e.g. `"Inbox,Sent Items,Archive"`). A per-call `folders` argument still takes priority |
 | `OUTLOOK_BLACKLIST_FILE` | Path to a file of extra content-blacklist terms (one per line, `#` for comments), added to the built-in list |
@@ -533,6 +592,8 @@ top of `outlook.py` directly (there are no CLI flags/env vars for these):
 | `CALENDAR_LOOKAHEAD_DAYS` | How many following days the planner's right-hand panel lists by default (4); a per-call `lookahead_days` still takes priority |
 | `CALENDAR_CATEGORY_COLOURS` | Category → colour overrides in the file itself, merged with (and beaten by) `OUTLOOK_CALENDAR_COLOURS`. Both sit on top of the colours read from Outlook |
 | `CALENDAR_HIDDEN_CATEGORIES` | Categories left off the printed planner, in the file itself. Added to `OUTLOOK_CALENDAR_HIDE_CATEGORIES` |
+| `CALENDAR_TEAM` | The team view's people, in the file itself. `OUTLOOK_CALENDAR_TEAM` **replaces** it rather than adding to it |
+| `TEAM_MAX_COLUMNS` / `TEAM_LOOKBACK_DAYS` / `TEAM_MIN_CONTENT_FRACTION` | The team view's limits: four columns, 31 days back for something still running, and the back page never smaller than 45% of the sheet |
 | `PLANNER_COLOURS` / `OL_CATEGORY_COLOURS` | The bold palette, and which Outlook category colour maps to which name |
 | `PLANNER_TITLE_PT` | The one type size every event subject on the page is set at (7pt) |
 | `PLANNER_CONTENT_FRACTION` | Default for how much of the sheet's height the planner prints on (`0.8` — the top four fifths, leaving the bottom fifth blank to fold up). `OUTLOOK_CALENDAR_PAGE_FILL` overrides it, so the file rarely needs editing |
@@ -565,6 +626,7 @@ or delete — `Send()` is never called anywhere in the file, and
 9. "What are my actual Outlook folder names, so I can point the search at the right archive?" → `outlook_list_folders`
 10. "Give me today's calendar to print." → `outlook_print_calendar` — an A4 landscape day planner in `H:\Eva\documents\pdf`
 11. "Print tomorrow's planner with the whole week down the side." → `outlook_print_calendar` with `date: "tomorrow"`, `lookahead_days: 6`
+11a. "Print today's calendar, just mine, no team page." → `outlook_print_calendar` with `include_team: false`
 12. "Who's Josh Smith in the directory?" → `outlook_find_people` — returns the `invite_as` address the scheduling tools need
 13. "Is there a room called R5-3-84?" → `outlook_find_people` with `kind: "room"`
 14. "Find a suitable time with Josh Smith in Room R5-3-84." → `outlook_find_people` twice, then `outlook_suggest_meeting_times`

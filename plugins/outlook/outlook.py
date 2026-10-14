@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-outlook.py (v11.1.0)
+outlook.py (v11.2.0)
 ======================
 
 A single-file MCP (Model Context Protocol) server giving an LLM near-read-only
@@ -54,7 +54,9 @@ TOOLS EXPOSED (read-only on the mailbox, apart from the two draft tools)
                                Recurring series are gathered two ways and merged
                                (see RECURRING SERIES below), so a series does not
                                go missing when one method cannot see it.
-- outlook_print_calendar     : a PRINTABLE PDF day planner for one day - see below
+- outlook_print_calendar     : a PRINTABLE PDF day planner for one day, with an
+                               optional team view of up to four colleagues on
+                               the back (v11.2.0) - see below
 - outlook_list_sent_emails   : messages you SENT, in a date range (e.g. "what did I do last week")
 - outlook_search_recent      : all mail across Inbox/Archive/Sent in a date range (configurable)
 - outlook_list_folders       : list every mail folder across all stores (to configure the above)
@@ -318,6 +320,59 @@ What ends up on the page:
   Friday planner shows the week ahead rather than two blank weekend panels.
   Pass skip_empty_days=false for strictly consecutive days.
 
+TEAM VIEW ON THE BACK (v11.2.0). Set OUTLOOK_CALENDAR_TEAM to up to four
+people - your manager and colleagues - and the PDF gets a SECOND page: their
+calendars for the same day as side-by-side columns, each with the person's
+name at the top, in the same design as the front (same header, hour grid,
+blocks, chips and footer, over one shared timeline so a time reads straight
+across). It is meant for the back of the sheet:
+
+    PRINT DOUBLE-SIDED, FLIP ON SHORT EDGE.
+
+The PDF carries that as a print-dialog preset (the PDF 1.7 /Duplex viewer
+preference, DuplexFlipShortEdge). Adobe Reader and Acrobat honour it; other
+viewers may not, so the tool's reply says to check the setting. Flipping on
+the short edge keeps the top of the back at the top of the front, so the
+front's blank bottom strip, once folded up behind the page, lies across the
+back from (2 x page fill - 1) down to the fold - 60% to 80% of the sheet at
+the default 0.8. The team view is therefore laid out in the top 60% of the
+back, where the folded strip cannot cover it (the whole back when
+OUTLOOK_CALENDAR_PAGE_FILL=off; never less than 45%, below which part of it is
+under the strip until it is unfolded).
+
+    OUTLOOK_CALENDAR_TEAM="Jane Smith=jane.smith@agency.gov.au; Bob=bob.jones@agency.gov.au"
+
+Entries are separated by semicolons (a directory name like "Smith, Jane" has
+a comma in it); commas also work between plain email addresses. "Label=" is
+optional and is the name printed over the column; without it the directory's
+display name is used, "Smith, Jane" turned round to "Jane Smith". Fewer than
+four entries make fewer, wider columns; more than four are cut to four with a
+warning. Pass include_team=false for the front page alone.
+
+How each person's column is read, independently of the others:
+
+1. Their calendar itself (Namespace.GetSharedDefaultFolder), when they have
+   shared it with you or you are a delegate: subjects, locations, colours,
+   tentative drawn hollow - the same reading as your own calendar, recurring
+   series included. An appointment that started up to TEAM_LOOKBACK_DAYS
+   earlier and is still running (a fortnight's leave booked as one item) is
+   included, and anything running past either end of the day is an all-day
+   chip rather than stretching the timeline to midnight. A PRIVATE
+   appointment prints as "Private appointment", with no location.
+2. Their FREE/BUSY, when the calendar cannot be opened - or opens but shows
+   nothing while free/busy shows them booked, which is what free/busy-only
+   permission can look like. Blocks then say Busy, Tentative (hollow), Out
+   of office or Working elsewhere, and nothing about what. The column
+   heading says "free/busy only".
+3. Neither: the column prints "Calendar not available"; a name that does not
+   resolve prints "Not found in the directory". One person failing never
+   stops the rest of the sheet printing.
+
+The tool's reply reports the team view as COUNTS per person, never subjects:
+those are other people's diaries, and their content is for the sheet on your
+desk rather than for the AI. Run --check to see, per person, whether their
+calendar or only their free/busy is readable.
+
 THE BLACKLIST AND THE PRINTED PAGE. Every event is printed, blacklisted or
 not. The PDF is drawn here and written to this machine's own disk; a planner
 missing the meetings that matter most is not worth carrying, and the blacklist
@@ -385,11 +440,12 @@ just below this docstring. Edit them there; nothing else needs changing.
 
 3b. Day-planner defaults (CALENDAR_DAY_START_HOUR / CALENDAR_DAY_END_HOUR /
     CALENDAR_LOOKAHEAD_DAYS / CALENDAR_CATEGORY_COLOURS /
-    CALENDAR_HIDDEN_CATEGORIES /
+    CALENDAR_HIDDEN_CATEGORIES / CALENDAR_TEAM /
     PLANNER_CONTENT_FRACTION, which OUTLOOK_CALENDAR_PAGE_FILL overrides)
    The working day the printed timeline covers, how many following days the
    right-hand panel lists, the Outlook category -> colour map, the categories
-   left off the page altogether, and how much of
+   left off the page altogether, the colleagues printed on the back, and how
+   much of
    the sheet's height the page uses. All of them have an environment variable
    so a plugin install never needs the file edited.
 
@@ -520,6 +576,14 @@ Server-specific settings, all optional and all environment variables:
                                 case-insensitively against the whole category
                                 name. Printing only - outlook_get_calendar is
                                 unaffected.
+    OUTLOOK_CALENDAR_TEAM       up to four colleagues' calendars printed on
+                                the BACK of the planner (double-sided, flip
+                                on short edge), e.g. "Jane Smith=jane.smith@
+                                agency.gov.au; bob.jones@agency.gov.au".
+                                Semicolon-separated; "Label=" is the name
+                                printed over the column and is optional.
+                                Unset means a one-page planner. See TEAM VIEW
+                                ON THE BACK above.
     OUTLOOK_SEARCH_FOLDERS      comma-separated folder names for
                                 outlook_search_recent, e.g.
                                 "Inbox,Sent Items,Archive".
@@ -574,6 +638,12 @@ USAGE / TESTING
 
   Connects to Outlook and prints mailbox diagnostics, folder paths, blacklist
   status and the recurring-series report described above to stderr, then exits.
+  With OUTLOOK_CALENDAR_TEAM set it also reports, per person, whether their
+  calendar or only their free/busy can be read, and today's item count.
+- Testing the team view: set OUTLOOK_CALENDAR_TEAM, run --check and confirm
+  each person resolves, then ask for "today's printable calendar" and print
+  the PDF double-sided, flip on short edge. Hold the sheet up to the light:
+  the back's header should sit behind the front's header, the right way up.
 
 IMPORTANT (stdio-on-Windows pitfalls)
 -------------------------------------
@@ -585,7 +655,7 @@ IMPORTANT (stdio-on-Windows pitfalls)
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "11.1.0"
+__version__ = "11.2.0"
 
 import os
 import re
@@ -702,6 +772,21 @@ CALENDAR_CATEGORY_COLOURS = {
 #        Only the printed planner honours this - outlook_get_calendar still
 #        reports everything the blacklist allows.
 CALENDAR_HIDDEN_CATEGORIES = [
+]
+
+# --- 5d. Team view on the BACK of the planner (new in v11.2.0).
+#        Up to four other people's calendars - your manager and colleagues -
+#        printed as four side-by-side day columns on a second page, so the
+#        planner prints double-sided (flip on short edge) with your own day on
+#        the front and theirs on the back. Each entry is an email address or
+#        a directory name, optionally with the name to print over its column
+#        in front of an "=":
+#            ["Jane Smith=jane.smith@agency.gov.au", "bob.jones@agency.gov.au"]
+#        Without a label the directory's display name is printed ("Smith,
+#        Jane" is turned round to "Jane Smith"). Empty means no back page.
+#        OUTLOOK_CALENDAR_TEAM REPLACES this list (it does not add to it):
+#        semicolon-separated entries of the same form.
+CALENDAR_TEAM = [
 ]
 
 # --- 6. KB_AUTOSAVE. Whether reading an email saves it WITHOUT being asked.
@@ -867,6 +952,47 @@ def parse_category_list(raw):
                if part.strip())
 
 
+def parse_team(raw):
+    """
+    Parse OUTLOOK_CALENDAR_TEAM into a list of (label, spec) pairs.
+
+    Entries are separated by semicolons, the separator Outlook itself uses for
+    a list of people, because a directory name such as "Smith, Jane" has a
+    comma IN it. Commas are still accepted between entries when every piece
+    holds an "@" (a plain list of email addresses), since that is how most
+    people will type one. Each entry is "Label=address" or just "address";
+    the label is the name printed over the column. More than
+    TEAM_MAX_COLUMNS entries are cut to that many with a warning - the page
+    has room for four columns and no more.
+    """
+    entries = []
+    for chunk in (raw or "").split(";"):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        parts = [part.strip() for part in chunk.split(",") if part.strip()]
+        if len(parts) > 1 and all("@" in part for part in parts):
+            pieces = parts
+        else:
+            pieces = [chunk]
+        for piece in pieces:
+            label, sep, spec = piece.partition("=")
+            if not sep:
+                label, spec = "", piece
+            label, spec = _one_line(label), _one_line(spec)
+            if not spec:
+                log("WARNING: ignoring team calendar entry '{0}' - there is "
+                    "nothing after the '='.".format(piece))
+                continue
+            entries.append((label, spec))
+    if len(entries) > TEAM_MAX_COLUMNS:
+        log("WARNING: {0} team calendars are configured but the back page "
+            "holds {1}; printing the first {1} only.".format(
+                len(entries), TEAM_MAX_COLUMNS))
+        entries = entries[:TEAM_MAX_COLUMNS]
+    return entries
+
+
 def parse_page_fill(raw):
     """
     OUTLOOK_CALENDAR_PAGE_FILL -> the fraction of the sheet's height to use.
@@ -949,6 +1075,10 @@ _CATEGORY_COLOURS = {}
 # Lower-cased Outlook categories left off the printed planner, from
 # CALENDAR_HIDDEN_CATEGORIES and OUTLOOK_CALENDAR_HIDE_CATEGORIES.
 _HIDDEN_CATEGORIES = set()
+
+# The (label, spec) pairs printed as columns on the back of the planner, from
+# CALENDAR_TEAM or OUTLOOK_CALENDAR_TEAM. Empty means a one-page planner.
+_CALENDAR_TEAM = []
 
 # Effective default folder set for outlook_search_recent. Initialised from
 # SEARCH_ALL_FOLDERS; may be replaced by OUTLOOK_SEARCH_FOLDERS. A per-call
@@ -1962,7 +2092,8 @@ def _expand_recurring_occurrences(item, start_dt, end_dt, report=None):
     return list(found.items())
 
 
-def _expanded_occurrences(start_dt, end_dt, report=None):
+def _expanded_occurrences(start_dt, end_dt, report=None, folder=None,
+                          overlap_from=None):
     """
     Ask OUTLOOK to expand every recurring series across the window.
 
@@ -1983,9 +2114,16 @@ def _expanded_occurrences(start_dt, end_dt, report=None):
     Still NO locale-sensitive date strings: "[Start]" is a property name, not a
     formatted date, so this does not reintroduce the Restrict() fault that makes
     filtering depend on regional settings. Returns (naive start, item) pairs.
+
+    `folder` is the calendar to read (your own when None). With
+    `overlap_from`, an item that STARTED between then and start_dt is kept too
+    when it is still running at start_dt - a week of leave booked as one
+    appointment, say. Those items are walked past anyway, so the only extra
+    cost is reading End on the few that start inside that lookback.
     """
-    ns = get_namespace()
-    items = ns.GetDefaultFolder(OL_FOLDER_CALENDAR).Items
+    if folder is None:
+        folder = get_namespace().GetDefaultFolder(OL_FOLDER_CALENDAR)
+    items = folder.Items
     try:
         # Order matters: Outlook requires the ascending Start sort to be in
         # place before it will expand recurrences into the collection.
@@ -2017,6 +2155,9 @@ def _expanded_occurrences(start_dt, end_dt, report=None):
                 break  # sorted ascending: everything from here is later still
             if item_start >= start_dt:
                 found.append((item_start, item))
+            elif overlap_from is not None and item_start >= overlap_from:
+                if _still_running(item, start_dt):
+                    found.append((item_start, item))
 
         try:
             item = items.GetNext()
@@ -2032,6 +2173,15 @@ def _expanded_occurrences(start_dt, end_dt, report=None):
     return found
 
 
+def _still_running(item, when):
+    """True when an appointment's End is after `when` (False if unreadable)."""
+    try:
+        item_end = _com_to_naive(item.End)
+    except Exception:
+        return False
+    return item_end is not None and item_end > when
+
+
 def _occurrence_key(start, item):
     """Identity of one occurrence, for merging the two expansion passes."""
     try:
@@ -2041,7 +2191,7 @@ def _occurrence_key(start, item):
     return (start, entry_id)
 
 
-def scan_calendar(start_dt, end_dt):
+def scan_calendar(start_dt, end_dt, folder=None, overlap_from=None):
     """
     Walk the whole calendar folder and return every occurrence inside a window.
 
@@ -2063,10 +2213,16 @@ def scan_calendar(start_dt, end_dt):
     appointments, silently returning 0 results on some machines. Instead the
     whole collection is walked by index (Item(i) is more reliable than COM
     enumeration) and filtered in Python, which is locale-independent.
+
+    `folder` is the calendar to scan - your own when None, or a colleague's
+    shared calendar for the team view. `overlap_from` also keeps a single
+    (non-recurring) appointment that started between then and start_dt and
+    is still running at start_dt, so a multi-day block of leave shows on the
+    days after its first. See _expanded_occurrences.
     """
-    ns = get_namespace()
-    cal = ns.GetDefaultFolder(OL_FOLDER_CALENDAR)
-    items = cal.Items
+    if folder is None:
+        folder = get_namespace().GetDefaultFolder(OL_FOLDER_CALENDAR)
+    items = folder.Items
     total = int(items.Count)  # raises if the folder cannot be read; caller reports
 
     matches = []      # (naive start datetime, appointment COM object)
@@ -2084,7 +2240,9 @@ def scan_calendar(start_dt, end_dt):
 
     # Pass 1: Outlook expands the recurring series itself.
     expansion = {}
-    for occ_start, occ in _expanded_occurrences(start_dt, end_dt, expansion):
+    for occ_start, occ in _expanded_occurrences(start_dt, end_dt, expansion,
+                                                folder=folder,
+                                                overlap_from=overlap_from):
         collect(occ_start, occ)
         if len(matches) >= CALENDAR_HARD_CAP:
             break
@@ -2117,6 +2275,9 @@ def scan_calendar(start_dt, end_dt):
                 collect(occ_start, occ)
         else:
             matched = item_start is not None and start_dt <= item_start <= end_dt
+            if (not matched and overlap_from is not None and item_start is not None
+                    and overlap_from <= item_start < start_dt):
+                matched = _still_running(item, start_dt)
             if matched:
                 collect(item_start, item)
 
@@ -2341,11 +2502,18 @@ def _pdf_escape(text):
 
 class PdfCanvas:
     """
-    A single-page PDF drawn from rectangles, rules and lines of text.
+    A PDF of one or more same-sized pages, drawn from rectangles, rules and
+    lines of text.
 
     Coordinates are MILLIMETRES FROM THE TOP-LEFT corner, because that is how a
     page design is described; the PDF's own bottom-left origin in points is an
     internal detail of this class. Font sizes are in points, as in any layout.
+    Drawing goes onto the latest page; new_page() starts another.
+
+    `duplex_short_edge` asks the reader's print dialog to default to
+    double-sided, flipped on the short edge (the PDF 1.7 /Duplex viewer
+    preference). It is a PRESET, not a command: Adobe Reader and Acrobat
+    honour it, other viewers may ignore it and print with their own setting.
     """
 
     def __init__(self, width_mm, height_mm, title="", author=""):
@@ -2353,7 +2521,14 @@ class PdfCanvas:
         self.height_mm = float(height_mm)
         self.title = title
         self.author = author
+        self.duplex_short_edge = False
+        self._pages = [[]]
+        self._ops = self._pages[0]
+
+    def new_page(self):
+        """Start a fresh page; everything drawn from now on lands on it."""
         self._ops = []
+        self._pages.append(self._ops)
 
     # -- internals ----------------------------------------------------------
 
@@ -2549,8 +2724,7 @@ class PdfCanvas:
     # -- output -------------------------------------------------------------
 
     def to_bytes(self):
-        """Serialise the page into a complete PDF file."""
-        content = zlib.compress(b"\n".join(self._ops))
+        """Serialise every page into a complete PDF file."""
         stamp = datetime.datetime.now()
         try:
             offset = stamp.astimezone().utcoffset()
@@ -2564,16 +2738,20 @@ class PdfCanvas:
         def literal(value):
             return b"(" + _pdf_escape(_pdf_sanitise(_one_line(value))) + b")"
 
+        # Objects 1-5 are fixed; each page then takes two more (the page and
+        # its content stream), so page i is object 6 + 2i.
+        first_page = 6
+        kids = " ".join("{0} 0 R".format(first_page + 2 * index)
+                        for index in range(len(self._pages)))
+        catalog = b"<< /Type /Catalog /Pages 2 0 R"
+        if self.duplex_short_edge:
+            catalog += b" /ViewerPreferences << /Duplex /DuplexFlipShortEdge >>"
+        catalog += b" >>"
+
         objects = [
-            b"<< /Type /Catalog /Pages 2 0 R >>",
-            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-            ("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {0} {1}] "
-             "/Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> "
-             "/Contents 4 0 R >>").format(
-                self._num(self.width_mm * PDF_MM),
-                self._num(self.height_mm * PDF_MM)).encode("ascii"),
-            (b"<< /Length " + str(len(content)).encode("ascii") +
-             b" /Filter /FlateDecode >>\nstream\n" + content + b"\nendstream"),
+            catalog,
+            "<< /Type /Pages /Kids [{0}] /Count {1} >>".format(
+                kids, len(self._pages)).encode("ascii"),
             b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
             b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>",
             (b"<< /Title " + literal(self.title) +
@@ -2582,8 +2760,23 @@ class PdfCanvas:
              b" /Producer (outlook-mcp " + __version__.encode("ascii") + b")" +
              b" /CreationDate (" + created.encode("ascii") + b") >>"),
         ]
+        for index, ops in enumerate(self._pages):
+            content = zlib.compress(b"\n".join(ops))
+            objects.append(
+                ("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {0} {1}] "
+                 "/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> "
+                 "/Contents {2} 0 R >>").format(
+                    self._num(self.width_mm * PDF_MM),
+                    self._num(self.height_mm * PDF_MM),
+                    first_page + 2 * index + 1).encode("ascii"))
+            objects.append(
+                b"<< /Length " + str(len(content)).encode("ascii") +
+                b" /Filter /FlateDecode >>\nstream\n" + content + b"\nendstream")
 
-        out = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+        # /Duplex is a PDF 1.7 viewer preference, so a file that carries it
+        # says 1.7; everything else here is plain 1.4.
+        version = b"1.7" if self.duplex_short_edge else b"1.4"
+        out = bytearray(b"%PDF-" + version + b"\n%\xe2\xe3\xcf\xd3\n")
         offsets = []
         for number, body in enumerate(objects, start=1):
             offsets.append(len(out))
@@ -2596,9 +2789,9 @@ class PdfCanvas:
         out += b"0000000000 65535 f \n"
         for position in offsets:
             out += "{0:010d} 00000 n \n".format(position).encode("ascii")
-        out += ("trailer\n<< /Size {0} /Root 1 0 R /Info {1} 0 R >>\n"
-                "startxref\n{2}\n%%EOF\n").format(
-                    len(objects) + 1, len(objects), xref_at).encode("ascii")
+        out += ("trailer\n<< /Size {0} /Root 1 0 R /Info 5 0 R >>\n"
+                "startxref\n{1}\n%%EOF\n").format(
+                    len(objects) + 1, xref_at).encode("ascii")
         return bytes(out)
 
 
@@ -3173,13 +3366,18 @@ def _draw_block(canvas, box):
 
 
 def render_day_planner(day, day_events, ahead, identity, hours,
-                       category_colours=None):
+                       category_colours=None, team=None):
     """
     Build the whole A4-landscape planner and return it as PDF bytes.
 
     `day_events` is today's list, `ahead` a list of (date, events) for the
     right-hand panel, `identity` the (name, address) the header and footer show,
     and `hours` the (first, last) hour the timeline covers.
+
+    `team`, when given, is the list of columns from _team_columns(): a SECOND
+    page is added with those calendars side by side for the same day, and the
+    PDF asks the print dialog for double-sided, flip on short edge, so the team
+    view lands on the back of the sheet.
 
     Every event given is drawn. Nothing is withheld from the page: the PDF is
     built here and written to the endpoint's own disk, so the content blacklist
@@ -3427,7 +3625,393 @@ def render_day_planner(day, day_events, ahead, identity, hours,
         canvas.line(pad_l, content_h, page_w - pad_r, content_h, _RULE, 0.4,
                     dash=[1.4, 2.6])
 
+    if team:
+        canvas.new_page()
+        canvas.duplex_short_edge = True
+        _draw_team_page(canvas, day, team, category_colours)
+
     return canvas.to_bytes()
+
+
+# ---------------------------------------------------------------------------
+# The team view - other people's calendars on the back of the planner
+# ---------------------------------------------------------------------------
+
+# The back page holds this many columns at most: four is what fits A4
+# landscape with a meeting subject still readable on each block.
+TEAM_MAX_COLUMNS = 4
+
+# How far back a colleague's calendar is searched for an appointment that is
+# still running on the day - a fortnight's leave booked as one item, say.
+TEAM_LOOKBACK_DAYS = 31
+
+# The back page never shrinks below this fraction of the sheet, however much
+# of the front is left blank to fold up (see team_page_fraction()).
+TEAM_MIN_CONTENT_FRACTION = 0.45
+
+# Outlook's OlSensitivity value for a private appointment.
+OL_SENSITIVITY_PRIVATE = 2
+
+# Free/busy digit -> (block subject, Outlook busy status, palette colour) for
+# a colleague whose calendar can only be seen as free/busy. Busy status drives
+# the block style exactly as it does for a real appointment: tentative is
+# drawn hollow. Out of office is purple because that is Outlook's own colour
+# for it.
+TEAM_FREE_BUSY_BLOCKS = {
+    "1": ("Tentative", 1, "steel"),
+    "2": ("Busy", 2, "steel"),
+    "3": ("Out of office", 3, "purple"),
+    "4": ("Working elsewhere", 4, "teal"),
+}
+
+
+def team_page_fraction():
+    """
+    How much of the sheet's HEIGHT the team page on the back may use.
+
+    The sheet prints double-sided and flips on the SHORT edge, so the top of
+    the back is the top of the front. When the blank bottom strip of the front
+    (1 - PLANNER_CONTENT_FRACTION of the sheet) is folded up behind the page,
+    it lies over the back from (2 x fill - 1) down to the fold - 60% to 80% at
+    the default 0.8. So the team view is laid out in the top (2 x fill - 1)
+    of the back, where the folded strip cannot cover it. With no strip at all
+    it takes the whole sheet. TEAM_MIN_CONTENT_FRACTION is the floor: a very
+    small page fill would otherwise leave the back nothing at all, and then
+    the bottom of the team view is under the strip until it is unfolded.
+    """
+    if PLANNER_CONTENT_FRACTION >= 1.0:
+        return 1.0
+    return max(TEAM_MIN_CONTENT_FRACTION, 2.0 * PLANNER_CONTENT_FRACTION - 1.0)
+
+
+def _person_label(name):
+    """
+    The name to print over a column, from a directory display name.
+
+    Enterprise directories file people as "Smith, Jane" or "Smith, Jane
+    (Branch)"; a column header reads better as "Jane Smith". Anything not in
+    that shape is printed as it is.
+    """
+    name = _one_line(name)
+    match = re.fullmatch(r"([^,()]+),\s*([^,()]+?)\s*(\([^()]*\))?", name)
+    if match:
+        return "{0} {1}".format(match.group(2).strip(), match.group(1).strip())
+    return name
+
+
+def _free_busy_events(free_busy, day):
+    """
+    Turn one day of a free/busy string into blocks the planner can draw.
+
+    Used for a colleague whose calendar cannot be opened, only seen as
+    free/busy: the blocks say when they are busy, tentative, away or working
+    elsewhere, with nothing about what. Runs of the same state are merged
+    into one block. A run covering the whole day becomes an all-day chip, so
+    a day out of office does not stretch the timeline to midnight.
+    """
+    slots = (24 * 60) // FREEBUSY_MIN_PER_CHAR
+    digits = (free_busy or "")[:slots]
+    midnight = datetime.datetime.combine(day, datetime.time(0, 0))
+    events = []
+    index = 0
+    while index < len(digits):
+        state = digits[index]
+        end = index
+        while end < len(digits) and digits[end] == state:
+            end += 1
+        block = TEAM_FREE_BUSY_BLOCKS.get(state)
+        if block:
+            subject, busy, colour = block
+            events.append({
+                "start": midnight + datetime.timedelta(
+                    minutes=index * FREEBUSY_MIN_PER_CHAR),
+                "end": midnight + datetime.timedelta(
+                    minutes=end * FREEBUSY_MIN_PER_CHAR),
+                "all_day": index == 0 and end >= slots,
+                "subject": subject,
+                "location": "",
+                "organiser": "",
+                "categories": [],
+                "busy": busy,
+                "people": [],
+                "external": False,
+                "recurring": False,
+                "colour": colour,
+            })
+        index = end
+    return events
+
+
+def _collect_team_events(folder, day, identity):
+    """
+    One colleague's appointments on `day`, read from their shared calendar.
+
+    The same reading as your own calendar (both recurrence passes), plus
+    anything that started up to TEAM_LOOKBACK_DAYS earlier and is still
+    running, so a week of leave is on its fourth day too. A timed appointment
+    that runs past either end of the day is shown as an all-day chip rather
+    than stretching the shared timeline to midnight. A PRIVATE appointment
+    prints as "Private appointment" with no location, whatever the access
+    allows: it was marked private for a reason, and this sheet gets left on
+    a desk. Hidden categories are dropped exactly as on the front. Raises
+    when the folder cannot be read, which the caller takes as "fall back to
+    free/busy".
+    """
+    start_dt = datetime.datetime.combine(day, datetime.time(0, 0))
+    end_dt = datetime.datetime.combine(day, datetime.time(23, 59, 59))
+    day_end = start_dt + datetime.timedelta(days=1)
+    matches, _total, _tail = scan_calendar(
+        start_dt, end_dt, folder=folder,
+        overlap_from=start_dt - datetime.timedelta(days=TEAM_LOOKBACK_DAYS))
+
+    events = []
+    for item_start, item in matches:
+        event = _appointment_to_event(item, item_start, identity)
+        if event is None or event["end"] <= start_dt:
+            continue
+        if _HIDDEN_CATEGORIES and any(
+                category.lower() in _HIDDEN_CATEGORIES
+                for category in event["categories"]):
+            continue
+        try:
+            private = int(item.Sensitivity) == OL_SENSITIVITY_PRIVATE
+        except Exception:
+            private = False
+        if private:
+            event["subject"] = "Private appointment"
+            event["location"] = ""
+        if not event["all_day"] and (event["start"] < start_dt
+                                     or event["end"] > day_end):
+            event["all_day"] = True
+        events.append(event)
+    events.sort(key=lambda event: (not event["all_day"], event["start"]))
+    return events
+
+
+def _team_column(ns, label, spec, day, identity):
+    """
+    Everything one column of the team page needs, for one person.
+
+    Tries their calendar first (subjects and locations, when you have been
+    given that much access), and falls back to their free/busy when it cannot
+    be opened. It ALSO falls back when the calendar opens but shows nothing
+    that day while free/busy shows them busy: with free/busy-only permission
+    Outlook can hand back an empty folder rather than an error, and an empty
+    column for somebody in back-to-back meetings is worse than a column of
+    plain "Busy" blocks.
+
+    Returns {"label", "source", "events"}, where source is "calendar",
+    "free/busy", "unresolved" (not in the directory) or "unavailable" (neither
+    the calendar nor free/busy could be read). Never raises: one person's
+    calendar failing must not stop the other three, or the front, printing.
+    """
+    column = {"label": label or spec, "source": "unavailable", "events": []}
+    try:
+        recipient = ns.CreateRecipient(spec)
+        recipient.Resolve()
+        resolved = bool(recipient.Resolved)
+    except Exception as exc:
+        log("Team calendar: could not resolve '{0}': {1}".format(spec, exc))
+        resolved = False
+    if not resolved:
+        column["source"] = "unresolved"
+        return column
+    if not label:
+        try:
+            column["label"] = _person_label(recipient.Name or spec) or spec
+        except Exception:
+            column["label"] = spec
+
+    events = None
+    try:
+        folder = ns.GetSharedDefaultFolder(recipient, OL_FOLDER_CALENDAR)
+        events = _collect_team_events(folder, day, identity)
+    except Exception as exc:
+        log("Team calendar: cannot open the calendar of '{0}' ({1}); trying "
+            "free/busy.".format(spec, exc))
+
+    if events:
+        column["source"], column["events"] = "calendar", events
+        return column
+
+    free_busy = _free_busy(recipient, day)
+    blocks = _free_busy_events(free_busy, day) if free_busy else None
+    if blocks:
+        if events is not None:
+            log("Team calendar: the calendar of '{0}' opened but showed nothing "
+                "on {1}, while free/busy shows booked time - printing "
+                "free/busy instead.".format(spec, day))
+        column["source"], column["events"] = "free/busy", blocks
+    elif events is not None:
+        column["source"] = "calendar"       # opened, and genuinely empty
+    elif free_busy is not None:
+        column["source"] = "free/busy"      # free all day
+    return column
+
+
+def _team_columns(day, identity):
+    """Read every configured team calendar into a list of columns."""
+    ns = get_namespace()
+    return [_team_column(ns, label, spec, day, identity)
+            for label, spec in _CALENDAR_TEAM]
+
+
+def _draw_team_page(canvas, day, team, category_colours):
+    """
+    Draw the team view: one day column per colleague, side by side.
+
+    The same design as the front - the header, the hour grid, the blocks, the
+    chips and the footer are all drawn the same way - over a shared timeline,
+    so a time reads straight across every column. The page is laid out in
+    the top team_page_fraction() of the sheet, above where the front's folded
+    strip lies on the back.
+    """
+    page_w, page_h = canvas.width_mm, canvas.height_mm
+    content_h = page_h * team_page_fraction()
+    pad_l = pad_r = 11.0
+    pad_t, pad_b = 10.0, 8.0
+
+    all_events = []
+    for column in team:
+        for event in column["events"]:
+            if "colour" not in event:
+                _label, event["colour"] = _event_bucket(event, category_colours)
+            all_events.append(event)
+    hours = _planner_hours(all_events, day)
+
+    # ---- header ----------------------------------------------------------
+    canvas.text(pad_l, pad_t + 2.0, "TEAM AGENDA", 7.5, bold=True,
+                colour=_MUTED, tracking=0.85, max_width=120.0)
+    date_w = canvas.text(pad_l, pad_t + 8.6, _fmt_day_long(day), 19.0,
+                         bold=True, colour=_INK)
+    stats = "{0} calendar{1} · {2:02d}:00 — {3:02d}:00".format(
+        len(team), "" if len(team) == 1 else "s", hours[0], hours[1])
+    canvas.text(page_w - pad_r, pad_t + 8.0, stats, 7.5, bold=True,
+                colour=_FAINT, align="right",
+                max_width=page_w - pad_l - pad_r - date_w - 8.0)
+    header_rule = pad_t + 12.8
+    canvas.line(pad_l, header_rule, page_w - pad_r, header_rule, _INK, 1.2)
+
+    # ---- page frame ------------------------------------------------------
+    body_top = header_rule + 5.0
+    footer_rule = content_h - pad_b - 4.6
+    body_bottom = footer_rule - 2.5
+    gutter = 13.0
+    col_gap = 6.0
+    cols_x = pad_l + gutter
+    cols_w = (page_w - pad_r) - cols_x
+    col_w = (cols_w - col_gap * (len(team) - 1)) / float(len(team))
+    col_xs = [cols_x + index * (col_w + col_gap) for index in range(len(team))]
+
+    for col_x in col_xs[1:]:
+        divider = col_x - col_gap / 2.0
+        canvas.line(divider, header_rule + 4.0, divider, footer_rule - 2.0,
+                    _GRID, 0.6, dash=[2.2, 2.2])
+
+    # ---- column headings: the person's name, and what was readable -------
+    for column, col_x in zip(team, col_xs):
+        timed = [event for event in column["events"] if not event["all_day"]]
+        if column["source"] == "unresolved":
+            note = "not found"
+        elif column["source"] == "unavailable":
+            note = "no access"
+        elif column["source"] == "free/busy":
+            note = "free/busy only"
+        elif timed:
+            note = "{0} meeting{1}".format(len(timed),
+                                          "" if len(timed) == 1 else "s")
+        else:
+            note = ""
+        note_w = canvas.text(col_x + col_w, body_top + 3.0, note, 7.0,
+                             bold=True, colour=_FAINT, tracking=0.4,
+                             align="right") if note else 0.0
+        canvas.text(col_x, body_top + 3.0, column["label"], 10.5, bold=True,
+                    colour=_INK, max_width=col_w - note_w - 2.0)
+
+    cursor_y = body_top + 6.4
+
+    # ---- all-day chips: one row per column, the same height across -------
+    chip_h = 5.0
+    if any(event["all_day"] for column in team for event in column["events"]):
+        for column, col_x in zip(team, col_xs):
+            chips = [event for event in column["events"] if event["all_day"]]
+            chip_x = col_x
+            for position, event in enumerate(chips):
+                style = _block_style(event, event["colour"])
+                chip_w = min(col_w, canvas.text_width(
+                    event["subject"], PLANNER_TITLE_PT, bold=True) + 5.0)
+                left = len(chips) - position
+                more = "+{0} more".format(left)
+                more_w = canvas.text_width(more, PLANNER_TITLE_PT, bold=True)
+                # The last chip that fits leaves room for "+n more" when
+                # anything is still to come after it.
+                room = col_x + col_w - chip_x - (more_w + 2.0 if left > 1 else 0.0)
+                if chip_w > room and chip_x > col_x:
+                    canvas.text(chip_x + 1.0, cursor_y + chip_h / 2.0
+                                + _cap_mm(PLANNER_TITLE_PT) / 2.0, more,
+                                PLANNER_TITLE_PT, bold=True, colour=_MUTED)
+                    break
+                chip_w = min(chip_w, max(room, 8.0))
+                canvas.rect(chip_x, cursor_y, chip_w, chip_h, fill=style["fill"],
+                            stroke=style["stroke"],
+                            line_pt=style["line_pt"] or 0.6, radius=1.2)
+                canvas.text(chip_x + 2.5, cursor_y + chip_h / 2.0
+                            + _cap_mm(PLANNER_TITLE_PT) / 2.0,
+                            event["subject"], PLANNER_TITLE_PT, bold=True,
+                            colour=style["title"], max_width=chip_w - 5.0)
+                chip_x += chip_w + 1.6
+        cursor_y += chip_h + 2.6
+
+    # ---- the shared hour grid ---------------------------------------------
+    grid_top = cursor_y + 2.2
+    grid_bottom = body_bottom - 2.2
+    start_min, end_min = hours[0] * 60, hours[1] * 60
+    scale = (grid_bottom - grid_top) / float(max(1, end_min - start_min))
+    label_step = 1 if (60.0 * scale) >= 4.0 else 2
+    for hour in range(hours[0], hours[1] + 1):
+        y = grid_top + (hour * 60 - start_min) * scale
+        for col_x in col_xs:
+            canvas.line(col_x, y, col_x + col_w, y, _GRID, 0.75, dash=[0.6, 1.8])
+        if (hour - hours[0]) % label_step == 0:
+            canvas.text(pad_l, y + _cap_mm(7.5) / 2.0, "{0:02d}:00".format(hour),
+                        7.5, bold=True, colour=_FAINT)
+
+    for column, col_x in zip(team, col_xs):
+        timed = [event for event in column["events"] if not event["all_day"]]
+        if timed:
+            for box in _place_blocks(timed, day, start_min, end_min,
+                                     grid_top, grid_bottom, col_x, col_w):
+                box["style"] = _block_style(box["event"], box["event"]["colour"])
+                _draw_block(canvas, box)
+            continue
+        if column["source"] == "unresolved":
+            message = "Not found in the directory"
+        elif column["source"] == "unavailable":
+            message = "Calendar not available"
+        elif column["events"]:
+            continue                       # all-day only: the chip says it
+        else:
+            message = "Nothing in the diary"
+        canvas.text(col_x + col_w / 2.0, (grid_top + grid_bottom) / 2.0,
+                    message, 9.0, bold=True, colour=_GRID, align="centre",
+                    max_width=col_w - 2.0)
+
+    # ---- footer ----------------------------------------------------------
+    canvas.line(pad_l, footer_rule, page_w - pad_r, footer_rule, _RULE, 0.5)
+    canvas.text(pad_l, footer_rule + 3.4, "Outlook Calendar · Team view", 7.0,
+                bold=True, colour=_FAINT, max_width=170.0)
+    printed = datetime.datetime.now()
+    canvas.text(page_w - pad_r, footer_rule + 3.4,
+                "Printed {0} at {1}".format(
+                    _fmt_day_short(printed.date()), _fmt_time(printed)),
+                7.0, bold=True, colour=_FAINT, align="right")
+
+    # The same fold hairline as the front, on the same line of the sheet, so
+    # the fold can be made from either side.
+    if PLANNER_CONTENT_FRACTION < 1.0:
+        fold_y = page_h * PLANNER_CONTENT_FRACTION
+        canvas.line(pad_l, fold_y, page_w - pad_r, fold_y, _RULE, 0.4,
+                    dash=[1.4, 2.6])
 
 
 # ---------------------------------------------------------------------------
@@ -3690,10 +4274,17 @@ def tool_print_calendar(args):
     category_colours = outlook_category_colours(get_namespace())
     category_colours.update(_CATEGORY_COLOURS)
 
+    # The team view on the back: the same day, from the calendars in
+    # OUTLOOK_CALENDAR_TEAM. Each column falls back on its own, so one
+    # colleague who has not shared their calendar costs only their column.
+    team = None
+    if _CALENDAR_TEAM and args.get("include_team", True) is not False:
+        team = _team_columns(day, current_user_identity(get_namespace()))
+
     try:
         pdf = render_day_planner(
             day, day_events, ahead, current_user_identity(get_namespace()),
-            hours, category_colours=category_colours)
+            hours, category_colours=category_colours, team=team)
     except Exception as exc:
         log("Planner render failed:\n{0}".format(traceback.format_exc()))
         return "Error: the planner could not be laid out ({0}).".format(exc)
@@ -3777,9 +4368,66 @@ def tool_print_calendar(args):
         lines.append("[{0} event(s) matched the content blacklist. They ARE on "
                      "the printed page - only their subjects are withheld from "
                      "this summary.]".format(withheld))
+
+    # The team view is reported as counts per person and never by subject:
+    # these are other people's diaries, and what is in them is for the sheet
+    # on the desk, not for this reply.
+    if team:
+        lines.append("")
+        lines.append("Page 2 (the back): team view for the same day.")
+        for column in team:
+            timed = [event for event in column["events"] if not event["all_day"]]
+            all_day = len(column["events"]) - len(timed)
+            if column["source"] == "unresolved":
+                detail = ("NOT FOUND in the directory - check the entry in "
+                          "OUTLOOK_CALENDAR_TEAM; the column prints empty")
+            elif column["source"] == "unavailable":
+                detail = ("neither the calendar nor free/busy could be read - "
+                          "the column prints 'Calendar not available'")
+            elif column["source"] == "free/busy":
+                detail = ("free/busy only (no access to the calendar itself): "
+                          "{0} busy block(s), {1} all-day".format(
+                              len(timed), all_day))
+            else:
+                detail = "{0} meeting(s), {1} all-day".format(len(timed), all_day)
+            lines.append("  - {0}: {1}".format(column["label"], detail))
+        lines.append(
+            "PRINT IT DOUBLE-SIDED, FLIP ON SHORT EDGE. The PDF asks the print "
+            "dialog for that and Adobe Reader honours it; in any other viewer "
+            "check the setting before printing, or the back comes out on a "
+            "second sheet or upside down.")
+        if PLANNER_CONTENT_FRACTION < 1.0:
+            covered = 2.0 * PLANNER_CONTENT_FRACTION - 1.0 < team_page_fraction()
+            lines.append(
+                "The team view sits in the top {0:.0f}% of the back{1}.".format(
+                    team_page_fraction() * 100,
+                    " - part of it is under the folded strip at this page "
+                    "fill, so unfold the strip to read the bottom of it"
+                    if covered else
+                    ", clear of the bottom strip once that is folded up behind"))
+    elif _CALENDAR_TEAM:
+        lines.append("")
+        lines.append("Team view left off (include_team=false): one page only.")
+    elif args.get("include_team") is True:
+        lines.append("")
+        lines.append("No team view: OUTLOOK_CALENDAR_TEAM is not set, so there "
+                     "is no back page. Set it to up to four email addresses, "
+                     "semicolon-separated, and restart Claude Code.")
+
     # The folding advice follows the configured page fill, so it cannot tell
     # the user to fold a strip that this endpoint does not leave blank.
-    if PLANNER_CONTENT_FRACTION >= 1.0:
+    if team:
+        if PLANNER_CONTENT_FRACTION >= 1.0:
+            lines.append("It is A4 landscape - fold it in half for a bifold "
+                         "day planner.")
+        else:
+            lines.append(
+                "It is A4 landscape, printed on the top {0:.0f}% of the front - "
+                "fold it in half for a bifold day planner, and fold the blank "
+                "bottom {1:.0f}% up behind it.".format(
+                    PLANNER_CONTENT_FRACTION * 100,
+                    (1.0 - PLANNER_CONTENT_FRACTION) * 100))
+    elif PLANNER_CONTENT_FRACTION >= 1.0:
         lines.append("It is A4 landscape - print it single-sided and fold it "
                      "in half for a bifold day planner.")
     else:
@@ -5698,7 +6346,11 @@ TOOLS = [
             "or YYYY-MM-DD - prefer the words, because the server uses the endpoint's "
             "own clock. The file is written into the documents folder and the tool "
             "reports the full path plus what is on the page, including how the sheet "
-            "is meant to be folded - repeat that rather than assuming it. Reading the "
+            "is meant to be folded and printed - repeat that rather than assuming "
+            "it. When OUTLOOK_CALENDAR_TEAM is set, the PDF has a second page: up "
+            "to four colleagues' calendars for the same day in side-by-side "
+            "columns, meant for the back of the sheet, so it must be printed "
+            "double-sided, flipped on the short edge. Reading the "
             "calendar is still read-only; every event is on the page, and the planner "
             "never reads an event's body - an event whose subject, location or "
             "category matches the content blacklist is printed but left out of this "
@@ -5736,6 +6388,16 @@ TOOLS = [
                         "Optional file name for the PDF. Defaults to "
                         "'Calendar - <date> <weekday>.pdf'; an existing file of the "
                         "same name is overwritten."
+                    ),
+                },
+                "include_team": {
+                    "type": "boolean",
+                    "description": (
+                        "Default true: when OUTLOOK_CALENDAR_TEAM names up to four "
+                        "colleagues, a second page puts their calendars for the "
+                        "same day side by side, for the back of the sheet "
+                        "(double-sided, flip on short edge). Set false for the "
+                        "front page only."
                     ),
                 },
             },
@@ -6349,6 +7011,36 @@ def report_recurrence_health(days=1):
     log("")
 
 
+def report_team_health():
+    """
+    Print, per OUTLOOK_CALENDAR_TEAM entry, what the back page would show today.
+
+    Says whether each person resolved, whether their calendar opened or only
+    their free/busy could be read, and how many items today has - counts
+    only, never subjects, since these are other people's diaries.
+    """
+    today = datetime.date.today()
+    log("Planner team view   : {0} calendar(s), back page uses the top {1:.0f}% "
+        "of the sheet".format(len(_CALENDAR_TEAM), team_page_fraction() * 100))
+    for column, (_label, spec) in zip(
+            _team_columns(today, current_user_identity(get_namespace())),
+            _CALENDAR_TEAM):
+        timed = sum(1 for event in column["events"] if not event["all_day"])
+        all_day = len(column["events"]) - timed
+        if column["source"] == "unresolved":
+            state = "NOT FOUND in the directory - fix this entry"
+        elif column["source"] == "unavailable":
+            state = "NO ACCESS - neither the calendar nor free/busy could be read"
+        elif column["source"] == "free/busy":
+            state = ("free/busy only (the calendar itself is not shared with "
+                     "you): {0} busy block(s), {1} all-day today".format(
+                         timed, all_day))
+        else:
+            state = "calendar readable: {0} meeting(s), {1} all-day today".format(
+                timed, all_day)
+        log("  - {0} <{1}>: {2}".format(column["label"], spec, state))
+
+
 def run_check():
     """Connect to Outlook, print diagnostics + blacklist status to stderr, then exit."""
     pythoncom.CoInitialize()
@@ -6386,6 +7078,14 @@ def run_check():
         if _HIDDEN_CATEGORIES:
             log("Planner hides       : {0}".format(
                 ", ".join(sorted(_HIDDEN_CATEGORIES))))
+        if _CALENDAR_TEAM:
+            try:
+                report_team_health()
+            except Exception:
+                log("Team calendar check could not run:\n{0}".format(
+                    traceback.format_exc()))
+        else:
+            log("Planner team view   : off (OUTLOOK_CALENDAR_TEAM not set)")
         if KB_DIR:
             log("KB save folder      : {0} ({1})".format(
                 KB_DIR,
@@ -6415,6 +7115,7 @@ def run_check():
 
 def main():
     global KB_DIR, KB_AUTOSAVE, PDF_DIR, _CATEGORY_COLOURS, _HIDDEN_CATEGORIES
+    global _CALENDAR_TEAM
     global CALENDAR_DAY_START_HOUR, CALENDAR_DAY_END_HOUR
     global PLANNER_CONTENT_FRACTION
     global _MEETING_START_HOUR, _MEETING_END_HOUR, _GAL_SCAN_CAP, _ALLOW_DRAFTS
@@ -6512,6 +7213,17 @@ def main():
                              if str(name).strip())
     _HIDDEN_CATEGORIES |= parse_category_list(
         env("OUTLOOK_CALENDAR_HIDE_CATEGORIES"))
+
+    # Colleagues printed on the back of the planner. The environment REPLACES
+    # the file's list rather than adding to it: it is an ordered set of
+    # columns, and two lists merged would push someone off the page.
+    team_raw = env("OUTLOOK_CALENDAR_TEAM")
+    if team_raw is None:
+        team_raw = ";".join(str(entry) for entry in CALENDAR_TEAM)
+    _CALENDAR_TEAM = parse_team(team_raw)
+    if _CALENDAR_TEAM:
+        log("Planner team view (back page): {0}.".format(
+            ", ".join(label or spec for label, spec in _CALENDAR_TEAM)))
 
     # Working-day window for the printed timeline, e.g. OUTLOOK_CALENDAR_HOURS="7-19".
     hours_raw = env("OUTLOOK_CALENDAR_HOURS")
