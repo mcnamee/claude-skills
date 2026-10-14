@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-outlook.py (v11.2.1)
+outlook.py (v11.3.0)
 ======================
 
 A single-file MCP (Model Context Protocol) server giving an LLM near-read-only
@@ -20,7 +20,8 @@ in Outlook's compose window with the agreed text in it and saves it to Drafts.
 Set OUTLOOK_ALLOW_DRAFTS=false and both are gone, at which point the mailbox is
 strictly read-only again. The other two things it
 writes are local files and only on request: an email kept as Markdown for the
-knowledge base, and a printable PDF day planner.
+knowledge base, a printable PDF day planner, and a printable PDF of the
+team's open tasks.
 
 Designed for an airgapped Windows endpoint where Outlook is installed, running,
 and logged into an on-premises Exchange profile. This script makes NO network
@@ -57,6 +58,10 @@ TOOLS EXPOSED (read-only on the mailbox, apart from the two draft tools)
 - outlook_print_calendar     : a PRINTABLE PDF day planner for one day, with an
                                optional team view of up to four colleagues on
                                the back (v11.2.0) - see below
+- outlook_get_task_team      : the team task sheet's columns, Confluence page
+                               and email window (v11.3.0) - see below
+- outlook_print_team_tasks   : a PRINTABLE PDF of the team's open tasks, eight
+                               columns over two sides of A4 (v11.3.0)
 - outlook_list_sent_emails   : messages you SENT, in a date range (e.g. "what did I do last week")
 - outlook_search_recent      : all mail across Inbox/Archive/Sent in a date range (configurable)
 - outlook_list_folders       : list every mail folder across all stores (to configure the above)
@@ -395,6 +400,51 @@ The file lands in the documents folder below and an existing file of the same
 name is overwritten, so re-printing a day replaces that day's sheet rather than
 piling up copies.
 
+Printable team task sheet (v11.3.0)
+-----------------------------------
+"Print my team's tasks" writes an A4 LANDSCAPE PDF of your direct reports'
+open tasks: EIGHT COLUMNS, FOUR A SIDE, meant to be
+
+    PRINTED DOUBLE-SIDED, FLIP ON SHORT EDGE
+
+(the same print-dialog preset as the planner's team view). Column 1 is
+"Team / unassigned" - a task emailed to the whole team, to several people, or
+listed in Confluence with nobody against it - and columns 2-8 are the people in
+OUTLOOK_TASKS_TEAM, in that order. Header and footer match the day planner,
+with the date you printed it as the title. Each task gets an empty tick box,
+its due date (red once overdue, amber when due today), and a short status /
+source line; each column is sorted soonest-due first, undated tasks after. A
+column with more than fits ends in "+N more not shown" rather than shrinking
+its type, and the reply says which. The whole sheet is used - there is no
+strip to fold, since a task list is pinned up or filed, not kept in a diary.
+
+The tasks come from two places this server cannot both read, so the work is
+split between two tools and the model in the middle:
+
+1. outlook_get_task_team returns the columns, the Confluence page that
+   collates the tasks (OUTLOOK_TASKS_PAGE) and the window of SENT mail to read
+   (OUTLOOK_TASKS_EMAIL_DAYS, default 30), dated on this endpoint's clock. It
+   reads configuration only.
+2. The model reads the Confluence page through the confluence plugin and the
+   sent mail through outlook_list_sent_emails / outlook_get_email (so the
+   content blacklist applies as usual), drops what is done, de-duplicates the
+   two, and decides who owns each task. Pulling tasks out of email prose is a
+   reading job, not a regular expression.
+3. outlook_print_team_tasks takes that list as {person, task, due, status,
+   source, detail} and lays it out. A 'person' is matched case-insensitively
+   against the roster by full name, email address, or a first name or surname
+   only one person has; a name that matches nobody goes into column 1 marked
+   "For <name>" and is reported back, never dropped. Without OUTLOOK_TASKS_TEAM
+   the columns are made from the names on the tasks, in the order they first
+   appear.
+
+The PDF lands in the same documents folder as the planner, as
+"Team Tasks - <date>.pdf"; re-printing the same day overwrites it. The skill
+outlook:team-tasks carries the whole workflow.
+
+    OUTLOOK_TASKS_TEAM="Jane Smith=jane.smith@agency.gov.au; Bob Jones=bob.jones@agency.gov.au"
+    OUTLOOK_TASKS_PAGE="Team Task List"
+
 ==============================================================================
 CONFIGURATION  -  all editable settings live in the "USER CONFIGURATION" block
 just below this docstring. Edit them there; nothing else needs changing.
@@ -450,6 +500,13 @@ just below this docstring. Edit them there; nothing else needs changing.
    much of
    the sheet's height the page uses. All of them have an environment variable
    so a plugin install never needs the file edited.
+
+3c. Team task sheet (TASKS_TEAM / TASKS_CONFLUENCE_PAGE / TASKS_EMAIL_DAYS,
+    overridden by OUTLOOK_TASKS_TEAM / OUTLOOK_TASKS_PAGE /
+    OUTLOOK_TASKS_EMAIL_DAYS)
+   Your direct reports in column order, the Confluence page that collates
+   their tasks, and how many days of sent mail to read. See "Printable team
+   task sheet" above.
 
 4. SEARCH_ALL_FOLDERS  (DEFAULT folders the combined outlook_search_recent covers)
    A list of folder NAMES matched across every store in the profile (main
@@ -586,6 +643,15 @@ Server-specific settings, all optional and all environment variables:
                                 printed over the column and is optional.
                                 Unset means a one-page planner. See TEAM VIEW
                                 ON THE BACK above.
+    OUTLOOK_TASKS_TEAM          your direct reports, up to seven, as columns
+                                2-8 of the team task sheet, in print order.
+                                Same form as OUTLOOK_CALENDAR_TEAM. Unset
+                                means the columns come from the task names.
+    OUTLOOK_TASKS_PAGE          the Confluence page (title, ID or URL) that
+                                collates the team's tasks. Passed to the model,
+                                which reads it with the confluence plugin.
+    OUTLOOK_TASKS_EMAIL_DAYS    days of sent mail read for emailed tasks,
+                                1-365 (default 30).
     OUTLOOK_SEARCH_FOLDERS      comma-separated folder names for
                                 outlook_search_recent, e.g.
                                 "Inbox,Sent Items,Archive".
@@ -642,6 +708,10 @@ USAGE / TESTING
   status and the recurring-series report described above to stderr, then exits.
   With OUTLOOK_CALENDAR_TEAM set it also reports, per person, whether their
   calendar or only their free/busy can be read, and today's item count.
+- Testing the task sheet: set OUTLOOK_TASKS_TEAM and OUTLOOK_TASKS_PAGE, run
+  --check (it prints both), then ask for "a printable list of my team's
+  tasks". Print double-sided, flip on short edge: columns 1-4 on the front,
+  5-8 on the back, both the right way up.
 - Testing the team view: set OUTLOOK_CALENDAR_TEAM, run --check and confirm
   each person resolves, then ask for "today's printable calendar" and print
   the PDF double-sided, flip on short edge. Hold the sheet up to the light:
@@ -657,7 +727,7 @@ IMPORTANT (stdio-on-Windows pitfalls)
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "11.2.1"
+__version__ = "11.3.0"
 
 import os
 import re
@@ -790,6 +860,23 @@ CALENDAR_HIDDEN_CATEGORIES = [
 #        semicolon-separated entries of the same form.
 CALENDAR_TEAM = [
 ]
+
+# --- 5e. Team task sheet (outlook_print_team_tasks, new in v11.3.0).
+#        Your direct reports, up to seven, in the order their columns print
+#        after the "Team / unassigned" column - same "Label=address" form as
+#        CALENDAR_TEAM. Empty means the columns are made from the names on the
+#        tasks instead, in the order they first appear.
+#        OUTLOOK_TASKS_TEAM REPLACES this list (semicolon-separated entries).
+TASKS_TEAM = [
+]
+#        The Confluence page that collates the team's tasks (title, page ID or
+#        URL). This server cannot read Confluence; it only hands the value to
+#        the model, which reads the page through the confluence plugin.
+#        Override with OUTLOOK_TASKS_PAGE.
+TASKS_CONFLUENCE_PAGE = ""
+#        How many days of SENT mail to read for tasks you emailed the team.
+#        Override with OUTLOOK_TASKS_EMAIL_DAYS (1-365).
+TASKS_EMAIL_DAYS = 30
 
 # --- 6. KB_AUTOSAVE. Whether reading an email saves it WITHOUT being asked.
 #        False means a message is saved only when the call passes
@@ -954,9 +1041,12 @@ def parse_category_list(raw):
                if part.strip())
 
 
-def parse_team(raw):
+def parse_team(raw, limit=None, what="team calendars", page="the back page"):
     """
     Parse OUTLOOK_CALENDAR_TEAM into a list of (label, spec) pairs.
+
+    OUTLOOK_TASKS_TEAM uses the same form, and passes its own `limit` (seven
+    people) and wording for the warning.
 
     Entries are separated by semicolons, the separator Outlook itself uses for
     a list of people, because a directory name such as "Smith, Jane" has a
@@ -983,15 +1073,15 @@ def parse_team(raw):
                 label, spec = "", piece
             label, spec = _one_line(label), _one_line(spec)
             if not spec:
-                log("WARNING: ignoring team calendar entry '{0}' - there is "
-                    "nothing after the '='.".format(piece))
+                log("WARNING: ignoring an entry in {0}, '{1}' - there is "
+                    "nothing after the '='.".format(what, piece))
                 continue
             entries.append((label, spec))
-    if len(entries) > TEAM_MAX_COLUMNS:
-        log("WARNING: {0} team calendars are configured but the back page "
-            "holds {1}; printing the first {1} only.".format(
-                len(entries), TEAM_MAX_COLUMNS))
-        entries = entries[:TEAM_MAX_COLUMNS]
+    limit = TEAM_MAX_COLUMNS if limit is None else limit
+    if len(entries) > limit:
+        log("WARNING: {0} {1} are configured but {2} holds {3}; printing the "
+            "first {3} only.".format(len(entries), what, page, limit))
+        entries = entries[:limit]
     return entries
 
 
@@ -1081,6 +1171,12 @@ _HIDDEN_CATEGORIES = set()
 # The (label, spec) pairs printed as columns on the back of the planner, from
 # CALENDAR_TEAM or OUTLOOK_CALENDAR_TEAM. Empty means a one-page planner.
 _CALENDAR_TEAM = []
+
+# The team task sheet's roster, Confluence page and email window, from the
+# TASKS_* settings above or their OUTLOOK_TASKS_* environment variables.
+_TASKS_TEAM = []
+_TASKS_PAGE = ""
+_TASKS_EMAIL_DAYS = TASKS_EMAIL_DAYS
 
 # Effective default folder set for outlook_search_recent. Initialised from
 # SEARCH_ALL_FOLDERS; may be replaced by OUTLOOK_SEARCH_FOLDERS. A per-call
@@ -4437,6 +4533,586 @@ def tool_print_calendar(args):
 
 
 # ---------------------------------------------------------------------------
+# Printable team task sheet (outlook_get_task_team / outlook_print_team_tasks)
+# ---------------------------------------------------------------------------
+#
+# A double-sided A4 landscape sheet of the user's direct reports' open tasks:
+# eight columns, four a side. Column one is everything nobody in particular
+# owns (an email to the whole team, a Confluence row with no assignee); the
+# other seven are the people in OUTLOOK_TASKS_TEAM, in that order.
+#
+# This server cannot read Confluence, and should not try to pull "tasks" out of
+# email prose with regular expressions: the wording varies too much to do that
+# honestly. So the work is split. outlook_get_task_team hands the model the
+# roster, the Confluence page and the email window; the model reads the page
+# (through the confluence plugin) and the sent mail (through the tools above),
+# turns them into one list of {person, task, due, ...}; and
+# outlook_print_team_tasks lays that list out. Everything about the PAGE - the
+# columns, their order, sorting, overdue colouring, overflow - is decided here,
+# so the sheet comes out the same way every time.
+#
+# The page reuses the day planner's PdfCanvas, header and footer, so the two
+# sheets look like a set.
+
+TASKS_PEOPLE_MAX = 7           # seven people + the unassigned column = 8
+TASKS_COLUMNS_PER_PAGE = 4     # four columns a side of A4 landscape
+TASKS_MAX_ITEMS = 400          # guard rail on one call's task list
+TASKS_MAX_TEXT = 400           # characters kept of one task's text
+TASKS_TEXT_PT = 7.5            # the task itself
+TASKS_META_PT = 6.0            # the due / status / source line under it
+TASKS_TEXT_LINES = 3           # a task wraps to at most this many lines
+TASKS_UNASSIGNED_LABEL = "Team / unassigned"
+
+# What a 'person' value may say to mean "nobody in particular". Anything else
+# that matches no column also lands in column one, but is reported back as
+# unmatched, because it is far more likely a misspelt name than a team task.
+TASKS_UNASSIGNED_WORDS = frozenset((
+    "", "team", "the team", "whole team", "all", "everyone", "everybody",
+    "unassigned", "nobody", "none", "n/a", "-", "tbc", "tbd",
+))
+
+# Accent bar under each column heading. Column one is slate so the
+# "nobody owns this" column reads as different from the people.
+TASKS_ACCENTS = ("slate", "blue", "purple", "green", "amber", "teal", "rose",
+                 "dark-orange")
+
+
+def _tasks_tokens(value):
+    """Lower-case name tokens: 'Smith, Jane (Branch)' -> {'smith', 'jane', 'branch'}."""
+    return set(re.findall(r"[a-z0-9']+", _one_line(value).lower()))
+
+
+def _tasks_column_label(label, spec):
+    """
+    The name printed over a person's column.
+
+    The configured label wins. Without one, a directory name is turned round
+    ('Smith, Jane' -> 'Jane Smith'), and an email address becomes its local
+    part in title case ('jane.smith@...' -> 'Jane Smith'): there is no
+    directory lookup here, so the sheet prints without Outlook's help.
+    """
+    if label:
+        return _one_line(label)
+    spec = _one_line(spec)
+    if "@" in spec:
+        local = spec.split("@", 1)[0]
+        return " ".join(part.capitalize()
+                        for part in re.split(r"[._-]+", local) if part)
+    return _person_label(spec)
+
+
+def _tasks_person_column(person, columns, loose=False):
+    """
+    Index into `columns` (people only) that `person` names, or None.
+
+    Matched, in order: the label or configured entry exactly (case-insensitive),
+    the email address or its local part, and then every word of `person` being
+    a word of exactly ONE column's name - so 'Jane', 'Smith' and 'Smith, Jane'
+    all find 'Jane Smith', while a first name two people share finds neither.
+
+    `loose` also accepts the reverse - every word of a column's name being in
+    `person` - for columns made from the tasks themselves, so 'Jane Smith'
+    joins a column already started as 'Jane' rather than starting another.
+    """
+    wanted = _one_line(person).lower()
+    if not wanted:
+        return None
+    for index, column in enumerate(columns):
+        if wanted in column["keys"]:
+            return index
+    tokens = _tasks_tokens(wanted)
+    if not tokens:
+        return None
+    hits = [index for index, column in enumerate(columns)
+            if tokens <= column["tokens"]]
+    if not hits and loose:
+        hits = [index for index, column in enumerate(columns)
+                if column["tokens"] and column["tokens"] <= tokens]
+    return hits[0] if len(hits) == 1 else None
+
+
+def _tasks_new_column(label, spec=""):
+    """One person's column, with every key a task's 'person' may match it by."""
+    printed = _tasks_column_label(label, spec)
+    keys = set(value for value in (_one_line(label).lower(),
+                                   _one_line(spec).lower(),
+                                   printed.lower()) if value)
+    tokens = _tasks_tokens(printed) | _tasks_tokens(label)
+    if "@" in spec:
+        local = spec.split("@", 1)[0].lower()
+        keys.add(local)
+        tokens |= _tasks_tokens(local.replace(".", " "))
+    else:
+        tokens |= _tasks_tokens(spec)
+    return {"label": printed, "spec": _one_line(spec), "keys": keys,
+            "tokens": tokens, "items": [], "unassigned": False}
+
+
+def _parse_task_due(value):
+    """
+    A task's due date as a date, or None when it is not one.
+
+    YYYY-MM-DD is what the tool asks for; D/M/YYYY is accepted as well because
+    that is how an Australian Confluence page writes a date. Anything else
+    ('end of month', 'ASAP') is not an error - it is printed as written.
+    """
+    value = _one_line(value)
+    match = re.fullmatch(r"(\d{4})-(\d{1,2})-(\d{1,2})", value)
+    if match:
+        parts = (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+    else:
+        match = re.fullmatch(r"(\d{1,2})[/.](\d{1,2})[/.](\d{4})", value)
+        if not match:
+            return None
+        parts = (int(match.group(3)), int(match.group(2)), int(match.group(1)))
+    try:
+        return datetime.date(*parts)
+    except ValueError:
+        return None
+
+
+def _clean_tasks(raw):
+    """
+    Validate the tool's 'tasks' argument into a list of plain dicts.
+
+    Raises ValueError with a message the model can act on. Every string is
+    collapsed to one line, so nothing in a task can break the page layout.
+    """
+    if not isinstance(raw, list):
+        raise ValueError("'tasks' must be a list of objects, each with at "
+                         "least a 'task' string")
+    if len(raw) > TASKS_MAX_ITEMS:
+        raise ValueError("{0} tasks is more than one sheet can hold (limit "
+                         "{1}) - leave out what is done or not worth printing"
+                         .format(len(raw), TASKS_MAX_ITEMS))
+    tasks = []
+    for position, item in enumerate(raw, start=1):
+        if not isinstance(item, dict):
+            raise ValueError("task {0} is not an object".format(position))
+        text = _one_line(item.get("task"))
+        if not text:
+            raise ValueError("task {0} has no 'task' text".format(position))
+        due_raw = _one_line(item.get("due"))
+        tasks.append({
+            "order": position,
+            "task": text[:TASKS_MAX_TEXT],
+            "person": _one_line(item.get("person"))[:120],
+            "due_raw": due_raw[:40],
+            "due": _parse_task_due(due_raw),
+            "status": _one_line(item.get("status"))[:40],
+            "source": _one_line(item.get("source"))[:60],
+            "detail": _one_line(item.get("detail"))[:160],
+            "for": "",
+        })
+    return tasks
+
+
+def _build_task_columns(tasks, roster):
+    """
+    Sort the tasks into columns: unassigned first, then one per person.
+
+    With a roster (OUTLOOK_TASKS_TEAM) the people and their order are fixed,
+    and a name that matches nobody goes into column one marked "For <name>"
+    rather than being dropped. Without one, columns are made from the names on
+    the tasks in the order they first appear, up to TASKS_PEOPLE_MAX; past
+    that, the rest go into column one the same way.
+
+    Returns (columns, unmatched) where unmatched is {name: count}.
+    """
+    unassigned = {"label": TASKS_UNASSIGNED_LABEL, "spec": "", "keys": set(),
+                  "tokens": set(), "items": [], "unassigned": True}
+    people = [_tasks_new_column(label, spec) for label, spec in roster]
+    unmatched = {}
+
+    for task in tasks:
+        person = task["person"]
+        if person.lower() in TASKS_UNASSIGNED_WORDS:
+            unassigned["items"].append(task)
+            continue
+        index = _tasks_person_column(person, people, loose=not roster)
+        if index is None and not roster and len(people) < TASKS_PEOPLE_MAX:
+            # As spec, not label, so an email address or 'Smith, Jane' is
+            # turned into a printable name the way a roster entry would be.
+            people.append(_tasks_new_column("", person))
+            index = len(people) - 1
+        if index is None:
+            task["for"] = person
+            unassigned["items"].append(task)
+            unmatched[person] = unmatched.get(person, 0) + 1
+        else:
+            people[index]["items"].append(task)
+
+    today = datetime.date.today()
+    columns = [unassigned] + people
+    for column in columns:
+        # Dated tasks first, soonest (so overdue) at the top; undated after,
+        # in the order given - which is the page's or the email's own order.
+        column["items"].sort(key=lambda task: (
+            0 if task["due"] else 1,
+            task["due"] or today,
+            task["order"]))
+    return columns, unmatched
+
+
+def _task_meta(task, today):
+    """
+    The small line under a task: (due text, due colour, rest of the line).
+
+    The due date is drawn separately, bold and coloured, because it is what
+    the eye runs down the column for: red once overdue, amber when due today.
+    """
+    due_text, due_colour = "", _MUTED
+    if task["due"]:
+        if task["due"] < today:
+            due_text = "Overdue " + _fmt_day_short(task["due"])
+            due_colour = PLANNER_COLOURS["dark-red"]
+        elif task["due"] == today:
+            due_text = "Due today"
+            due_colour = PLANNER_COLOURS["dark-yellow"]
+        else:
+            due_text = "Due " + _fmt_day_short(task["due"])
+    elif task["due_raw"]:
+        due_text = "Due " + task["due_raw"]
+
+    rest = []
+    if task["for"]:
+        rest.append("For " + task["for"])
+    for key in ("status", "source", "detail"):
+        if task[key]:
+            rest.append(task[key])
+    return due_text, due_colour, " · ".join(rest)
+
+
+def _measure_task(canvas, task, width, today):
+    """(wrapped lines, height in mm) of one task at the given text width."""
+    lines = canvas.wrap(task["task"], TASKS_TEXT_PT, width,
+                        max_lines=TASKS_TEXT_LINES)
+    due_text, _colour, rest = _task_meta(task, today)
+    height = 1.2 + len(lines) * 3.2
+    if due_text or rest:
+        height += 2.7
+    return lines, height + 2.2
+
+
+def _draw_task_header(canvas, identity, stats, page_no, pages,
+                      page_w, pad_l, pad_r, pad_t):
+    """The day planner's header, with the printed date as its title."""
+    name, _address = identity
+    eyebrow = "TEAM TASKS" + (" · " + name if name else "")
+    if pages > 1:
+        eyebrow += " · {0} OF {1}".format(page_no, pages)
+    canvas.text(pad_l, pad_t + 2.0, eyebrow, 7.5, bold=True, colour=_MUTED,
+                tracking=0.85, max_width=140.0)
+    date_w = canvas.text(pad_l, pad_t + 8.6,
+                         _fmt_day_long(datetime.date.today()), 19.0,
+                         bold=True, colour=_INK)
+    canvas.text(page_w - pad_r, pad_t + 8.0, stats, 7.5, bold=True,
+                colour=_FAINT, align="right",
+                max_width=page_w - pad_l - pad_r - date_w - 8.0)
+    header_rule = pad_t + 12.8
+    canvas.line(pad_l, header_rule, page_w - pad_r, header_rule, _INK, 1.2)
+    return header_rule
+
+
+def _draw_task_footer(canvas, identity, sources, page_no, pages,
+                      page_w, page_h, pad_l, pad_r, pad_b):
+    """The day planner's footer: what this is on the left, when it printed on the right."""
+    _name, address = identity
+    footer_rule = page_h - pad_b - 4.6
+    canvas.line(pad_l, footer_rule, page_w - pad_r, footer_rule, _RULE, 0.5)
+    left = "Team Tasks" + (" · " + sources if sources else "")
+    if address:
+        left += " · " + address
+    printed = datetime.datetime.now()
+    right = "Printed {0} at {1}".format(_fmt_day_short(printed.date()),
+                                        _fmt_time(printed))
+    if pages > 1:
+        right = "Page {0} of {1} · {2}".format(page_no, pages, right)
+    right_w = canvas.text(page_w - pad_r, footer_rule + 3.4, right, 7.0,
+                          bold=True, colour=_FAINT, align="right")
+    canvas.text(pad_l, footer_rule + 3.4, left, 7.0, bold=True, colour=_FAINT,
+                max_width=page_w - pad_l - pad_r - right_w - 8.0)
+
+
+def _draw_task_column(canvas, column, accent_key, col_x, col_w, top, bottom,
+                      today):
+    """
+    One column: the person's name, an accent bar, then their tasks.
+
+    Each task has an empty tick box, because this is a sheet that gets ticked
+    off with a pen. A column with more than fits ends in '+N more' rather than
+    shrinking its type; the count is returned so the tool can say so.
+    """
+    items = column["items"]
+    note = "{0} open".format(len(items)) if items else ""
+    note_w = canvas.text(col_x + col_w, top + 3.0, note, 7.0, bold=True,
+                         colour=_FAINT, tracking=0.4,
+                         align="right") if note else 0.0
+    canvas.text(col_x, top + 3.0, column["label"], 10.5, bold=True,
+                colour=_INK, max_width=col_w - note_w - 2.0)
+    canvas.rect(col_x, top + 5.2, col_w, 1.0,
+                fill=planner_palette(accent_key)["fill"], radius=0.5)
+
+    y = top + 9.0
+    if not items:
+        canvas.text(col_x + col_w / 2.0, (y + bottom) / 2.0, "Nothing open",
+                    9.0, bold=True, colour=_GRID, align="centre",
+                    max_width=col_w - 2.0)
+        return 0
+
+    box = 2.6
+    text_x = col_x + box + 1.8
+    text_w = col_w - box - 1.8
+    more_h = 4.0
+    for index, task in enumerate(items):
+        lines, height = _measure_task(canvas, task, text_w, today)
+        remaining = len(items) - index - 1
+        if y + height + (more_h if remaining else 0.0) > bottom:
+            canvas.text(text_x, y + 3.0,
+                        "+{0} more not shown".format(len(items) - index),
+                        7.0, bold=True, colour=_MUTED)
+            return len(items) - index
+
+        baseline = y + 1.2 + _cap_mm(TASKS_TEXT_PT)
+        canvas.rect(col_x, baseline - _cap_mm(TASKS_TEXT_PT) / 2.0 - box / 2.0,
+                    box, box, stroke=_MUTED, line_pt=0.6, radius=0.4)
+        for line in lines:
+            canvas.text(text_x, baseline, line, TASKS_TEXT_PT, colour=_INK)
+            baseline += 3.2
+        due_text, due_colour, rest = _task_meta(task, today)
+        if due_text or rest:
+            meta_y = baseline - 3.2 + 2.7
+            drawn = 0.0
+            if due_text:
+                drawn = canvas.text(text_x, meta_y, due_text, TASKS_META_PT,
+                                    bold=True, colour=due_colour,
+                                    max_width=text_w) + 1.6
+            if rest and text_w - drawn > 6.0:
+                canvas.text(text_x + drawn, meta_y,
+                            ("· " if due_text else "") + rest, TASKS_META_PT,
+                            colour=_MUTED, max_width=text_w - drawn)
+        y += height
+        if remaining:
+            canvas.line(text_x, y - 1.1, col_x + col_w, y - 1.1, _HAIRLINE, 0.5)
+    return 0
+
+
+def render_team_tasks(columns, identity, sources=""):
+    """
+    Build the task sheet and return (PDF bytes, {column label: count not shown}).
+
+    Four columns a side of A4 landscape, column one being the unassigned
+    tasks. Eight columns make two pages, and the PDF asks the print dialog
+    for double-sided, flip on short edge - the same preset as the day
+    planner's team view - so they land back to back on one sheet. The whole
+    sheet is used: there is no blank strip to fold, because a task list is
+    filed or pinned up rather than kept in a diary.
+    """
+    page_w, page_h = 297.0, 210.0
+    pad_l = pad_r = 11.0
+    pad_t, pad_b = 10.0, 8.0
+    name, address = identity
+    today = datetime.date.today()
+
+    canvas = PdfCanvas(page_w, page_h,
+                       title="Team tasks - {0}".format(_fmt_day_long(today)),
+                       author=name or address or "")
+
+    total = sum(len(column["items"]) for column in columns)
+    overdue = sum(1 for column in columns for task in column["items"]
+                  if task["due"] and task["due"] < today)
+    stats = "{0} open task{1}".format(total, "" if total == 1 else "s")
+    if overdue:
+        stats += " · {0} overdue".format(overdue)
+    if columns[0]["items"]:
+        stats += " · {0} unassigned".format(len(columns[0]["items"]))
+    if not total:
+        stats = "Nothing open"
+
+    pages = max(1, -(-len(columns) // TASKS_COLUMNS_PER_PAGE))
+    col_gap = 6.0
+    col_w = ((page_w - pad_l - pad_r - col_gap * (TASKS_COLUMNS_PER_PAGE - 1))
+             / float(TASKS_COLUMNS_PER_PAGE))
+    hidden = {}
+
+    for page_index in range(pages):
+        if page_index:
+            canvas.new_page()
+        header_rule = _draw_task_header(canvas, identity, stats,
+                                        page_index + 1, pages, page_w,
+                                        pad_l, pad_r, pad_t)
+        body_top = header_rule + 5.0
+        footer_rule = page_h - pad_b - 4.6
+        body_bottom = footer_rule - 2.5
+
+        first = page_index * TASKS_COLUMNS_PER_PAGE
+        on_page = columns[first:first + TASKS_COLUMNS_PER_PAGE]
+        for slot, column in enumerate(on_page):
+            col_x = pad_l + slot * (col_w + col_gap)
+            if slot:
+                divider = col_x - col_gap / 2.0
+                canvas.line(divider, body_top - 1.0, divider, footer_rule - 2.0,
+                            _GRID, 0.6, dash=[2.2, 2.2])
+            accent = TASKS_ACCENTS[(first + slot) % len(TASKS_ACCENTS)]
+            not_shown = _draw_task_column(canvas, column, accent, col_x, col_w,
+                                          body_top, body_bottom, today)
+            if not_shown:
+                hidden[column["label"]] = not_shown
+
+        _draw_task_footer(canvas, identity, sources, page_index + 1, pages,
+                          page_w, page_h, pad_l, pad_r, pad_b)
+
+    if pages > 1:
+        canvas.duplex_short_edge = True
+    return canvas.to_bytes(), hidden
+
+
+def tool_get_task_team(args):
+    """
+    Everything the model needs before it gathers tasks: the columns in print
+    order, the Confluence page to read, and the window of sent mail to read,
+    with the dates worked out on the endpoint's own clock.
+    """
+    today = datetime.date.today()
+    since = today - datetime.timedelta(days=_TASKS_EMAIL_DAYS)
+    lines = ["Team task sheet - set-up on this endpoint", ""]
+    lines.append("Columns, in print order (four a side, column 1 first):")
+    lines.append("  1. {0} - tasks for the whole team, for several people, or "
+                 "with nobody assigned (person: \"\")".format(
+                     TASKS_UNASSIGNED_LABEL))
+    if _TASKS_TEAM:
+        for number, (label, spec) in enumerate(_TASKS_TEAM, start=2):
+            printed = _tasks_column_label(label, spec)
+            lines.append("  {0}. {1}{2}".format(
+                number, printed,
+                "" if spec.lower() == printed.lower()
+                else " <{0}>".format(spec)))
+        lines.append("Use these names as each task's 'person'. A first name or "
+                     "surname alone also matches when only one person has it.")
+    else:
+        lines.append("  (OUTLOOK_TASKS_TEAM is not set, so the remaining columns "
+                     "are made from the names on the tasks, in the order they "
+                     "first appear, up to {0} people. Ask the user who their "
+                     "direct reports are, and suggest setting "
+                     "OUTLOOK_TASKS_TEAM for a fixed order.)".format(
+                         TASKS_PEOPLE_MAX))
+    lines.append("")
+    if _TASKS_PAGE:
+        lines.append("Confluence task page: {0}  (OUTLOOK_TASKS_PAGE)".format(
+            _TASKS_PAGE))
+    else:
+        lines.append("Confluence task page: not set (OUTLOOK_TASKS_PAGE) - ask "
+                     "the user which page collates the team's tasks.")
+    lines.append("Email window: mail sent from {0} to {1} ({2} days, "
+                 "OUTLOOK_TASKS_EMAIL_DAYS).".format(
+                     since.isoformat(), today.isoformat(), _TASKS_EMAIL_DAYS))
+    lines.append("Today on this endpoint: {0}.".format(_fmt_day_long(today)))
+    if not PDF_DIR:
+        lines.append("")
+        lines.append("PRINTING IS OFF on this endpoint (OUTLOOK_DOCS_DIR=off): "
+                     "outlook_print_team_tasks will refuse. Say so before "
+                     "gathering anything.")
+    return "\n".join(lines)
+
+
+def tool_print_team_tasks(args):
+    if not PDF_DIR:
+        return ("Error: printing is switched off on this server "
+                "(OUTLOOK_DOCS_DIR is set to off), so no PDF was written. "
+                "Give OUTLOOK_DOCS_DIR a real folder, or unset it to use "
+                "%EVA_DOCUMENTS_DIR%\\{0}.".format(DOCS_SUBFOLDER))
+    try:
+        tasks = _clean_tasks(args.get("tasks"))
+    except ValueError as exc:
+        return "Error: {0}. Nothing was written.".format(exc)
+
+    columns, unmatched = _build_task_columns(tasks, _TASKS_TEAM)
+    sources = _one_line(args.get("sources"))[:160]
+    try:
+        identity = current_user_identity(get_namespace())
+    except Exception:
+        # The header and footer name the mailbox owner as a nicety; a sheet
+        # without a name on it still prints.
+        identity = ("", "")
+
+    try:
+        pdf, hidden = render_team_tasks(columns, identity, sources)
+    except Exception as exc:
+        log("Task sheet render failed:\n{0}".format(traceback.format_exc()))
+        return "Error: the task sheet could not be laid out ({0}).".format(exc)
+
+    today = datetime.date.today()
+    requested = _one_line(args.get("filename") or "")
+    if requested:
+        stem = safe_filename(os.path.splitext(os.path.basename(requested))[0])
+    else:
+        stem = "Team Tasks - {0}".format(today.isoformat())
+    path = os.path.join(PDF_DIR, stem + ".pdf")
+
+    # Same rule as the day planner: re-printing today's sheet replaces it, but
+    # a file the call NAMED might be one of the user's own PDFs.
+    if requested and os.path.exists(path):
+        return ("Error: {0} already exists and this call named it explicitly, "
+                "so nothing was written. Choose another name, or drop "
+                "'filename' to write today's sheet, which does overwrite its "
+                "own previous copy.".format(path))
+    try:
+        os.makedirs(PDF_DIR, exist_ok=True)
+        with open(path, "wb") as handle:
+            handle.write(pdf)
+    except OSError as exc:
+        return ("Error: could not write the task sheet to {0} ({1}). The "
+                "folder comes from OUTLOOK_DOCS_DIR, or %EVA_DOCUMENTS_DIR%\\{2}."
+                .format(path, exc, DOCS_SUBFOLDER))
+    log("Wrote team task sheet: {0}".format(path))
+
+    pages = max(1, -(-len(columns) // TASKS_COLUMNS_PER_PAGE))
+    overdue = sum(1 for task in tasks if task["due"] and task["due"] < today)
+    lines = [
+        "Team task sheet written to:",
+        "  {0}".format(path),
+        "",
+        "{0} task(s), {1} overdue, over {2} column(s) on {3} page(s):".format(
+            len(tasks), overdue, len(columns), pages),
+    ]
+    for number, column in enumerate(columns, start=1):
+        side = ("front" if (number - 1) // TASKS_COLUMNS_PER_PAGE == 0
+                else "back")
+        detail = "{0} task(s)".format(len(column["items"]))
+        if column["label"] in hidden:
+            detail += (", {0} DID NOT FIT and print as '+{0} more not shown'"
+                       .format(hidden[column["label"]]))
+        lines.append("  {0}. {1} ({2}): {3}".format(
+            number, column["label"], side, detail))
+
+    if unmatched:
+        lines.append("")
+        lines.append("These names matched no column, so their tasks are in "
+                     "column 1 marked 'For <name>': " + ", ".join(
+                         "{0} ({1})".format(person, count)
+                         for person, count in sorted(unmatched.items())))
+        if _TASKS_TEAM:
+            lines.append("If one is a direct report, re-print with the name "
+                         "as it appears in the column list.")
+    if hidden:
+        lines.append("")
+        lines.append("Some columns ran out of room. Shorten those tasks or "
+                     "leave out ones that are done, then print again.")
+    lines.append("")
+    if pages > 1:
+        lines.append(
+            "PRINT IT DOUBLE-SIDED, FLIP ON SHORT EDGE, at 100% on A4 "
+            "landscape: columns 1-4 on the front, 5-{0} on the back. The PDF "
+            "asks the print dialog for that and Adobe Reader honours it; in "
+            "any other viewer check the setting before printing.".format(
+                len(columns)))
+    else:
+        lines.append("It is one A4 landscape page - print it single-sided "
+                     "at 100%.")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Meeting scheduling - part 1: finding people and rooms in the directory
 # ---------------------------------------------------------------------------
 #
@@ -6400,6 +7076,110 @@ TOOLS = [
         },
     },
     {
+        "name": "outlook_get_task_team",
+        "description": (
+            "First step of a printable TEAM TASK SHEET: returns the columns in "
+            "print order (column 1 'Team / unassigned', then the user's direct "
+            "reports from OUTLOOK_TASKS_TEAM), the Confluence page that collates "
+            "their tasks (OUTLOOK_TASKS_PAGE), and the window of sent mail to "
+            "read for tasks the user emailed them, with dates from the "
+            "endpoint's own clock. Reads configuration only - no mail. Call it "
+            "before gathering tasks for outlook_print_team_tasks."
+        ),
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "outlook_print_team_tasks",
+        "description": (
+            "Print the user's team's open tasks as a PDF: A4 landscape, four "
+            "columns a side, double-sided - column 1 is tasks with no single "
+            "owner (whole team, several people, or nobody assigned), then one "
+            "column per direct report in OUTLOOK_TASKS_TEAM order, with the "
+            "printed date in the header. YOU supply the tasks, already gathered "
+            "from the Confluence task page and the user's sent mail and "
+            "de-duplicated, with done items left out; the server sorts each "
+            "column by due date, marks overdue ones, puts a tick box on each, "
+            "and reports the path, the per-column counts, any column that ran "
+            "out of room, and any name that matched no column. Re-printing on "
+            "the same day overwrites that day's sheet. Use the outlook "
+            "team-tasks skill for the whole workflow."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "tasks": {
+                    "type": "array",
+                    "description": "Every open task to print, in any order.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "task": {
+                                "type": "string",
+                                "description": (
+                                    "The task itself, short and actionable "
+                                    "(wraps to at most three lines)."
+                                ),
+                            },
+                            "person": {
+                                "type": "string",
+                                "description": (
+                                    "Who owns it, as named in "
+                                    "outlook_get_task_team's column list. Empty "
+                                    "for the whole team, several people, or "
+                                    "nobody assigned - those go in column 1."
+                                ),
+                            },
+                            "due": {
+                                "type": "string",
+                                "description": (
+                                    "Due date as YYYY-MM-DD (sorted, and "
+                                    "marked overdue when past). Other text, "
+                                    "e.g. 'end of month', prints as written."
+                                ),
+                            },
+                            "status": {
+                                "type": "string",
+                                "description": (
+                                    "Optional short status, e.g. 'In progress', "
+                                    "'Blocked'."
+                                ),
+                            },
+                            "source": {
+                                "type": "string",
+                                "description": (
+                                    "Where it came from, short: 'Confluence' or "
+                                    "'Email 9 Oct'."
+                                ),
+                            },
+                            "detail": {
+                                "type": "string",
+                                "description": "Optional few words of context.",
+                            },
+                        },
+                        "required": ["task"],
+                    },
+                },
+                "sources": {
+                    "type": "string",
+                    "description": (
+                        "Optional one-line note for the footer saying what was "
+                        "read, e.g. 'Confluence: Team Tasks · sent mail since "
+                        "14 Sep'."
+                    ),
+                },
+                "filename": {
+                    "type": "string",
+                    "description": (
+                        "Optional file name. Defaults to 'Team Tasks - "
+                        "<date>.pdf', which a re-print the same day overwrites; "
+                        "a named file that already exists is refused."
+                    ),
+                },
+            },
+            "required": ["tasks"],
+        },
+    },
+    {
         "name": "outlook_list_sent_emails",
         "description": (
             "List messages you SENT, within a date range (inclusive), newest first. "
@@ -6747,6 +7527,8 @@ TOOL_DISPATCH = {
     "outlook_get_email": tool_get_email,
     "outlook_get_calendar": tool_get_calendar,
     "outlook_print_calendar": tool_print_calendar,
+    "outlook_get_task_team": tool_get_task_team,
+    "outlook_print_team_tasks": tool_print_team_tasks,
     "outlook_list_sent_emails": tool_list_sent_emails,
     "outlook_search_recent": tool_search_recent,
     "outlook_list_folders": tool_list_folders,
@@ -7082,6 +7864,13 @@ def run_check():
                     traceback.format_exc()))
         else:
             log("Planner team view   : off (OUTLOOK_CALENDAR_TEAM not set)")
+        log("Task sheet people   : {0}".format(
+            ", ".join(_tasks_column_label(label, spec)
+                      for label, spec in _TASKS_TEAM)
+            or "not set (OUTLOOK_TASKS_TEAM) - columns come from the task names"))
+        log("Task sheet sources  : Confluence page {0}; sent mail, last {1} "
+            "days".format(_TASKS_PAGE or "not set (OUTLOOK_TASKS_PAGE)",
+                          _TASKS_EMAIL_DAYS))
         if KB_DIR:
             log("KB save folder      : {0} ({1})".format(
                 KB_DIR,
@@ -7111,7 +7900,7 @@ def run_check():
 
 def main():
     global KB_DIR, KB_AUTOSAVE, PDF_DIR, _CATEGORY_COLOURS, _HIDDEN_CATEGORIES
-    global _CALENDAR_TEAM
+    global _CALENDAR_TEAM, _TASKS_TEAM, _TASKS_PAGE, _TASKS_EMAIL_DAYS
     global CALENDAR_DAY_START_HOUR, CALENDAR_DAY_END_HOUR
     global PLANNER_CONTENT_FRACTION
     global _MEETING_START_HOUR, _MEETING_END_HOUR, _GAL_SCAN_CAP, _ALLOW_DRAFTS
@@ -7220,6 +8009,31 @@ def main():
     if _CALENDAR_TEAM:
         log("Planner team view (back page): {0}.".format(
             ", ".join(label or spec for label, spec in _CALENDAR_TEAM)))
+
+    # The team task sheet: direct reports (replacing the file's list, for the
+    # same reason as above - it is an ordered set of columns), the Confluence
+    # page that collates their tasks, and how far back to read sent mail.
+    tasks_raw = env("OUTLOOK_TASKS_TEAM")
+    if tasks_raw is None:
+        tasks_raw = ";".join(str(entry) for entry in TASKS_TEAM)
+    _TASKS_TEAM = parse_team(tasks_raw, limit=TASKS_PEOPLE_MAX,
+                             what="task sheet people (OUTLOOK_TASKS_TEAM)",
+                             page="the task sheet")
+    if _TASKS_TEAM:
+        log("Task sheet columns: {0}.".format(", ".join(
+            _tasks_column_label(label, spec) for label, spec in _TASKS_TEAM)))
+    _TASKS_PAGE = env("OUTLOOK_TASKS_PAGE") or _one_line(TASKS_CONFLUENCE_PAGE)
+    days_raw = env("OUTLOOK_TASKS_EMAIL_DAYS")
+    if days_raw is not None:
+        try:
+            days = int(days_raw.strip())
+            if not 1 <= days <= 365:
+                raise ValueError
+            _TASKS_EMAIL_DAYS = days
+        except ValueError:
+            log("WARNING: OUTLOOK_TASKS_EMAIL_DAYS='{0}' is not a whole number "
+                "of days from 1 to 365; keeping {1}.".format(
+                    days_raw, _TASKS_EMAIL_DAYS))
 
     # Working-day window for the printed timeline, e.g. OUTLOOK_CALENDAR_HOURS="7-19".
     hours_raw = env("OUTLOOK_CALENDAR_HOURS")

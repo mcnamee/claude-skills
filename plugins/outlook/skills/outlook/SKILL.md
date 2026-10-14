@@ -1,6 +1,6 @@
 ---
 name: outlook
-description: Read Outlook mail and calendar via the outlook MCP server (COM automation, Windows; cannot send anything), put an agreed email or reply into Outlook as an unsent draft, and print a day's calendar as a PDF day planner. Use when the user asks about their emails, wants mail searched or summarised, says to put a drafted email into Outlook ("ok, send that to Outlook", "open it in Outlook"), asks what's on their calendar, asks for a printable/printed calendar, day planner or agenda for today or tomorrow, or asks for an email to be saved into the knowledge base. For scheduling a meeting with someone, use the meeting-scheduler skill instead.
+description: Read Outlook mail and calendar via the outlook MCP server (COM automation, Windows; cannot send anything), put an agreed email or reply into Outlook as an unsent draft, and print a day's calendar as a PDF day planner. Use when the user asks about their emails, wants mail searched or summarised, says to put a drafted email into Outlook ("ok, send that to Outlook", "open it in Outlook"), asks what's on their calendar, asks for a printable/printed calendar, day planner or agenda for today or tomorrow, or asks for an email to be saved into the knowledge base. For scheduling a meeting with someone, use the meeting-scheduler skill instead; for a printed sheet of the team's tasks, use team-tasks.
 ---
 
 # Outlook (via the `outlook` MCP server)
@@ -12,8 +12,10 @@ first (see the repo README) and to verify with `python outlook.py --check`.
 **Scheduling a meeting is a different skill.** "Find a time with Josh", "book
 a room", "set up 30 minutes next week" → use **`meeting-scheduler`**, which
 covers `outlook_find_people`, `outlook_suggest_meeting_times` and
-`outlook_draft_meeting`. Everything below is mail, calendar reading and
-printing.
+`outlook_draft_meeting`. **Printing the team's tasks** ("print my team's
+tasks", a task sheet for my direct reports) → use **`team-tasks`**, which
+covers `outlook_get_task_team` and `outlook_print_team_tasks`. Everything
+below is mail, calendar reading and printing a day.
 
 ## Tools
 
@@ -26,6 +28,7 @@ printing.
 | `outlook_list_sent_emails` | What the user sent in a date range |
 | `outlook_get_calendar` | Calendar events in a date range (recurring expanded) |
 | `outlook_print_calendar` | A **printable** PDF day planner for ONE day, with colleagues on the back when `OUTLOOK_CALENDAR_TEAM` is set |
+| `outlook_get_task_team` / `outlook_print_team_tasks` | The team's open tasks as a printable sheet — see `team-tasks` |
 | `outlook_list_folders` | Real folder names across all stores |
 | `outlook_find_people` | Fuzzy-find a person or room in the directory — see `meeting-scheduler` |
 | `outlook_suggest_meeting_times` | When everyone is free — see `meeting-scheduler` |
@@ -160,8 +163,8 @@ KB". The file lands in `H:\Eva\knowledge\email` and the tool reports the path.
 
 - **It cannot send anything** — not mail, not a reply, not a meeting
   invitation — and cannot accept, delete or move anything. Never promise to.
-  It writes four things, each only when asked: a saved email, a printed
-  planner, an **unsent** meeting draft (`outlook_draft_meeting`) and an
+  It writes five things, each only when asked: a saved email, a printed
+  planner, a printed team task sheet, an **unsent** meeting draft (`outlook_draft_meeting`) and an
   **unsent** email draft (`outlook_draft_email`), both of which the user then
   sends themselves.
 - A compliance blacklist may withhold messages/folders entirely; blocked

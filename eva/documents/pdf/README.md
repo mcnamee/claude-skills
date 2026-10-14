@@ -1,14 +1,15 @@
 # documents\pdf\
 
 The PDF folder: source PDFs for the `pdf-to-md` plugin to convert into the
-knowledge base, the day planners the `outlook` plugin prints, and PDFs the
+knowledge base, the day planners and team task sheets the `outlook` plugin
+prints, and PDFs the
 `confluence` plugin downloads from a page's attachments.
 
 | | |
 |---|---|
 | **Setting** | `EVA_DOCUMENTS_DIR` (the `pdf-to-md`, `outlook` and `confluence` plugins all append `\pdf`) |
 | **Default** | `H:\Eva\documents\pdf` |
-| **Access** | `pdf-to-md` reads only — conversion never alters a PDF. `outlook` writes day planners here, and `confluence` downloaded attachments; neither touches anything else, and neither replaces an existing file unless asked |
+| **Access** | `pdf-to-md` reads only — conversion never alters a PDF. `outlook` writes day planners and task sheets here, and `confluence` downloaded attachments; neither touches anything else, and neither replaces an existing file unless asked |
 | **Output** | [`..\..\knowledge\pdf`](../../knowledge/pdf) |
 
 Conversion preserves reading order, headings and tables, including borderless
@@ -39,7 +40,11 @@ and fold the blank bottom fifth up behind it to fit a diary (set
 the whole sheet). Re-printing a day overwrites that day's sheet rather than
 piling up copies.
 
-They are **not worth converting**. A bulk `pdf-to-md` run will pick them up along
+Ask for "my team's tasks" and it writes `Team Tasks - <date>.pdf` here too:
+eight columns over both sides of an A4 landscape sheet, printed double-sided,
+flip on short edge, using the whole sheet.
+
+Neither is **worth converting**. A bulk `pdf-to-md` run will pick them up along
 with everything else and fill the index with last week's meetings, so tidy old
 sheets out, or set `OUTLOOK_DOCS_DIR` to a folder of its own if you print often.
 
