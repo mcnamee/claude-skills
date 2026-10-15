@@ -104,6 +104,12 @@ printed **double-sided, flip on short edge** - tell the user exactly that
 while other viewers need it set by hand. Pass the reply's per-person notes on
 when one says "free/busy only", "NOT FOUND" or "neither ... could be read":
 those are things the user can fix (share the calendar, correct the entry).
+A column read "from Exchange's availability service" is normal for a
+colleague who shares "titles and locations" - it is not an error. A
+bracketed note starting "Exchange" means the server could not use Exchange
+and fell back to Outlook free/busy: pass the note on, and if it says no URL
+was found, tell the user to set `OUTLOOK_EWS_URL` (Outlook: Ctrl+right-click
+the tray icon, Test E-mail AutoConfiguration, "Availability Service URL").
 The reply gives counts, never colleagues' subjects - do not try to fill them
 in from `outlook_get_calendar`, which only reads the user's own calendar
 anyway. "Just mine" / "no team page" → `include_team: false`. If the user asks

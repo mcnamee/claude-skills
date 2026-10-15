@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-outlook.py (v11.3.1)
+outlook.py (v11.4.0)
 ======================
 
 A single-file MCP (Model Context Protocol) server giving an LLM near-read-only
@@ -24,8 +24,12 @@ knowledge base, a printable PDF day planner, and a printable PDF of the
 team's open tasks.
 
 Designed for an airgapped Windows endpoint where Outlook is installed, running,
-and logged into an on-premises Exchange profile. This script makes NO network
-calls; all access is local COM to the already-authenticated Outlook process.
+and logged into an on-premises Exchange profile. All mail and calendar access
+is local COM to the already-authenticated Outlook process. The ONE exception
+(v11.4.0) is the planner's team view: a colleague's calendar that Outlook will
+not open is asked of your own Exchange server's availability service over
+HTTPS, signed in with your Windows login - see TEAM VIEW ON THE BACK. Set
+OUTLOOK_EWS_URL=off and the server makes no network call at all.
 
 Transport: newline-delimited JSON-RPC 2.0 over stdio (the standard MCP stdio
 transport).
@@ -368,19 +372,38 @@ How each person's column is read, independently of the others:
    included, and anything running past either end of the day is an all-day
    chip rather than stretching the timeline to midnight. A PRIVATE
    appointment prints as "Private appointment", with no location.
-2. Their FREE/BUSY, when the calendar cannot be opened - or opens but shows
-   nothing while free/busy shows them booked, which is what free/busy-only
-   permission can look like. Blocks then say Busy, Tentative (hollow), Out
-   of office or Working elsewhere, and nothing about what. The column
-   heading says "free/busy only".
-3. Neither: the column prints "Calendar not available"; a name that does not
+2. EXCHANGE'S AVAILABILITY SERVICE (v11.4.0), when the calendar cannot be
+   opened - which is the case for "Can view titles and locations" sharing:
+   Exchange refuses the folder ("You do not have sufficient permission"),
+   yet Outlook shows titles and locations on screen, because it asks this
+   service. So does this server: one EWS GetUserAvailability request
+   (DetailedMerged view) for everyone left, signed in as you through SSPI
+   with your Windows login - no password is stored or handled. It returns
+   each event's real start and end, plus subject and location wherever
+   their sharing allows; under free/busy-only sharing the blocks say Busy,
+   Tentative (hollow), Out of office or Working elsewhere, and the heading
+   says "free/busy only". Times are asked for in UTC and converted to this
+   machine's local time, so daylight saving cannot shift them.
+   The URL comes from OUTLOOK_EWS_URL, else from the Autodiscover answer
+   Outlook has already saved on this machine, else from Autodiscover itself.
+   TLS uses the Windows certificate store, plus OUTLOOK_CA_CERT if set;
+   OUTLOOK_VERIFY_SSL=false turns verification off. OUTLOOK_EWS_URL=off
+   never contacts Exchange.
+3. Outlook's own FREE/BUSY (Recipient.FreeBusy), when Exchange cannot be
+   reached or refuses that person: busy times only, on a 15-minute grid.
+   Before v11.4.0 this was step 2, and on at least one endpoint the blocks
+   did not match the person's day; --check now compares YOUR free/busy with
+   your own diary to show whether Outlook's string starts where this server
+   reads it from. Treat a column marked "free/busy only" with an Exchange
+   note in the reply as a fallback, not a faithful copy.
+4. Nothing: the column prints "Calendar not available"; a name that does not
    resolve prints "Not found in the directory". One person failing never
    stops the rest of the sheet printing.
 
 The tool's reply reports the team view as COUNTS per person, never subjects:
 those are other people's diaries, and their content is for the sheet on your
-desk rather than for the AI. Run --check to see, per person, whether their
-calendar or only their free/busy is readable.
+desk rather than for the AI. Run --check to see the Exchange URL in use and,
+per person, which of the steps above their column comes from.
 
 THE BLACKLIST AND THE PRINTED PAGE. Every event is printed, blacklisted or
 not. The PDF is drawn here and written to this machine's own disk; a planner
@@ -649,6 +672,18 @@ Server-specific settings, all optional and all environment variables:
                                 printed over the column and is optional.
                                 Unset means a one-page planner. See TEAM VIEW
                                 ON THE BACK above.
+    OUTLOOK_EWS_URL             your Exchange server's EWS URL, for the team
+                                view's titles and locations, e.g.
+                                "https://mail.agency.gov.au/EWS/Exchange.asmx"
+                                (Outlook: Ctrl+right-click the tray icon ->
+                                Test E-mail AutoConfiguration -> "Availability
+                                Service URL"). Blank finds it; "off" never
+                                contacts Exchange.
+    OUTLOOK_CA_CERT             a PEM file of your internal CA, if Exchange's
+                                certificate does not chain to one already in
+                                the Windows certificate store.
+    OUTLOOK_VERIFY_SSL=false    turn TLS verification to Exchange off (last
+                                resort; blank or unset means verify).
     OUTLOOK_TASKS_TEAM          your direct reports, up to seven, as columns
                                 2-8 of the team task sheet, in print order.
                                 Same form as OUTLOOK_CALENDAR_TEAM. Unset
@@ -731,19 +766,25 @@ IMPORTANT (stdio-on-Windows pitfalls)
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "11.3.1"
+__version__ = "11.4.0"
 
 import os
 import re
+import ssl
 import sys
 import zlib
 import json
+import base64
 import difflib
 import hashlib
 import argparse
 import datetime
 import traceback
 import unicodedata
+import http.client
+import urllib.parse
+import xml.etree.ElementTree as ElementTree
+from xml.sax.saxutils import escape as xml_escape
 
 
 # ============================================================================
@@ -864,6 +905,28 @@ CALENDAR_HIDDEN_CATEGORIES = [
 #        semicolon-separated entries of the same form.
 CALENDAR_TEAM = [
 ]
+
+# --- 5e. Exchange availability for the team view (new in v11.4.0).
+#        A colleague who has shared their calendar as "Can view titles and
+#        locations" (Exchange's Limited Details) cannot have it OPENED through
+#        Outlook - Exchange refuses with "You do not have sufficient permission"
+#        - yet Outlook shows those titles and locations on screen. It gets
+#        them from Exchange's availability service (EWS GetUserAvailability),
+#        and so does the team view: one request for everyone on the back page,
+#        signed in as you with your Windows login. It returns each event's real
+#        start and end, plus subject and location wherever their sharing
+#        allows.
+#        THIS IS THE ONE PLACE THIS SERVER TALKS TO A SERVER RATHER THAN TO
+#        OUTLOOK: your own Exchange server, over HTTPS, and only when a team
+#        calendar cannot be opened directly. Nothing else in this file uses it.
+#        EWS_URL "" means find it: first from the Autodiscover answer Outlook
+#        has already saved on this machine, then by asking Autodiscover.
+#        OUTLOOK_EWS_URL overrides it with the full URL (Outlook shows it under
+#        Ctrl+right-click the tray icon -> Test E-mail AutoConfiguration ->
+#        "Availability Service URL"), or "off" to never contact Exchange - the
+#        team view then falls back to Outlook's own free/busy, busy times only.
+EWS_URL = ""
+EWS_TIMEOUT = 20            # seconds per request to Exchange
 
 # --- 5e. Team task sheet (outlook_print_team_tasks, new in v11.3.0).
 #        Your direct reports, up to seven, in the order their columns print
@@ -1174,6 +1237,14 @@ _HIDDEN_CATEGORIES = set()
 # The (label, spec) pairs printed as columns on the back of the planner, from
 # CALENDAR_TEAM or OUTLOOK_CALENDAR_TEAM. Empty means a one-page planner.
 _CALENDAR_TEAM = []
+
+# Exchange availability settings, resolved by main() from EWS_URL /
+# OUTLOOK_EWS_URL, OUTLOOK_VERIFY_SSL and OUTLOOK_CA_CERT. _EWS_URL is None
+# for "discover it", False for switched off, or the URL to use.
+_EWS_URL = None
+_EWS_VERIFY_SSL = True
+_EWS_CA_CERT = None
+_EWS_DISCOVERED = None      # (url, where it came from) once discovery has run
 
 # The team task sheet's roster and Confluence page, from the TASKS_* settings
 # above or their OUTLOOK_TASKS_* environment variables.
@@ -3906,24 +3977,418 @@ def _collect_team_events(open_folder, day, identity):
     return events
 
 
+# ---------------------------------------------------------------------------
+# Exchange availability (EWS GetUserAvailability) for the team view
+# ---------------------------------------------------------------------------
+# Outlook shows a colleague's titles and locations under "Can view titles and
+# locations" sharing without ever opening their calendar: it asks Exchange's
+# availability service, which answers with each event's times and, where the
+# sharing allows, its subject and location. The Outlook object model has no
+# way to ask that question, so this does it directly - one SOAP request for
+# the whole back page, signed in with the user's own Windows login through
+# SSPI (pywin32's sspi module, already installed for COM). See EWS_URL in the
+# configuration block.
+
+EWS_TYPES = "http://schemas.microsoft.com/exchange/services/2006/types"
+EWS_MESSAGES = "http://schemas.microsoft.com/exchange/services/2006/messages"
+
+# Exchange BusyType -> (Outlook busy status, label for a block with no
+# details). Free is kept and drawn hollow, like a free-marked appointment on
+# the front; NoData is dropped.
+EWS_BUSY_TYPES = {
+    "Free": (0, "Free"),
+    "Tentative": (1, "Tentative"),
+    "Busy": (2, "Busy"),
+    "OOF": (3, "Out of office"),
+    "WorkingElsewhere": (4, "Working elsewhere"),
+}
+
+
+def _xml_name(element):
+    """An element's tag without its namespace."""
+    return element.tag.rsplit("}", 1)[-1]
+
+
+def _xml_child(element, name):
+    """First DIRECT child with this local name, or None."""
+    if element is None:
+        return None
+    for child in element:
+        if _xml_name(child) == name:
+            return child
+    return None
+
+
+def _xml_text(element, name, default=""):
+    """Stripped text of the first direct child with this local name."""
+    child = _xml_child(element, name)
+    if child is None or child.text is None:
+        return default
+    return child.text.strip()
+
+
+def _xml_all(element, name):
+    """Every descendant (at any depth) with this local name, in order."""
+    return [node for node in element.iter() if _xml_name(node) == name]
+
+
+def _ews_ssl_context():
+    """TLS context for Exchange: the Windows trust store, plus OUTLOOK_CA_CERT."""
+    context = ssl.create_default_context()
+    if not _EWS_VERIFY_SSL:
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+    elif _EWS_CA_CERT:
+        context.load_verify_locations(cafile=_EWS_CA_CERT)
+    return context
+
+
+def _ews_post(url, body, timeout=None):
+    """
+    POST an XML body to Exchange, signed in as the current Windows user.
+
+    Sends the request once without credentials to learn which sign-in the
+    server offers, then runs the Negotiate (Kerberos, falling back to NTLM)
+    or NTLM handshake through SSPI on the SAME connection - NTLM is tied to
+    the connection, so a new one would start the handshake again. No password
+    is ever handled here: SSPI signs in with the logged-on user's own token.
+    Returns (HTTP status, response bytes). Raises RuntimeError with a reason a
+    person can act on when the server wants a sign-in this cannot do.
+    """
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme not in ("https", "http") or not parts.hostname:
+        raise RuntimeError("'{0}' is not an http(s) URL".format(url))
+    host = parts.hostname
+    path = (parts.path or "/") + ("?" + parts.query if parts.query else "")
+    timeout = timeout or EWS_TIMEOUT
+    if parts.scheme == "https":
+        conn = http.client.HTTPSConnection(host, parts.port, timeout=timeout,
+                                           context=_ews_ssl_context())
+    else:
+        conn = http.client.HTTPConnection(host, parts.port, timeout=timeout)
+    headers = {
+        "Content-Type": "text/xml; charset=utf-8",
+        "Accept": "text/xml",
+        "Connection": "keep-alive",
+        "User-Agent": "outlook-mcp/{0}".format(__version__),
+    }
+    payload = body.encode("utf-8")
+    try:
+        conn.request("POST", path, payload, headers)
+        response = conn.getresponse()
+        data = response.read()
+        if response.status != 401:
+            return response.status, data
+
+        offered = [value.strip() for value in
+                   (response.msg.get_all("WWW-Authenticate") or [])]
+        schemes = [value.split(None, 1)[0].lower() for value in offered if value]
+        if "negotiate" in schemes:
+            scheme = "Negotiate"
+        elif "ntlm" in schemes:
+            scheme = "NTLM"
+        else:
+            raise RuntimeError(
+                "Exchange asks for a sign-in this server cannot do ({0}); only "
+                "Windows sign-in (Negotiate or NTLM) is supported".format(
+                    ", ".join(offered) or "none offered"))
+
+        try:
+            import sspi     # part of pywin32, which this server already needs
+        except ImportError:
+            raise RuntimeError("pywin32's sspi module is missing, so Windows "
+                               "sign-in is unavailable")
+        client = sspi.ClientAuth(scheme, targetspn="HTTP/" + host)
+        token = None
+        for _round in range(4):
+            _status, out = client.authorize(token)
+            headers["Authorization"] = "{0} {1}".format(
+                scheme, base64.b64encode(out[0].Buffer).decode("ascii"))
+            conn.request("POST", path, payload, headers)
+            response = conn.getresponse()
+            data = response.read()
+            if response.status != 401:
+                return response.status, data
+            challenge = None
+            for value in response.msg.get_all("WWW-Authenticate") or []:
+                pieces = value.strip().split(None, 1)
+                if len(pieces) == 2 and pieces[0].lower() == scheme.lower():
+                    challenge = pieces[1].strip()
+            if not challenge:
+                break
+            token = base64.b64decode(challenge)
+        raise RuntimeError("Exchange refused your Windows sign-in (HTTP 401)")
+    finally:
+        conn.close()
+
+
+def _ews_url_from_autodiscover_xml(data, address=""):
+    """
+    The EWS URL in an Autodiscover answer, or None.
+
+    The internal (EXCH) protocol's EwsUrl is preferred over the external
+    (EXPR) one, since this runs inside the network.
+    """
+    try:
+        root = ElementTree.fromstring(data)
+    except ElementTree.ParseError:
+        return None
+    found = {}
+    for protocol in _xml_all(root, "Protocol"):
+        url = _xml_text(protocol, "EwsUrl")
+        if url:
+            found.setdefault(_xml_text(protocol, "Type").upper(), url)
+    return found.get("EXCH") or found.get("EXPR") or next(iter(found.values()), None)
+
+
+def _discover_ews_url(address):
+    """
+    Find the EWS URL with nothing configured. Returns (url, where) or (None, why).
+
+    1. Outlook's own saved Autodiscover answer: classic Outlook keeps it as
+       "... - Autodiscover.xml" under %LOCALAPPDATA%\\Microsoft\\Outlook, so
+       this costs no network at all. The newest file mentioning the user's
+       address wins, then the newest of any.
+    2. Asking Autodiscover at the two standard addresses for the user's email
+       domain. An on-premises Exchange often publishes Autodiscover only in
+       Active Directory, where this cannot look - OUTLOOK_EWS_URL is the
+       answer there.
+    """
+    folder = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Microsoft", "Outlook")
+    candidates = []
+    if os.path.isdir(folder):
+        for current, _dirs, files in os.walk(folder):
+            if current[len(folder):].count(os.sep) > 2:
+                continue
+            for name in files:
+                if name.lower().endswith("autodiscover.xml"):
+                    full = os.path.join(current, name)
+                    try:
+                        candidates.append((os.path.getmtime(full), full))
+                    except OSError:
+                        pass
+    best = None
+    for _mtime, full in sorted(candidates, reverse=True):
+        try:
+            with open(full, "rb") as handle:
+                data = handle.read()
+        except OSError:
+            continue
+        url = _ews_url_from_autodiscover_xml(data)
+        if not url:
+            continue
+        if address and address.lower().encode("utf-8") in data.lower():
+            return url, "Outlook's saved Autodiscover answer ({0})".format(full)
+        best = best or (url, "Outlook's saved Autodiscover answer ({0})".format(full))
+    if best:
+        return best
+
+    if "@" not in (address or ""):
+        return None, "no saved Autodiscover answer, and no email address to ask with"
+    domain = address.rsplit("@", 1)[-1]
+    body = (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<Autodiscover xmlns="http://schemas.microsoft.com/exchange/autodiscover/'
+        'outlook/requestschema/2006"><Request><EMailAddress>{0}</EMailAddress>'
+        '<AcceptableResponseSchema>http://schemas.microsoft.com/exchange/'
+        'autodiscover/outlook/responseschema/2006a</AcceptableResponseSchema>'
+        '</Request></Autodiscover>').format(xml_escape(address))
+    reasons = []
+    for url in ("https://autodiscover.{0}/autodiscover/autodiscover.xml",
+                "https://{0}/autodiscover/autodiscover.xml"):
+        url = url.format(domain)
+        try:
+            status, data = _ews_post(url, body, timeout=10)
+        except Exception as exc:
+            reasons.append("{0}: {1}".format(url, exc))
+            continue
+        found = _ews_url_from_autodiscover_xml(data) if status == 200 else None
+        if found:
+            return found, "Autodiscover ({0})".format(url)
+        reasons.append("{0}: HTTP {1}".format(url, status))
+    return None, "Autodiscover found nothing ({0})".format("; ".join(reasons))
+
+
+def ews_url():
+    """
+    The EWS URL to use, as (url, where it came from); url is None when off or
+    not found, with the reason in place of where. Discovery runs once.
+    """
+    global _EWS_DISCOVERED
+    if _EWS_URL is False:
+        return None, "switched off (OUTLOOK_EWS_URL=off)"
+    if _EWS_URL:
+        return _EWS_URL, "OUTLOOK_EWS_URL"
+    if _EWS_DISCOVERED is None:
+        _EWS_DISCOVERED = _discover_ews_url(
+            current_user_identity(get_namespace())[1])
+    return _EWS_DISCOVERED
+
+
+def _ews_time(text):
+    """An EWS time, which the request asked for in UTC, as LOCAL naive time."""
+    value = datetime.datetime.strptime(text.strip()[:19], "%Y-%m-%dT%H:%M:%S")
+    return (value.replace(tzinfo=datetime.timezone.utc)
+                 .astimezone().replace(tzinfo=None))
+
+
+def _ews_events(view, day):
+    """
+    The CalendarEvents of one FreeBusyView that touch `day`, as planner events.
+
+    Returns (events, details): `details` is True when Exchange gave at least
+    one subject, i.e. the sharing is titles-and-locations or better. Anything
+    running past either end of the day becomes an all-day chip, as for a
+    calendar read directly, and a private appointment prints as such.
+    """
+    day_start = datetime.datetime.combine(day, datetime.time(0, 0))
+    day_end = day_start + datetime.timedelta(days=1)
+    events, details = [], False
+    for node in _xml_all(view, "CalendarEvent"):
+        try:
+            start = _ews_time(_xml_text(node, "StartTime"))
+            end = _ews_time(_xml_text(node, "EndTime"))
+        except ValueError:
+            continue
+        busy_type = EWS_BUSY_TYPES.get(_xml_text(node, "BusyType"))
+        if busy_type is None or end <= day_start or start >= day_end:
+            continue
+        busy, label = busy_type
+        info = _xml_child(node, "CalendarEventDetails")
+        subject = _one_line(_xml_text(info, "Subject")) if info is not None else ""
+        location = _one_line(_xml_text(info, "Location")) if info is not None else ""
+        if subject:
+            details = True
+        if info is not None and _xml_text(info, "IsPrivate").lower() == "true":
+            subject, location = "Private appointment", ""
+        if busy == 3:
+            colour = "purple"
+        elif busy == 4:
+            colour = "teal"
+        else:
+            colour = "blue" if subject else "steel"
+        events.append({
+            "start": start,
+            "end": end,
+            # The whole day, or running past either end of it.
+            "all_day": (start < day_start or end > day_end
+                        or (start == day_start and end == day_end)),
+            "subject": subject or label,
+            "location": location,
+            "organiser": "",
+            "categories": [],
+            "busy": busy,
+            "people": [],
+            "external": False,
+            "recurring": False,
+            "colour": colour,
+        })
+    events.sort(key=lambda event: (not event["all_day"], event["start"]))
+    return events, details
+
+
+def ews_availability(addresses, day):
+    """
+    Ask Exchange for several people's day at once.
+
+    Returns {lower-case address: {"events": [...], "details": bool}} for each
+    person Exchange answered for, or {address: {"error": reason}} for one it
+    refused (no permission, not found). Raises RuntimeError when Exchange
+    cannot be reached or asked at all, with the reason.
+
+    The request is made in UTC (a time zone with no daylight saving, which is
+    how EWS is told "UTC" in this call) over a window a day either side, and
+    the answer is converted to this machine's local time here, so no Windows
+    time-zone names are involved and a meeting is never an hour out across a
+    daylight-saving change.
+    """
+    url, where = ews_url()
+    if not url:
+        raise RuntimeError("no Exchange availability URL - {0}".format(where))
+    window_start = datetime.datetime.combine(day - datetime.timedelta(days=1),
+                                             datetime.time(0, 0))
+    window_end = window_start + datetime.timedelta(days=3)
+    utc_rule = ("<t:Bias>0</t:Bias><t:Time>00:00:00</t:Time><t:DayOrder>1"
+                "</t:DayOrder><t:Month>1</t:Month><t:DayOfWeek>Sunday"
+                "</t:DayOfWeek>")
+    mailboxes = "".join(
+        "<t:MailboxData><t:Email><t:Address>{0}</t:Address></t:Email>"
+        "<t:AttendeeType>Required</t:AttendeeType><t:ExcludeConflicts>false"
+        "</t:ExcludeConflicts></t:MailboxData>".format(xml_escape(address))
+        for address in addresses)
+    body = (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" '
+        'xmlns:t="{types}" xmlns:m="{messages}"><soap:Body>'
+        '<m:GetUserAvailabilityRequest>'
+        '<t:TimeZone><t:Bias>0</t:Bias><t:StandardTime>{rule}</t:StandardTime>'
+        '<t:DaylightTime>{rule}</t:DaylightTime></t:TimeZone>'
+        '<m:MailboxDataArray>{mailboxes}</m:MailboxDataArray>'
+        '<t:FreeBusyViewOptions><t:TimeWindow>'
+        '<t:StartTime>{start}</t:StartTime><t:EndTime>{end}</t:EndTime>'
+        '</t:TimeWindow><t:MergedFreeBusyIntervalInMinutes>30'
+        '</t:MergedFreeBusyIntervalInMinutes>'
+        '<t:RequestedView>DetailedMerged</t:RequestedView>'
+        '</t:FreeBusyViewOptions></m:GetUserAvailabilityRequest>'
+        '</soap:Body></soap:Envelope>').format(
+            types=EWS_TYPES, messages=EWS_MESSAGES, rule=utc_rule,
+            mailboxes=mailboxes, start=window_start.strftime("%Y-%m-%dT%H:%M:%S"),
+            end=window_end.strftime("%Y-%m-%dT%H:%M:%S"))
+
+    try:
+        status, data = _ews_post(url, body)
+    except RuntimeError:
+        raise
+    except (OSError, http.client.HTTPException) as exc:
+        raise RuntimeError("could not reach Exchange at {0} ({1})".format(url, exc))
+    try:
+        root = ElementTree.fromstring(data)
+    except ElementTree.ParseError:
+        raise RuntimeError("Exchange at {0} answered HTTP {1} with something "
+                           "that is not XML".format(url, status))
+    fault = _xml_all(root, "Fault")
+    if status != 200 or fault:
+        reason = (_xml_text(fault[0], "faultstring") if fault else "") or \
+                 "HTTP {0}".format(status)
+        raise RuntimeError("Exchange at {0} refused the request ({1})".format(
+            url, reason))
+
+    answers = {}
+    responses = _xml_all(root, "FreeBusyResponse")
+    for address, response in zip(addresses, responses):
+        message = _xml_child(response, "ResponseMessage")
+        view = _xml_child(response, "FreeBusyView")
+        if message is not None and message.get("ResponseClass") == "Error":
+            answers[address.lower()] = {"error": "{0}: {1}".format(
+                _xml_text(message, "ResponseCode") or "Error",
+                _xml_text(message, "MessageText") or "no detail")}
+            continue
+        if view is None:
+            answers[address.lower()] = {"error": "Exchange returned no view"}
+            continue
+        events, details = _ews_events(view, day)
+        answers[address.lower()] = {"events": events, "details": details}
+    return answers
+
+
 def _team_column(ns, label, spec, day, identity):
     """
-    Everything one column of the team page needs, for one person.
+    One column of the team page, read from the person's calendar if it opens.
 
-    Tries their calendar first (subjects and locations, when you have been
-    given that much access), and falls back to their free/busy when it cannot
-    be opened. It ALSO falls back when the calendar opens but shows nothing
-    that day while free/busy shows them busy: with free/busy-only permission
-    Outlook can hand back an empty folder rather than an error, and an empty
-    column for somebody in back-to-back meetings is worse than a column of
-    plain "Busy" blocks.
+    A calendar shared with "Can view all details" (or a delegate's) opens, and
+    the column is finished here: subjects, locations, colours, recurring
+    series. Anything less - "Can view titles and locations" included - makes
+    Exchange refuse the folder, and the column is left for _team_columns to
+    fill from Exchange's availability service, then Outlook's free/busy.
 
-    Returns {"label", "source", "events"}, where source is "calendar",
-    "free/busy", "unresolved" (not in the directory) or "unavailable" (neither
-    the calendar nor free/busy could be read). Never raises: one person's
-    calendar failing must not stop the other three, or the front, printing.
+    Returns {"label", "source", "events", ...}: source "calendar" when done,
+    "unresolved" when the name is not in the directory, or "pending" with the
+    recipient, SMTP address and folder outcome kept for the next step. Never
+    raises.
     """
-    column = {"label": label or spec, "source": "unavailable", "events": []}
+    column = {"label": label or spec, "source": "unavailable", "events": [],
+              "details": True, "recipient": None, "address": "",
+              "folder_events": None, "note": ""}
     try:
         recipient = ns.CreateRecipient(spec)
         recipient.Resolve()
@@ -3934,47 +4399,103 @@ def _team_column(ns, label, spec, day, identity):
     if not resolved:
         column["source"] = "unresolved"
         return column
+    column["recipient"] = recipient
     if not label:
         try:
             column["label"] = _person_label(recipient.Name or spec) or spec
         except Exception:
             column["label"] = spec
+    try:
+        column["address"] = _entry_smtp(recipient.AddressEntry) or ""
+    except Exception:
+        column["address"] = ""
+    if not column["address"] and "@" in spec:
+        column["address"] = spec
 
     def open_folder():
         # A fresh Folder per call, so each scan pass gets its own Items.
         return ns.GetSharedDefaultFolder(recipient, OL_FOLDER_CALENDAR)
 
-    events = None
     try:
         events = _collect_team_events(open_folder, day, identity)
     except Exception as exc:
-        log("Team calendar: cannot open the calendar of '{0}' ({1}); trying "
-            "free/busy.".format(spec, exc))
-
+        log("Team calendar: cannot open the calendar of '{0}' ({1}); asking "
+            "Exchange's availability service instead.".format(spec, exc))
+        events = None
     if events:
         column["source"], column["events"] = "calendar", events
         return column
-
-    free_busy = _free_busy(recipient, day)
-    blocks = _free_busy_events(free_busy, day) if free_busy else None
-    if blocks:
-        if events is not None:
-            log("Team calendar: the calendar of '{0}' opened but showed nothing "
-                "on {1}, while free/busy shows booked time - printing "
-                "free/busy instead.".format(spec, day))
-        column["source"], column["events"] = "free/busy", blocks
-    elif events is not None:
-        column["source"] = "calendar"       # opened, and genuinely empty
-    elif free_busy is not None:
-        column["source"] = "free/busy"      # free all day
+    column["source"], column["folder_events"] = "pending", events
     return column
 
 
+def _finish_column(column, answer, ews_problem, day):
+    """
+    Fill a pending column from Exchange's answer, else Outlook's free/busy.
+
+    Exchange's availability answer is preferred because it carries real
+    start and end times, and titles and locations wherever the sharing
+    allows. Outlook's Recipient.FreeBusy is the last resort: busy times only,
+    on a 15-minute grid.
+    """
+    if answer and "events" in answer:
+        events = answer["events"]
+        if events:
+            column["source"], column["events"] = "availability", events
+            column["details"] = answer["details"]
+        elif column["folder_events"] is not None:
+            column["source"] = "calendar"       # opened, and genuinely empty
+        else:
+            column["source"], column["details"] = "availability", False
+        return
+    if answer and "error" in answer:
+        column["note"] = "Exchange: {0}".format(answer["error"])
+    elif ews_problem:
+        column["note"] = "Exchange availability: {0}".format(ews_problem)
+
+    free_busy = _free_busy(column["recipient"], day)
+    blocks = _free_busy_events(free_busy, day) if free_busy else None
+    column["details"] = False
+    if blocks:
+        column["source"], column["events"] = "free/busy", blocks
+    elif column["folder_events"] is not None:
+        column["source"], column["details"] = "calendar", True
+    elif free_busy is not None:
+        column["source"] = "free/busy"      # free all day
+    else:
+        column["source"] = "unavailable"
+
+
 def _team_columns(day, identity):
-    """Read every configured team calendar into a list of columns."""
+    """
+    Read every configured team calendar into a list of columns.
+
+    Calendars that open are read directly; everyone else goes to Exchange's
+    availability service in ONE request, and anyone it cannot answer for falls
+    back to Outlook's free/busy. One person failing never stops the others.
+    """
     ns = get_namespace()
-    return [_team_column(ns, label, spec, day, identity)
-            for label, spec in _CALENDAR_TEAM]
+    columns = [_team_column(ns, label, spec, day, identity)
+               for label, spec in _CALENDAR_TEAM]
+    pending = [column for column in columns if column["source"] == "pending"]
+    if not pending:
+        return columns
+
+    answers, problem = {}, ""
+    addresses = [column["address"] for column in pending if column["address"]]
+    if addresses:
+        try:
+            answers = ews_availability(addresses, day)
+        except Exception as exc:
+            problem = str(exc)
+            log("Team calendar: Exchange's availability service could not be "
+                "used ({0}); falling back to Outlook free/busy.".format(problem))
+    else:
+        problem = "no email address for anyone left to ask about"
+    for column in pending:
+        _finish_column(column, answers.get(column["address"].lower()),
+                       problem, day)
+    return columns
 
 
 def _draw_team_page(canvas, day, team, category_colours):
@@ -4029,7 +4550,7 @@ def _draw_team_page(canvas, day, team, category_colours):
             note = "not found"
         elif column["source"] == "unavailable":
             note = "no access"
-        elif column["source"] == "free/busy":
+        elif column["source"] == "free/busy" or not column.get("details", True):
             note = "free/busy only"
         elif timed:
             note = "{0} meeting{1}".format(len(timed),
@@ -4500,11 +5021,19 @@ def tool_print_calendar(args):
                 detail = ("neither the calendar nor free/busy could be read - "
                           "the column prints 'Calendar not available'")
             elif column["source"] == "free/busy":
-                detail = ("free/busy only (no access to the calendar itself): "
+                detail = ("Outlook free/busy only - busy times, no titles: "
                           "{0} busy block(s), {1} all-day".format(
                               len(timed), all_day))
+            elif column["source"] == "availability":
+                detail = ("from Exchange's availability service, {0}: {1} "
+                          "meeting(s), {2} all-day".format(
+                              "with titles and locations" if column["details"]
+                              else "busy times only (their sharing shows no "
+                              "titles)", len(timed), all_day))
             else:
                 detail = "{0} meeting(s), {1} all-day".format(len(timed), all_day)
+            if column.get("note"):
+                detail += " [{0}]".format(column["note"])
             lines.append("  - {0}: {1}".format(column["label"], detail))
         lines.append(
             "PRINT IT DOUBLE-SIDED, FLIP ON SHORT EDGE. The PDF asks the print "
@@ -7972,6 +8501,63 @@ def report_recurrence_health(days=1):
     log("")
 
 
+def report_free_busy_alignment():
+    """
+    Check where Outlook's free/busy string really starts, against your diary.
+
+    Recipient.FreeBusy is documented loosely enough that the string could
+    begin at the date asked for or at the start of that month, and reading it
+    from the wrong origin puts somebody else's day on the page. Your OWN
+    calendar is the one diary this server can read both ways, so today's
+    appointments are compared, 15 minutes at a time, with your own free/busy
+    read from each origin. Times only - no subject is read or printed.
+    """
+    today = datetime.date.today()
+    start_dt = datetime.datetime.combine(today, datetime.time(0, 0))
+    end_dt = datetime.datetime.combine(today, datetime.time(23, 59, 59))
+    identity = current_user_identity(get_namespace())
+    slots = (24 * 60) // FREEBUSY_MIN_PER_CHAR
+    mine = [False] * slots
+    matches, _total, _tail = scan_calendar(start_dt, end_dt)
+    for item_start, item in matches:
+        event = _appointment_to_event(item, item_start, identity, want_people=False)
+        if not event or event["all_day"] or event["busy"] == OL_BUSY_FREE:
+            continue
+        first = int(_minutes_into_day(event["start"], today) // FREEBUSY_MIN_PER_CHAR)
+        last = int(-(-_minutes_into_day(event["end"], today) // FREEBUSY_MIN_PER_CHAR))
+        for index in range(max(0, first), min(slots, last)):
+            mine[index] = True
+    if not any(mine):
+        log("Free/busy alignment : cannot tell - nothing busy in your own "
+            "diary today. Re-run --check on a day with meetings.")
+        return
+    try:
+        recipient = get_namespace().CreateRecipient(identity[1] or identity[0])
+        recipient.Resolve()
+    except Exception as exc:
+        log("Free/busy alignment : could not resolve yourself ({0})".format(exc))
+        return
+    free_busy = _free_busy(recipient, today)
+    if not free_busy:
+        log("Free/busy alignment : Outlook returned no free/busy for you")
+        return
+
+    def score(offset_days):
+        digits = free_busy[offset_days * slots:(offset_days + 1) * slots]
+        if len(digits) < slots:
+            return None
+        return sum(1 for index in range(slots)
+                   if (digits[index] not in ("0", "")) == mine[index])
+
+    as_asked = score(0)
+    from_month = score((today - today.replace(day=1)).days)
+    log("Free/busy alignment : your own free/busy today matches your diary "
+        "{0}/{1} quarter-hours read from the date asked for, {2} read from "
+        "the 1st of the month.".format(
+            as_asked, slots, "{0}/{1}".format(from_month, slots)
+            if from_month is not None else "n/a"))
+
+
 def report_team_health():
     """
     Print, per OUTLOOK_CALENDAR_TEAM entry, what the back page would show today.
@@ -7983,6 +8569,14 @@ def report_team_health():
     today = datetime.date.today()
     log("Planner team view   : {0} calendar(s), back page uses the top {1:.0f}% "
         "of the sheet".format(len(_CALENDAR_TEAM), team_page_fraction() * 100))
+    url, where = ews_url()
+    if url:
+        log("Exchange availability: {0} (from {1}) - TLS verification {2}".format(
+            url, where, "ON" if _EWS_VERIFY_SSL else "OFF (OUTLOOK_VERIFY_SSL=false)"))
+    else:
+        log("Exchange availability: not available - {0}. Set OUTLOOK_EWS_URL "
+            "(Outlook: Ctrl+right-click the tray icon -> Test E-mail "
+            "AutoConfiguration -> 'Availability Service URL').".format(where))
     for column, (_label, spec) in zip(
             _team_columns(today, current_user_identity(get_namespace())),
             _CALENDAR_TEAM):
@@ -7993,13 +8587,18 @@ def report_team_health():
         elif column["source"] == "unavailable":
             state = "NO ACCESS - neither the calendar nor free/busy could be read"
         elif column["source"] == "free/busy":
-            state = ("free/busy only (the calendar itself is not shared with "
-                     "you): {0} busy block(s), {1} all-day today".format(
-                         timed, all_day))
+            state = ("Outlook free/busy only (busy times, no titles): {0} busy "
+                     "block(s), {1} all-day today".format(timed, all_day))
+        elif column["source"] == "availability":
+            state = ("Exchange availability, {0}: {1} meeting(s), {2} all-day "
+                     "today".format("titles and locations" if column["details"]
+                                    else "busy times only", timed, all_day))
         else:
             state = "calendar readable: {0} meeting(s), {1} all-day today".format(
                 timed, all_day)
         log("  - {0} <{1}>: {2}".format(column["label"], spec, state))
+        if column.get("note"):
+            log("      {0}".format(column["note"]))
 
 
 def run_check():
@@ -8040,6 +8639,11 @@ def run_check():
             log("Planner hides       : {0}".format(
                 ", ".join(sorted(_HIDDEN_CATEGORIES))))
         if _CALENDAR_TEAM:
+            try:
+                report_free_busy_alignment()
+            except Exception:
+                log("Free/busy alignment check could not run:\n{0}".format(
+                    traceback.format_exc()))
             try:
                 report_team_health()
             except Exception:
@@ -8084,6 +8688,7 @@ def run_check():
 def main():
     global KB_DIR, KB_AUTOSAVE, PDF_DIR, _CATEGORY_COLOURS, _HIDDEN_CATEGORIES
     global _CALENDAR_TEAM, _TASKS_TEAM, _TASKS_PAGE
+    global _EWS_URL, _EWS_VERIFY_SSL, _EWS_CA_CERT
     global CALENDAR_DAY_START_HOUR, CALENDAR_DAY_END_HOUR
     global PLANNER_CONTENT_FRACTION
     global _MEETING_START_HOUR, _MEETING_END_HOUR, _GAL_SCAN_CAP, _ALLOW_DRAFTS
@@ -8192,6 +8797,31 @@ def main():
     if _CALENDAR_TEAM:
         log("Planner team view (back page): {0}.".format(
             ", ".join(label or spec for label, spec in _CALENDAR_TEAM)))
+
+    # Exchange availability, for team calendars that cannot be opened. Blank
+    # means "find it"; a DISABLE_KEYWORD means never contact Exchange.
+    ews_raw = env("OUTLOOK_EWS_URL") or (EWS_URL.strip() or None)
+    if ews_raw and ews_raw.lower() in DISABLE_KEYWORDS:
+        _EWS_URL = False
+        log("Exchange availability switched off (OUTLOOK_EWS_URL=off): team "
+            "calendars that cannot be opened show Outlook free/busy only.")
+    elif ews_raw:
+        if not ews_raw.lower().startswith(("https://", "http://")):
+            log("WARNING: OUTLOOK_EWS_URL='{0}' is not an http(s) URL; it will "
+                "be ignored and the URL discovered instead.".format(ews_raw))
+        else:
+            _EWS_URL = ews_raw
+    _EWS_VERIFY_SSL = env_flag("OUTLOOK_VERIFY_SSL", True)
+    if not _EWS_VERIFY_SSL:
+        log("WARNING: TLS verification to Exchange is OFF (OUTLOOK_VERIFY_SSL="
+            "false).")
+    ca_cert = env("OUTLOOK_CA_CERT")
+    if ca_cert:
+        if os.path.isfile(ca_cert):
+            _EWS_CA_CERT = ca_cert
+        else:
+            log("WARNING: OUTLOOK_CA_CERT file not found: {0} - using the "
+                "Windows certificate store only.".format(ca_cert))
 
     # The team task sheet: direct reports (replacing the file's list, for the
     # same reason as above - it is an ordered set of columns), the Confluence

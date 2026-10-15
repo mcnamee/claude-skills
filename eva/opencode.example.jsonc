@@ -123,6 +123,7 @@
         "OUTLOOK_CALENDAR_COLOURS": "",
         "OUTLOOK_CALENDAR_HIDE_CATEGORIES": "",
         "OUTLOOK_CALENDAR_TEAM": "",
+        "OUTLOOK_EWS_URL": "",
         "OUTLOOK_TASKS_TEAM": "",
         "OUTLOOK_TASKS_PAGE": "",
         "OUTLOOK_MEETING_HOURS": "",
@@ -132,6 +133,10 @@
         // every email read to the knowledge base, not just the ones you ask for.
         "OUTLOOK_REQUIRE_BLACKLIST": "",
         "OUTLOOK_KB_AUTOSAVE": "",
+        // TLS to Exchange (team view only): an internal CA, or "false" to
+        // switch verification off.
+        "OUTLOOK_CA_CERT": "",
+        "OUTLOOK_VERIFY_SSL": "",
         // Folder overrides (default H:/Eva/knowledge/email for saved email,
         // H:/Eva/documents/pdf for printed planners). Both also take "off".
         "OUTLOOK_KB_DIR": "",

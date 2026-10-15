@@ -8,7 +8,7 @@ printable sheet of your team's open tasks.
 
 | | |
 |---|---|
-| **Server** | `outlook.py` v11.3.1 |
+| **Server** | `outlook.py` v11.4.0 |
 | **pip install** | `pywin32` |
 | **Platform** | **Windows only** — requires classic Win32 Outlook (not "New Outlook") installed, running, and logged into a profile |
 | **Sends** | **never.** Not an email, not a reply, not a meeting invitation. It cannot accept, move or delete anything either |
@@ -49,6 +49,7 @@ touch, all optional:
 | `OUTLOOK_CALENDAR_COLOURS` | No | Usually leave unset — the planner already uses your Outlook category colours. Only overrules one, e.g. `Leadership=purple` |
 | `OUTLOOK_CALENDAR_HIDE_CATEGORIES` | No | Comma-separated Outlook categories to leave off the printed planner, e.g. `Birthdays` |
 | `OUTLOOK_CALENDAR_TEAM` | No | Up to four colleagues' calendars printed on the **back** of the planner, semicolon-separated, e.g. `Jane Smith=jane.smith@agency.gov.au; bob.jones@agency.gov.au` |
+| `OUTLOOK_EWS_URL` | No | Your Exchange server's EWS URL, so the team view can show titles and locations a colleague shares with you. Blank finds it; `off` never contacts Exchange |
 | `OUTLOOK_TASKS_TEAM` | No | Your direct reports, up to seven, as the columns of the [team task sheet](#the-team-task-sheet), e.g. `Jane Smith=jane.smith@agency.gov.au; Bob Jones=bob.jones@agency.gov.au` |
 | `OUTLOOK_TASKS_PAGE` | No | The Confluence page that collates the team's tasks (title, page ID or URL) |
 | `OUTLOOK_MEETING_HOURS` | No | Hours a meeting may be *suggested* in, e.g. `8-18` (default `9-17`) |
@@ -332,9 +333,11 @@ strip to read the bottom of it.
 
 | What you can see of their calendar | What the column shows |
 |---|---|
-| Their calendar is shared with you, or you're a delegate | Subjects, locations and colours, exactly like the front. Recurring meetings are included, and so is something still running from an earlier day (a fortnight's leave booked as one item). Anything running past either end of the day is an all-day chip. A **private** appointment prints as "Private appointment", with no location |
-| Free/busy only | Blocks saying **Busy**, **Tentative** (hollow), **Out of office** (purple) or **Working elsewhere**, and nothing about what. The heading says "free/busy only". This is also used when the calendar opens but shows nothing while free/busy shows them booked, which is what free/busy-only permission can look like |
-| Neither | "Calendar not available" |
+| "Can view all details", or you're a delegate | Their calendar is opened directly: subjects, locations and colours, exactly like the front. Recurring meetings are included, and so is something still running from an earlier day (a fortnight's leave booked as one item). Anything running past either end of the day is an all-day chip. A **private** appointment prints as "Private appointment", with no location |
+| "Can view titles and locations" | Exchange won't let anything open the calendar itself ("You do not have sufficient permission"), so the server asks **Exchange's availability service** - the same place Outlook gets those titles from - in one request for everyone, signed in with your Windows login. You get each meeting's real times, subject and location |
+| "Can view when I'm busy" (free/busy) | Also from the availability service: real times, with blocks saying **Busy**, **Tentative** (hollow), **Out of office** (purple) or **Working elsewhere**. The heading says "free/busy only" |
+| Exchange can't be reached | Outlook's own free/busy, busy times only. The reply says why Exchange wasn't used. Treat it as a fallback: on at least one endpoint these blocks didn't match the person's day, which is why the availability service is now asked first |
+| Nothing readable | "Calendar not available" |
 | The name doesn't resolve | "Not found in the directory" |
 
 One person failing never stops the rest of the sheet printing. The tool's
@@ -343,9 +346,35 @@ are other people's diaries, and what's in them is for the sheet on your desk,
 not for the AI. Hidden categories (`OUTLOOK_CALENDAR_HIDE_CATEGORIES`) are left
 off the back too.
 
-Run `python outlook.py --check` after setting it: for each person it says
-whether their calendar or only their free/busy is readable, and how many items
-today has.
+Run `python outlook.py --check` after setting it. It shows the Exchange URL in
+use and where it came from, then for each person which route their column
+comes from and how many items today has. It also compares **your own**
+free/busy with your own diary, which shows whether Outlook's free/busy can be
+trusted on this endpoint.
+
+#### Exchange's availability service
+
+This is the one time the outlook server talks to a server rather than to
+Outlook: **your own Exchange server**, over HTTPS, only for a team calendar
+Outlook won't open, and signed in as you through Windows (Kerberos or NTLM -
+no password is stored or typed). `OUTLOOK_EWS_URL=off` switches it off and
+the server makes no network call at all.
+
+The URL is found on its own where possible - first from the Autodiscover
+answer Outlook has already saved on this machine, then by asking Autodiscover.
+If `--check` says it couldn't find one, set it yourself: in Outlook,
+**Ctrl+right-click** the Outlook icon in the system tray → **Test E-mail
+AutoConfiguration** → untick the two "Guessmart" boxes → **Test**, and copy the
+**Availability Service URL** (it ends `/EWS/Exchange.asmx`):
+
+```json
+"OUTLOOK_EWS_URL": "https://mail.agency.gov.au/EWS/Exchange.asmx"
+```
+
+TLS is checked against the Windows certificate store. If your Exchange
+certificate comes from an internal CA that isn't in it, point
+`OUTLOOK_CA_CERT` at a PEM copy of that CA; `OUTLOOK_VERIFY_SSL=false` turns
+checking off as a last resort.
 
 ### Category colours
 
@@ -617,6 +646,9 @@ only when an endpoint's layout really differs.
 | `OUTLOOK_CALENDAR_PAGE_FILL` | How much of the sheet's **height** the printed planner uses: a fraction (`0.8`, the default), a percentage (`80` or `80%`), or `off` (`none`, `no`, `false`, `disabled`) for the whole sheet with nothing left to fold. Accepts `0.5` to `1.0`; anything else is refused with a warning and the default kept |
 | `OUTLOOK_CALENDAR_COLOURS` | Overrules the colour Outlook already holds against a category, e.g. `Leadership=purple,Client=green` — see [Category colours](#category-colours). An unknown colour name is ignored with a warning |
 | `OUTLOOK_CALENDAR_HIDE_CATEGORIES` | Comma-separated Outlook categories to leave **off** the printed planner, e.g. `Birthdays,Public Holidays`. Case-insensitive, whole category name. Printing only — `outlook_get_calendar` is unaffected |
+| `OUTLOOK_EWS_URL` | Your Exchange server's EWS URL, e.g. `https://mail.agency.gov.au/EWS/Exchange.asmx`, used only for team calendars Outlook won't open. Blank finds it (Outlook's saved Autodiscover answer, then Autodiscover); `off` (`none`, `no`, `false`, `disabled`) never contacts Exchange - see [Exchange's availability service](#exchanges-availability-service) |
+| `OUTLOOK_CA_CERT` | A PEM file of your internal CA, added to the Windows certificate store when checking Exchange's certificate |
+| `OUTLOOK_VERIFY_SSL=false` | Turn TLS verification to Exchange off. Blank or unset means verify |
 | `OUTLOOK_CALENDAR_TEAM` | Up to four colleagues' calendars printed on the **back** of the planner, e.g. `Jane Smith=jane.smith@agency.gov.au; bob.jones@agency.gov.au`. Semicolon-separated; `Label=` is optional. Unset means a one-page planner — see [The team view on the back](#the-team-view-on-the-back) |
 | `OUTLOOK_TASKS_TEAM` | Your direct reports, up to seven, as columns 2-8 of the team task sheet, in print order. Same form as `OUTLOOK_CALENDAR_TEAM`; more than seven are cut with a warning. Unset means the columns come from the names on the tasks - see [The team task sheet](#the-team-task-sheet) |
 | `OUTLOOK_TASKS_PAGE` | The Confluence page (title, page ID or URL) that collates the team's tasks. The server only passes it to Claude, which reads the page with the confluence plugin |

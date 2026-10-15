@@ -310,7 +310,8 @@ figure. Do not carry a figure between documents without re-checking it.
   addresses, health information, tax file numbers or performance discussions
   into [`knowledge\`](knowledge). Say so instead and let me decide.
 - **Everything stays on this machine.** No network calls beyond the Confluence,
-  Jira and embedding endpoints already configured.
+  Jira and embedding endpoints already configured, and our own Exchange
+  server, which the printed planner asks for colleagues' calendars.
 
 ## Changing this file
 
