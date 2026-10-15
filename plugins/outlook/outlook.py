@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-outlook.py (v11.4.0)
+outlook.py (v11.4.1)
 ======================
 
 A single-file MCP (Model Context Protocol) server giving an LLM near-read-only
@@ -378,7 +378,11 @@ How each person's column is read, independently of the others:
    yet Outlook shows titles and locations on screen, because it asks this
    service. So does this server: one EWS GetUserAvailability request
    (DetailedMerged view) for everyone left, signed in as you through SSPI
-   with your Windows login - no password is stored or handled. It returns
+   with your Windows login - no password is stored or handled. Negotiate
+   (Kerberos) is tried first, then plain NTLM, and over HTTPS every attempt
+   carries the channel binding that Exchange's Extended Protection for
+   Authentication requires (v11.4.1 - without it Exchange answers 401 to a
+   perfectly good sign-in). It returns
    each event's real start and end, plus subject and location wherever
    their sharing allows; under free/busy-only sharing the blocks say Busy,
    Tentative (hollow), Out of office or Working elsewhere, and the heading
@@ -766,7 +770,7 @@ IMPORTANT (stdio-on-Windows pitfalls)
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "11.4.0"
+__version__ = "11.4.1"
 
 import os
 import re
@@ -775,6 +779,7 @@ import sys
 import zlib
 import json
 import base64
+import struct
 import difflib
 import hashlib
 import argparse
@@ -4043,29 +4048,146 @@ def _ews_ssl_context():
     return context
 
 
+# DER-encoded signature-algorithm OIDs whose hash is NOT SHA-256, for the
+# channel binding below. Everything else - SHA-256 itself, and MD5 and SHA-1,
+# which RFC 5929 says to upgrade - binds with SHA-256.
+_CERT_HASH_BY_OID = {
+    bytes.fromhex("2a864886f70d01010c"): "sha384",   # sha384WithRSAEncryption
+    bytes.fromhex("2a864886f70d01010d"): "sha512",   # sha512WithRSAEncryption
+    bytes.fromhex("2a8648ce3d040303"): "sha384",     # ecdsa-with-SHA384
+    bytes.fromhex("2a8648ce3d040304"): "sha512",     # ecdsa-with-SHA512
+}
+
+
+def _der_item(data, pos):
+    """(tag, content start, content end) of the DER item at `pos`."""
+    tag, length = data[pos], data[pos + 1]
+    pos += 2
+    if length & 0x80:
+        count = length & 0x7F
+        length = int.from_bytes(data[pos:pos + count], "big")
+        pos += count
+    return tag, pos, pos + length
+
+
+def _tls_channel_binding(conn):
+    """
+    The RFC 5929 "tls-server-end-point" channel binding for a live HTTPS
+    connection, or None.
+
+    Exchange's Extended Protection for Authentication - on by default after
+    Microsoft's recent Exchange security updates - rejects a Windows sign-in
+    over HTTPS unless it carries a hash of the server's certificate, which
+    proves the sign-in was meant for THIS connection and cannot be relayed.
+    The hash uses the certificate's own signature hash, upgraded to SHA-256
+    when that is MD5 or SHA-1 (or cannot be read).
+    """
+    try:
+        der = conn.sock.getpeercert(binary_form=True)
+    except Exception:
+        return None
+    if not der:
+        return None
+    name = "sha256"
+    try:
+        _tag, cert_start, _cert_end = _der_item(der, 0)          # Certificate
+        _tag, _tbs_start, tbs_end = _der_item(der, cert_start)   # tbsCertificate
+        _tag, alg_start, _alg_end = _der_item(der, tbs_end)      # signatureAlgorithm
+        _tag, oid_start, oid_end = _der_item(der, alg_start)     # its OID
+        name = _CERT_HASH_BY_OID.get(der[oid_start:oid_end], "sha256")
+    except (IndexError, ValueError):
+        pass
+    return b"tls-server-end-point:" + hashlib.new(name, der).digest()
+
+
+def _sspi_handshake(conn, scheme, host, path, payload, headers, binding):
+    """
+    Run one Windows sign-in on an open connection.
+
+    Returns (status, data) once Exchange answers with anything but 401, or
+    (None, why) when it refuses. `binding` is the channel binding, sent with
+    EVERY round as a SEC_CHANNEL_BINDINGS structure: eight 32-bit fields, of
+    which only the application data length and offset (32, straight after
+    the header) are set.
+    """
+    import sspi             # part of pywin32, which this server already needs
+    import sspicon
+    import win32security
+
+    client = sspi.ClientAuth(scheme, targetspn="HTTP/" + host)
+    binding_data = None
+    if binding:
+        binding_data = struct.pack("<8I", 0, 0, 0, 0, 0, 0, len(binding), 32) + binding
+    token = None
+    for _round in range(4):
+        if binding_data is None and token is None:
+            buffers = None
+        else:
+            buffers = win32security.PySecBufferDescType()
+            if binding_data is not None:
+                cbt = win32security.PySecBufferType(
+                    len(binding_data), sspicon.SECBUFFER_CHANNEL_BINDINGS)
+                cbt.Buffer = binding_data
+                buffers.append(cbt)
+            if token is not None:
+                incoming = win32security.PySecBufferType(
+                    client.pkg_info["MaxToken"], sspicon.SECBUFFER_TOKEN)
+                incoming.Buffer = token
+                buffers.append(incoming)
+        _status, out = client.authorize(buffers)
+        headers = dict(headers)
+        headers["Authorization"] = "{0} {1}".format(
+            scheme, base64.b64encode(out[0].Buffer).decode("ascii"))
+        conn.request("POST", path, payload, headers)
+        response = conn.getresponse()
+        data = response.read()
+        if response.status != 401:
+            return response.status, data
+        if response.will_close:
+            return None, "the server closed the connection mid-sign-in"
+        challenge = None
+        for value in response.msg.get_all("WWW-Authenticate") or []:
+            pieces = value.strip().split(None, 1)
+            if len(pieces) == 2 and pieces[0].lower() == scheme.lower():
+                challenge = pieces[1].strip()
+        if not challenge:
+            return None, "refused"
+        token = base64.b64decode(challenge)
+    return None, "too many rounds"
+
+
 def _ews_post(url, body, timeout=None):
     """
     POST an XML body to Exchange, signed in as the current Windows user.
 
-    Sends the request once without credentials to learn which sign-in the
-    server offers, then runs the Negotiate (Kerberos, falling back to NTLM)
-    or NTLM handshake through SSPI on the SAME connection - NTLM is tied to
-    the connection, so a new one would start the handshake again. No password
-    is ever handled here: SSPI signs in with the logged-on user's own token.
+    Sends the request once without credentials to learn which sign-ins the
+    server offers, then signs in through SSPI with the logged-on user's own
+    token - no password is ever handled here. Negotiate (Kerberos, falling
+    back to NTLM inside it) is tried first, then plain NTLM on a fresh
+    connection, because Kerberos fails outright when the server name has no
+    matching service principal. Over HTTPS each attempt carries the channel
+    binding Exchange's Extended Protection demands. Each handshake stays on
+    one connection, since NTLM belongs to the connection it started on.
     Returns (HTTP status, response bytes). Raises RuntimeError with a reason a
-    person can act on when the server wants a sign-in this cannot do.
+    person can act on.
     """
     parts = urllib.parse.urlsplit(url)
     if parts.scheme not in ("https", "http") or not parts.hostname:
         raise RuntimeError("'{0}' is not an http(s) URL".format(url))
     host = parts.hostname
+    secure = parts.scheme == "https"
     path = (parts.path or "/") + ("?" + parts.query if parts.query else "")
     timeout = timeout or EWS_TIMEOUT
-    if parts.scheme == "https":
-        conn = http.client.HTTPSConnection(host, parts.port, timeout=timeout,
-                                           context=_ews_ssl_context())
-    else:
-        conn = http.client.HTTPConnection(host, parts.port, timeout=timeout)
+
+    def connect():
+        if secure:
+            conn = http.client.HTTPSConnection(host, parts.port, timeout=timeout,
+                                               context=_ews_ssl_context())
+        else:
+            conn = http.client.HTTPConnection(host, parts.port, timeout=timeout)
+        conn.connect()
+        return conn
+
     headers = {
         "Content-Type": "text/xml; charset=utf-8",
         "Accept": "text/xml",
@@ -4073,53 +4195,53 @@ def _ews_post(url, body, timeout=None):
         "User-Agent": "outlook-mcp/{0}".format(__version__),
     }
     payload = body.encode("utf-8")
+    conn = connect()
     try:
         conn.request("POST", path, payload, headers)
         response = conn.getresponse()
         data = response.read()
         if response.status != 401:
             return response.status, data
-
         offered = [value.strip() for value in
                    (response.msg.get_all("WWW-Authenticate") or [])]
-        schemes = [value.split(None, 1)[0].lower() for value in offered if value]
-        if "negotiate" in schemes:
-            scheme = "Negotiate"
-        elif "ntlm" in schemes:
-            scheme = "NTLM"
-        else:
-            raise RuntimeError(
-                "Exchange asks for a sign-in this server cannot do ({0}); only "
-                "Windows sign-in (Negotiate or NTLM) is supported".format(
-                    ", ".join(offered) or "none offered"))
-
-        try:
-            import sspi     # part of pywin32, which this server already needs
-        except ImportError:
-            raise RuntimeError("pywin32's sspi module is missing, so Windows "
-                               "sign-in is unavailable")
-        client = sspi.ClientAuth(scheme, targetspn="HTTP/" + host)
-        token = None
-        for _round in range(4):
-            _status, out = client.authorize(token)
-            headers["Authorization"] = "{0} {1}".format(
-                scheme, base64.b64encode(out[0].Buffer).decode("ascii"))
-            conn.request("POST", path, payload, headers)
-            response = conn.getresponse()
-            data = response.read()
-            if response.status != 401:
-                return response.status, data
-            challenge = None
-            for value in response.msg.get_all("WWW-Authenticate") or []:
-                pieces = value.strip().split(None, 1)
-                if len(pieces) == 2 and pieces[0].lower() == scheme.lower():
-                    challenge = pieces[1].strip()
-            if not challenge:
-                break
-            token = base64.b64decode(challenge)
-        raise RuntimeError("Exchange refused your Windows sign-in (HTTP 401)")
     finally:
         conn.close()
+
+    names = [value.split(None, 1)[0].lower() for value in offered if value]
+    schemes = [scheme for scheme in ("Negotiate", "NTLM")
+               if scheme.lower() in names]
+    if not schemes:
+        raise RuntimeError(
+            "Exchange asks for a sign-in this server cannot do ({0}); only "
+            "Windows sign-in (Negotiate or NTLM) is supported".format(
+                ", ".join(offered) or "none offered"))
+    try:
+        import sspi     # checked here, before any attempt, so the error says why
+        del sspi
+    except ImportError:
+        raise RuntimeError("pywin32's sspi module is missing, so Windows "
+                           "sign-in is unavailable")
+
+    failures = []
+    for scheme in schemes:
+        conn = connect()
+        try:
+            binding = _tls_channel_binding(conn) if secure else None
+            status, outcome = _sspi_handshake(conn, scheme, host, path,
+                                              payload, headers, binding)
+        except Exception as exc:
+            status, outcome = None, "error: {0}".format(exc)
+        finally:
+            conn.close()
+        if status is not None:
+            return status, outcome
+        failures.append("{0} {1}".format(scheme, outcome))
+        log("Exchange sign-in with {0} failed ({1}){2}.".format(
+            scheme, outcome, "; trying the next method"
+            if scheme != schemes[-1] else ""))
+    raise RuntimeError(
+        "Exchange refused your Windows sign-in (HTTP 401) - tried {0}; the "
+        "server offered: {1}".format("; ".join(failures), ", ".join(offered)))
 
 
 def _ews_url_from_autodiscover_xml(data, address=""):

@@ -8,7 +8,7 @@ printable sheet of your team's open tasks.
 
 | | |
 |---|---|
-| **Server** | `outlook.py` v11.4.0 |
+| **Server** | `outlook.py` v11.4.1 |
 | **pip install** | `pywin32` |
 | **Platform** | **Windows only** — requires classic Win32 Outlook (not "New Outlook") installed, running, and logged into a profile |
 | **Sends** | **never.** Not an email, not a reply, not a meeting invitation. It cannot accept, move or delete anything either |
@@ -357,7 +357,11 @@ trusted on this endpoint.
 This is the one time the outlook server talks to a server rather than to
 Outlook: **your own Exchange server**, over HTTPS, only for a team calendar
 Outlook won't open, and signed in as you through Windows (Kerberos or NTLM -
-no password is stored or typed). `OUTLOOK_EWS_URL=off` switches it off and
+no password is stored or typed). It supports Exchange's **Extended
+Protection** (the certificate-bound sign-in recent Exchange updates switch
+on), and if Kerberos is refused it tries NTLM. If `--check` still says
+"refused your Windows sign-in", the message lists each method tried and what
+the server offered - send that to whoever runs Exchange. `OUTLOOK_EWS_URL=off` switches it off and
 the server makes no network call at all.
 
 The URL is found on its own where possible - first from the Autodiscover
