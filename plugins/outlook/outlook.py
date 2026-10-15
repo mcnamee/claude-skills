@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-outlook.py (v11.2.1)
+outlook.py (v11.2.2)
 ======================
 
 A single-file MCP (Model Context Protocol) server giving an LLM near-read-only
@@ -657,7 +657,7 @@ IMPORTANT (stdio-on-Windows pitfalls)
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "11.2.1"
+__version__ = "11.2.2"
 
 import os
 import re
@@ -2094,7 +2094,12 @@ def _expand_recurring_occurrences(item, start_dt, end_dt, report=None):
     return list(found.items())
 
 
-def _expanded_occurrences(start_dt, end_dt, report=None, folder=None,
+def _own_calendar():
+    """A FRESH Folder object for the user's own calendar (see scan_calendar)."""
+    return get_namespace().GetDefaultFolder(OL_FOLDER_CALENDAR)
+
+
+def _expanded_occurrences(start_dt, end_dt, report=None, open_folder=None,
                           overlap_from=None):
     """
     Ask OUTLOOK to expand every recurring series across the window.
@@ -2117,15 +2122,16 @@ def _expanded_occurrences(start_dt, end_dt, report=None, folder=None,
     formatted date, so this does not reintroduce the Restrict() fault that makes
     filtering depend on regional settings. Returns (naive start, item) pairs.
 
-    `folder` is the calendar to read (your own when None). With
+    `open_folder` is a no-argument callable returning the calendar to read
+    (your own when None). It is a callable rather than a Folder on purpose:
+    this pass switches IncludeRecurrences on, and it must do that on a
+    collection of its own - see scan_calendar. With
     `overlap_from`, an item that STARTED between then and start_dt is kept too
     when it is still running at start_dt - a week of leave booked as one
     appointment, say. Those items are walked past anyway, so the only extra
     cost is reading End on the few that start inside that lookback.
     """
-    if folder is None:
-        folder = get_namespace().GetDefaultFolder(OL_FOLDER_CALENDAR)
-    items = folder.Items
+    items = (open_folder or _own_calendar)().Items
     try:
         # Order matters: Outlook requires the ascending Start sort to be in
         # place before it will expand recurrences into the collection.
@@ -2193,7 +2199,7 @@ def _occurrence_key(start, item):
     return (start, entry_id)
 
 
-def scan_calendar(start_dt, end_dt, folder=None, overlap_from=None):
+def scan_calendar(start_dt, end_dt, open_folder=None, overlap_from=None):
     """
     Walk the whole calendar folder and return every occurrence inside a window.
 
@@ -2216,15 +2222,19 @@ def scan_calendar(start_dt, end_dt, folder=None, overlap_from=None):
     whole collection is walked by index (Item(i) is more reliable than COM
     enumeration) and filtered in Python, which is locale-independent.
 
-    `folder` is the calendar to scan - your own when None, or a colleague's
-    shared calendar for the team view. `overlap_from` also keeps a single
+    `open_folder` is a no-argument callable returning the calendar to scan -
+    your own when None, or a colleague's shared calendar for the team view.
+    EACH PASS OPENS THE FOLDER AFRESH. Pass 1 sorts its Items and switches
+    IncludeRecurrences on; if pass 2 walked that same collection by index it
+    would be walking an effectively endless list of occurrences, which is
+    what made v11.2.0 hang until the client timed out. Two Folder objects
+    give two independent collections, as every version before it had.
+    `overlap_from` also keeps a single
     (non-recurring) appointment that started between then and start_dt and
     is still running at start_dt, so a multi-day block of leave shows on the
     days after its first. See _expanded_occurrences.
     """
-    if folder is None:
-        folder = get_namespace().GetDefaultFolder(OL_FOLDER_CALENDAR)
-    items = folder.Items
+    items = (open_folder or _own_calendar)().Items
     total = int(items.Count)  # raises if the folder cannot be read; caller reports
 
     matches = []      # (naive start datetime, appointment COM object)
@@ -2243,7 +2253,7 @@ def scan_calendar(start_dt, end_dt, folder=None, overlap_from=None):
     # Pass 1: Outlook expands the recurring series itself.
     expansion = {}
     for occ_start, occ in _expanded_occurrences(start_dt, end_dt, expansion,
-                                                folder=folder,
+                                                open_folder=open_folder,
                                                 overlap_from=overlap_from):
         collect(occ_start, occ)
         if len(matches) >= CALENDAR_HARD_CAP:
@@ -2251,6 +2261,14 @@ def scan_calendar(start_dt, end_dt, folder=None, overlap_from=None):
     if expansion.get("error"):
         log("Outlook's own recurrence expansion did not complete ({0}); "
             "falling back to probing each series.".format(expansion["error"]))
+
+    # Belt and braces for the hang described above: this walk is by index over
+    # series MASTERS, and must never see an expanded collection.
+    try:
+        if items.IncludeRecurrences:
+            items.IncludeRecurrences = False
+    except Exception:
+        pass
 
     for i in range(1, total + 1):
         try:
@@ -3744,7 +3762,7 @@ def _free_busy_events(free_busy, day):
     return events
 
 
-def _collect_team_events(folder, day, identity):
+def _collect_team_events(open_folder, day, identity):
     """
     One colleague's appointments on `day`, read from their shared calendar.
 
@@ -3763,7 +3781,7 @@ def _collect_team_events(folder, day, identity):
     end_dt = datetime.datetime.combine(day, datetime.time(23, 59, 59))
     day_end = start_dt + datetime.timedelta(days=1)
     matches, _total, _tail = scan_calendar(
-        start_dt, end_dt, folder=folder,
+        start_dt, end_dt, open_folder=open_folder,
         overlap_from=start_dt - datetime.timedelta(days=TEAM_LOOKBACK_DAYS))
 
     events = []
@@ -3824,10 +3842,13 @@ def _team_column(ns, label, spec, day, identity):
         except Exception:
             column["label"] = spec
 
+    def open_folder():
+        # A fresh Folder per call, so each scan pass gets its own Items.
+        return ns.GetSharedDefaultFolder(recipient, OL_FOLDER_CALENDAR)
+
     events = None
     try:
-        folder = ns.GetSharedDefaultFolder(recipient, OL_FOLDER_CALENDAR)
-        events = _collect_team_events(folder, day, identity)
+        events = _collect_team_events(open_folder, day, identity)
     except Exception as exc:
         log("Team calendar: cannot open the calendar of '{0}' ({1}); trying "
             "free/busy.".format(spec, exc))

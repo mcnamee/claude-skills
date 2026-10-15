@@ -7,7 +7,7 @@ in Outlook's own compose window, and a printable PDF day planner for any day.
 
 | | |
 |---|---|
-| **Server** | `outlook.py` v11.2.1 |
+| **Server** | `outlook.py` v11.2.2 |
 | **pip install** | `pywin32` |
 | **Platform** | **Windows only** — requires classic Win32 Outlook (not "New Outlook") installed, running, and logged into a profile |
 | **Sends** | **never.** Not an email, not a reply, not a meeting invitation. It cannot accept, move or delete anything either |
