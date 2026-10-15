@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-outlook.py (v11.4.1)
+outlook.py (v11.4.2)
 ======================
 
 A single-file MCP (Model Context Protocol) server giving an LLM near-read-only
@@ -770,7 +770,7 @@ IMPORTANT (stdio-on-Windows pitfalls)
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "11.4.1"
+__version__ = "11.4.2"
 
 import os
 import re
@@ -4430,9 +4430,17 @@ def ews_availability(addresses, day):
     window_start = datetime.datetime.combine(day - datetime.timedelta(days=1),
                                              datetime.time(0, 0))
     window_end = window_start + datetime.timedelta(days=3)
-    utc_rule = ("<t:Bias>0</t:Bias><t:Time>00:00:00</t:Time><t:DayOrder>1"
-                "</t:DayOrder><t:Month>1</t:Month><t:DayOfWeek>Sunday"
-                "</t:DayOfWeek>")
+    # UTC as the availability service needs it spelt: a zero bias and two
+    # clock changes that move the clock by nothing. They must fall on
+    # DIFFERENT dates - two identical ones are refused as "the specified time
+    # zone isn't valid" (v11.4.1's mistake) - so, like Microsoft's own EWS
+    # library does for a zone without daylight saving, standard time "starts"
+    # on the first Sunday of March and daylight time on the first Sunday of
+    # October, both at 02:00 and both with a bias of 0.
+    def utc_rule(month):
+        return ("<t:Bias>0</t:Bias><t:Time>02:00:00</t:Time><t:DayOrder>1"
+                "</t:DayOrder><t:Month>{0}</t:Month><t:DayOfWeek>Sunday"
+                "</t:DayOfWeek>").format(month)
     mailboxes = "".join(
         "<t:MailboxData><t:Email><t:Address>{0}</t:Address></t:Email>"
         "<t:AttendeeType>Required</t:AttendeeType><t:ExcludeConflicts>false"
@@ -4443,8 +4451,8 @@ def ews_availability(addresses, day):
         '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" '
         'xmlns:t="{types}" xmlns:m="{messages}"><soap:Body>'
         '<m:GetUserAvailabilityRequest>'
-        '<t:TimeZone><t:Bias>0</t:Bias><t:StandardTime>{rule}</t:StandardTime>'
-        '<t:DaylightTime>{rule}</t:DaylightTime></t:TimeZone>'
+        '<t:TimeZone><t:Bias>0</t:Bias><t:StandardTime>{standard}</t:StandardTime>'
+        '<t:DaylightTime>{daylight}</t:DaylightTime></t:TimeZone>'
         '<m:MailboxDataArray>{mailboxes}</m:MailboxDataArray>'
         '<t:FreeBusyViewOptions><t:TimeWindow>'
         '<t:StartTime>{start}</t:StartTime><t:EndTime>{end}</t:EndTime>'
@@ -4453,7 +4461,8 @@ def ews_availability(addresses, day):
         '<t:RequestedView>DetailedMerged</t:RequestedView>'
         '</t:FreeBusyViewOptions></m:GetUserAvailabilityRequest>'
         '</soap:Body></soap:Envelope>').format(
-            types=EWS_TYPES, messages=EWS_MESSAGES, rule=utc_rule,
+            types=EWS_TYPES, messages=EWS_MESSAGES, standard=utc_rule(3),
+            daylight=utc_rule(10),
             mailboxes=mailboxes, start=window_start.strftime("%Y-%m-%dT%H:%M:%S"),
             end=window_end.strftime("%Y-%m-%dT%H:%M:%S"))
 
