@@ -1,7 +1,7 @@
 {
   "name": "outlook",
   "displayName": "Outlook (mail + calendar)",
-  "version": "11.5.0",
+  "version": "11.5.1",
   "description": "Read local classic Outlook mail and calendar via COM, schedule meetings (fuzzy directory search, free/busy, and an unsent meeting draft you send yourself), open an agreed email or reply in Outlook as an unsent draft with your signature, print a day as a PDF planner, and print your team's open tasks (from Confluence and the emails you sent with a due date) as a double-sided sheet. It can never send anything. Windows only; requires pywin32.",
   "author": {
     "name": "mcnamee"

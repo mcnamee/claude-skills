@@ -104,6 +104,10 @@ printed **double-sided, flip on short edge** - tell the user exactly that
 while other viewers need it set by hand. Pass the reply's per-person notes on
 when one says "free/busy only", "NOT FOUND" or "neither ... could be read":
 those are things the user can fix (share the calendar, correct the entry).
+A note saying there was "no answer ... within 90 seconds" or that "the last
+attempt is still waiting on Outlook" means the back page was skipped so the
+front could print: pass it on, and suggest restarting Outlook (no need to
+restart the server any more) before printing again.
 A column read "from Exchange's availability service" is normal for a
 colleague who shares "titles and locations" - it is not an error. A
 bracketed note starting "Exchange" means the server could not use Exchange

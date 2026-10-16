@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-outlook.py (v11.5.0)
+outlook.py (v11.5.1)
 ======================
 
 A single-file MCP (Model Context Protocol) server giving an LLM near-read-only
@@ -363,47 +363,62 @@ display name is used, "Smith, Jane" turned round to "Jane Smith". Fewer than
 four entries make fewer, wider columns; more than four are cut to four with a
 warning. Pass include_team=false for the front page alone.
 
-How each person's column is read, independently of the others:
+How each person's column is read, independently of the others (the order
+changed in v11.5.1 - Exchange is now asked FIRST):
 
-1. Their calendar itself (Namespace.GetSharedDefaultFolder), when they have
-   shared it with you or you are a delegate: subjects, locations, colours,
-   tentative drawn hollow - the same reading as your own calendar, recurring
-   series included. An appointment that started up to TEAM_LOOKBACK_DAYS
-   earlier and is still running (a fortnight's leave booked as one item) is
-   included, and anything running past either end of the day is an all-day
-   chip rather than stretching the timeline to midnight. A PRIVATE
-   appointment prints as "Private appointment", with no location.
-2. EXCHANGE'S AVAILABILITY SERVICE (v11.4.0), when the calendar cannot be
-   opened - which is the case for "Can view titles and locations" sharing:
-   Exchange refuses the folder ("You do not have sufficient permission"),
-   yet Outlook shows titles and locations on screen, because it asks this
-   service. So does this server: one EWS GetUserAvailability request
-   (DetailedMerged view) for everyone left, signed in as you through SSPI
+1. EXCHANGE'S AVAILABILITY SERVICE (v11.4.0): one EWS GetUserAvailability
+   request (DetailedMerged view) for everyone, signed in as you through SSPI
    with your Windows login - no password is stored or handled. Negotiate
    (Kerberos) is tried first, then plain NTLM, and over HTTPS every attempt
    carries the channel binding that Exchange's Extended Protection for
-   Authentication requires (v11.4.1 - without it Exchange answers 401 to a
-   perfectly good sign-in). It returns
-   each event's real start and end, plus subject and location wherever
-   their sharing allows; under free/busy-only sharing the blocks say Busy,
-   Tentative (hollow), Out of office or Working elsewhere, and the heading
-   says "free/busy only". Times are asked for in UTC and converted to this
-   machine's local time, so daylight saving cannot shift them.
+   Authentication requires (v11.4.1). It is what Outlook itself uses to show
+   "Can view titles and locations" sharing, which Outlook will not OPEN
+   ("You do not have sufficient permission"). It returns each event's real
+   start and end, plus subject and location wherever their sharing allows;
+   under free/busy-only sharing the blocks say Busy, Tentative (hollow), Out
+   of office or Working elsewhere, and the heading says "free/busy only". A
+   private appointment prints as "Private appointment"; anything running
+   past either end of the day is an all-day chip. Times are asked for in UTC
+   and converted to this machine's local time, so daylight saving cannot
+   shift them. An entry written as an email address needs no Outlook call
+   at all for this step, and every request has a timeout, so it cannot hang.
    The URL comes from OUTLOOK_EWS_URL, else from the Autodiscover answer
    Outlook has already saved on this machine, else from Autodiscover itself.
    TLS uses the Windows certificate store, plus OUTLOOK_CA_CERT if set;
    OUTLOOK_VERIFY_SSL=false turns verification off. OUTLOOK_EWS_URL=off
    never contacts Exchange.
-3. Outlook's own FREE/BUSY (Recipient.FreeBusy), when Exchange cannot be
-   reached or refuses that person: busy times only, on a 15-minute grid.
-   Before v11.4.0 this was step 2, and on at least one endpoint the blocks
-   did not match the person's day; --check now compares YOUR free/busy with
-   your own diary to show whether Outlook's string starts where this server
-   reads it from. Treat a column marked "free/busy only" with an Exchange
-   note in the reply as a fallback, not a faithful copy.
+2. Only for someone Exchange could not answer for (or when it cannot be
+   reached): their calendar itself through Outlook
+   (Namespace.GetSharedDefaultFolder), which opens under "Can view all
+   details" or as a delegate - subjects, locations, category colours,
+   recurring series, and anything still running from up to
+   TEAM_LOOKBACK_DAYS earlier.
+3. Then Outlook's own FREE/BUSY (Recipient.FreeBusy): busy times only, on a
+   15-minute grid. On at least one endpoint these blocks did not match the
+   person's day; --check compares YOUR free/busy with your own diary to show
+   whether Outlook's string starts where this server reads it from. Treat a
+   column marked "free/busy only" with an Exchange note in the reply as a
+   fallback, not a faithful copy.
 4. Nothing: the column prints "Calendar not available"; a name that does not
    resolve prints "Not found in the directory". One person failing never
    stops the rest of the sheet printing.
+
+A TIME LIMIT (v11.5.1). Steps 2 and 3 go through Outlook, and opening
+another person's mailbox or asking Outlook for free/busy can block for
+minutes - on a slow server, or on an Outlook dialog nobody can see. The
+server answers one request at a time, so before v11.5.1 one stuck call held
+up everything: the client gave up at five minutes and every later request
+queued behind it until the server was restarted. The back page now runs on a
+worker thread with TEAM_VIEW_TIMEOUT (90 seconds). If it overruns, the
+planner prints without it - each column "Calendar not available", and the
+reply says why - and while that stuck call is still waiting no second one is
+started.
+
+A STALE CONNECTION (v11.5.1). The server keeps its connection to Outlook,
+and when Outlook closes or restarts underneath it every call fails with "The
+RPC server is unavailable". It used to be refreshed only when a tool crashed,
+which the printing tools never do; now it is checked at the start of every
+tool call and reconnected when dead, so restarting Outlook is enough.
 
 The tool's reply reports the team view as COUNTS per person, never subjects:
 those are other people's diaries, and their content is for the sheet on your
@@ -771,7 +786,7 @@ IMPORTANT (stdio-on-Windows pitfalls)
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "11.5.0"
+__version__ = "11.5.1"
 
 import os
 import re
@@ -785,6 +800,7 @@ import difflib
 import hashlib
 import argparse
 import datetime
+import threading
 import traceback
 import unicodedata
 import http.client
@@ -1448,24 +1464,49 @@ def appointment_visible_block_reason(item):
 
 
 # ---------------------------------------------------------------------------
-# Outlook connection (lazy, cached, with reconnect-on-failure)
+# Outlook connection (lazy, cached PER THREAD, checked before every tool call)
 # ---------------------------------------------------------------------------
-_namespace = None
+# One namespace per thread, because a COM object belongs to the thread (the
+# apartment) that made it: the team view runs on a worker thread of its own
+# (see _team_columns_bounded) and must never touch the main thread's objects.
+_ns_local = threading.local()
 
 
 def get_namespace():
-    """Return a cached MAPI namespace, connecting to the running Outlook on first use."""
-    global _namespace
-    if _namespace is None:
+    """Return this thread's MAPI namespace, connecting to Outlook on first use."""
+    ns = getattr(_ns_local, "ns", None)
+    if ns is None:
         app = win32com.client.Dispatch("Outlook.Application")
-        _namespace = app.GetNamespace("MAPI")
-    return _namespace
+        ns = app.GetNamespace("MAPI")
+        _ns_local.ns = ns
+    return ns
 
 
 def reset_namespace():
-    """Drop the cached namespace so the next call reconnects from scratch."""
-    global _namespace
-    _namespace = None
+    """Drop this thread's cached namespace so the next call reconnects."""
+    _ns_local.ns = None
+
+
+def ensure_outlook_alive():
+    """
+    Throw away a dead Outlook connection before a tool uses it.
+
+    The connection is kept for the life of the server, so when Outlook is
+    closed or restarts underneath it, every later call fails with "The RPC
+    server is unavailable" - and until v11.5.1 it was only refreshed when a
+    tool CRASHED, which the printing tools never do (they catch and report
+    their errors), so only restarting the server fixed it. One cheap call
+    now proves the connection is alive at the start of every tool call; if
+    it fails, the next get_namespace() connects afresh.
+    """
+    ns = getattr(_ns_local, "ns", None)
+    if ns is None:
+        return
+    try:
+        _ = ns.Folders.Count
+    except Exception as exc:
+        log("Outlook connection was stale ({0}); reconnecting.".format(exc))
+        reset_namespace()
 
 
 # ---------------------------------------------------------------------------
@@ -3569,7 +3610,7 @@ def render_day_planner(day, day_events, ahead, identity, hours,
     right-hand panel, `identity` the (name, address) the header and footer show,
     and `hours` the (first, last) hour the timeline covers.
 
-    `team`, when given, is the list of columns from _team_columns(): a SECOND
+    `team`, when given, is the list of columns from _team_columns_bounded(): a SECOND
     page is added with those calendars side by side for the same day, and the
     PDF asks the print dialog for double-sided, flip on short edge, so the team
     view lands on the back of the sheet.
@@ -4503,26 +4544,16 @@ def ews_availability(addresses, day):
     return answers
 
 
-def _team_column(ns, label, spec, day, identity):
+def _team_resolve(ns, column):
     """
-    One column of the team page, read from the person's calendar if it opens.
-
-    A calendar shared with "Can view all details" (or a delegate's) opens, and
-    the column is finished here: subjects, locations, colours, recurring
-    series. Anything less - "Can view titles and locations" included - makes
-    Exchange refuse the folder, and the column is left for _team_columns to
-    fill from Exchange's availability service, then Outlook's free/busy.
-
-    Returns {"label", "source", "events", ...}: source "calendar" when done,
-    "unresolved" when the name is not in the directory, or "pending" with the
-    recipient, SMTP address and folder outcome kept for the next step. Never
-    raises.
+    Resolve one team entry in the directory: its label, SMTP address and
+    Recipient. Marks the column "unresolved" when the name is not found.
+    The Recipient is kept on the column for the Outlook fallbacks and
+    removed again before the column leaves the worker thread.
     """
-    column = {"label": label or spec, "source": "unavailable", "events": [],
-              "details": True, "recipient": None, "address": "",
-              "folder_events": None, "note": ""}
+    spec = column["spec"]
     try:
-        recipient = ns.CreateRecipient(spec)
+        recipient = ns.CreateRecipient(column["address"] or spec)
         recipient.Resolve()
         resolved = bool(recipient.Resolved)
     except Exception as exc:
@@ -4530,19 +4561,36 @@ def _team_column(ns, label, spec, day, identity):
         resolved = False
     if not resolved:
         column["source"] = "unresolved"
-        return column
+        return
     column["recipient"] = recipient
-    if not label:
+    if not column["label_given"]:
         try:
             column["label"] = _person_label(recipient.Name or spec) or spec
         except Exception:
             column["label"] = spec
-    try:
-        column["address"] = _entry_smtp(recipient.AddressEntry) or ""
-    except Exception:
-        column["address"] = ""
-    if not column["address"] and "@" in spec:
-        column["address"] = spec
+    if not column["address"]:
+        try:
+            column["address"] = _entry_smtp(recipient.AddressEntry) or ""
+        except Exception:
+            column["address"] = ""
+
+
+def _team_outlook_fallback(ns, column, day, identity):
+    """
+    Fill a column Exchange could not answer for, through Outlook itself.
+
+    Their calendar first (it opens under "Can view all details" or as a
+    delegate, and then gives colours and categories too), then Outlook's own
+    free/busy, busy times only. Both are slow, can wait on a hidden Outlook
+    dialog, and Recipient.FreeBusy's alignment is not guaranteed - which is
+    why they come AFTER Exchange, and why the whole team view runs under a
+    time limit.
+    """
+    if column.get("recipient") is None:
+        _team_resolve(ns, column)
+        if column["source"] == "unresolved":
+            return
+    recipient = column["recipient"]
 
     def open_folder():
         # A fresh Folder per call, so each scan pass gets its own Items.
@@ -4551,47 +4599,21 @@ def _team_column(ns, label, spec, day, identity):
     try:
         events = _collect_team_events(open_folder, day, identity)
     except Exception as exc:
-        log("Team calendar: cannot open the calendar of '{0}' ({1}); asking "
-            "Exchange's availability service instead.".format(spec, exc))
+        log("Team calendar: cannot open the calendar of '{0}' ({1}).".format(
+            column["spec"], exc))
         events = None
     if events:
-        column["source"], column["events"] = "calendar", events
-        return column
-    column["source"], column["folder_events"] = "pending", events
-    return column
-
-
-def _finish_column(column, answer, ews_problem, day):
-    """
-    Fill a pending column from Exchange's answer, else Outlook's free/busy.
-
-    Exchange's availability answer is preferred because it carries real
-    start and end times, and titles and locations wherever the sharing
-    allows. Outlook's Recipient.FreeBusy is the last resort: busy times only,
-    on a 15-minute grid.
-    """
-    if answer and "events" in answer:
-        events = answer["events"]
-        if events:
-            column["source"], column["events"] = "availability", events
-            column["details"] = answer["details"]
-        elif column["folder_events"] is not None:
-            column["source"] = "calendar"       # opened, and genuinely empty
-        else:
-            column["source"], column["details"] = "availability", False
+        column["source"], column["events"], column["details"] = \
+            "calendar", events, True
         return
-    if answer and "error" in answer:
-        column["note"] = "Exchange: {0}".format(answer["error"])
-    elif ews_problem:
-        column["note"] = "Exchange availability: {0}".format(ews_problem)
 
-    free_busy = _free_busy(column["recipient"], day)
+    free_busy = _free_busy(recipient, day)
     blocks = _free_busy_events(free_busy, day) if free_busy else None
     column["details"] = False
     if blocks:
         column["source"], column["events"] = "free/busy", blocks
-    elif column["folder_events"] is not None:
-        column["source"], column["details"] = "calendar", True
+    elif events is not None:
+        column["source"], column["details"] = "calendar", True   # genuinely empty
     elif free_busy is not None:
         column["source"] = "free/busy"      # free all day
     else:
@@ -4602,32 +4624,138 @@ def _team_columns(day, identity):
     """
     Read every configured team calendar into a list of columns.
 
-    Calendars that open are read directly; everyone else goes to Exchange's
-    availability service in ONE request, and anyone it cannot answer for falls
-    back to Outlook's free/busy. One person failing never stops the others.
-    """
-    ns = get_namespace()
-    columns = [_team_column(ns, label, spec, day, identity)
-               for label, spec in _CALENDAR_TEAM]
-    pending = [column for column in columns if column["source"] == "pending"]
-    if not pending:
-        return columns
+    1. Exchange's availability service, in ONE request for everyone with an
+       email address. It answers for "Can view titles and locations" (which
+       Outlook will not open) and for free/busy-only sharing, with real start
+       and end times, and it cannot hang on an Outlook dialog - every request
+       has a timeout. An entry written as an email address needs no Outlook
+       call at all for this step.
+    2. Only for anyone Exchange could not answer for (or when it cannot be
+       reached): their calendar through Outlook, then Outlook's free/busy.
 
+    One person failing never stops the others. Every column that comes back
+    is plain data - the Recipients used on the way are dropped - because this
+    runs on a worker thread (see _team_columns_bounded) and a COM object must
+    not outlive or leave the thread that made it.
+    """
+    columns = []
+    for label, spec in _CALENDAR_TEAM:
+        columns.append({
+            "label": label or spec, "label_given": bool(label), "spec": spec,
+            "address": spec if "@" in spec else "", "source": "pending",
+            "events": [], "details": True, "recipient": None, "note": "",
+        })
+
+    ns = None
+    for column in columns:
+        if not column["address"] or not column["label_given"]:
+            ns = ns or get_namespace()
+            _team_resolve(ns, column)
+
+    pending = [column for column in columns
+               if column["source"] == "pending" and column["address"]]
     answers, problem = {}, ""
-    addresses = [column["address"] for column in pending if column["address"]]
-    if addresses:
+    if pending:
         try:
-            answers = ews_availability(addresses, day)
+            answers = ews_availability([column["address"] for column in pending],
+                                       day)
         except Exception as exc:
             problem = str(exc)
             log("Team calendar: Exchange's availability service could not be "
-                "used ({0}); falling back to Outlook free/busy.".format(problem))
-    else:
-        problem = "no email address for anyone left to ask about"
-    for column in pending:
-        _finish_column(column, answers.get(column["address"].lower()),
-                       problem, day)
+                "used ({0}); trying Outlook for each person.".format(problem))
+
+    for column in columns:
+        if column["source"] != "pending":
+            continue
+        answer = answers.get(column["address"].lower()) if column["address"] else None
+        if answer and "events" in answer:
+            column["source"] = "availability"
+            column["events"] = answer["events"]
+            # An empty day says nothing about the sharing level, so it is not
+            # labelled "free/busy only"; it prints "Nothing in the diary".
+            column["details"] = answer["details"] or not answer["events"]
+            continue
+        if answer and "error" in answer:
+            column["note"] = "Exchange: {0}".format(answer["error"])
+        elif problem:
+            column["note"] = "Exchange availability: {0}".format(problem)
+        elif not column["address"]:
+            column["note"] = "no email address to ask Exchange with"
+        ns = ns or get_namespace()
+        _team_outlook_fallback(ns, column, day, identity)
+
+    for column in columns:
+        column.pop("recipient", None)
     return columns
+
+
+# How long the whole back page may take before the planner prints without it.
+# Exchange's own requests time out well inside this (EWS_TIMEOUT); it is the
+# Outlook fallbacks - opening a colleague's mailbox, Outlook's free/busy -
+# that can block for minutes on a slow server or a dialog nobody can see, and
+# the MCP client gives up at five.
+TEAM_VIEW_TIMEOUT = 90
+
+# The worker thread of a team view that ran out of time, while it is still
+# stuck. A second one is not started on top of it.
+_TEAM_WORKER = None
+
+
+def _team_columns_bounded(day, identity):
+    """
+    _team_columns on a worker thread, with TEAM_VIEW_TIMEOUT to finish.
+
+    The server answers one request at a time, so a COM call that never
+    returns used to hold up the whole server: the client timed out after
+    five minutes, and every later request queued behind the stuck one until
+    the server was restarted - the "stale" server. Now a team view that
+    overruns is abandoned: its columns come back marked "Calendar not
+    available" with a note saying why, and the front page prints as normal.
+    The stuck thread cannot be killed (a COM call cannot be interrupted),
+    so while it is still stuck no new one is started; Outlook usually lets
+    it go in the end, or restarting Outlook does.
+    """
+    global _TEAM_WORKER
+
+    def placeholders(note):
+        return [{"label": label or spec, "source": "unavailable", "events": [],
+                 "details": True, "note": note}
+                for label, spec in _CALENDAR_TEAM]
+
+    if _TEAM_WORKER is not None and _TEAM_WORKER.is_alive():
+        log("Team calendar: the last team view is still waiting on Outlook; "
+            "printing without it.")
+        return placeholders(
+            "the last attempt is still waiting on Outlook - restart Outlook, or "
+            "the outlook MCP server, to clear it")
+
+    result = {}
+
+    def work():
+        pythoncom.CoInitialize()
+        try:
+            result["columns"] = _team_columns(day, identity)
+        except Exception as exc:
+            log("Team view failed:\n{0}".format(traceback.format_exc()))
+            result["error"] = str(exc)
+        finally:
+            reset_namespace()           # this thread's connection, not the main one
+            pythoncom.CoUninitialize()
+
+    worker = threading.Thread(target=work, name="team-view", daemon=True)
+    worker.start()
+    worker.join(TEAM_VIEW_TIMEOUT)
+    if worker.is_alive():
+        _TEAM_WORKER = worker
+        log("Team calendar: no answer within {0}s; printing without the team "
+            "view.".format(TEAM_VIEW_TIMEOUT))
+        return placeholders(
+            "no answer from Outlook/Exchange within {0} seconds".format(
+                TEAM_VIEW_TIMEOUT))
+    _TEAM_WORKER = None
+    if "error" in result:
+        return placeholders("team view failed: {0}".format(result["error"]))
+    return result["columns"]
 
 
 def _draw_team_page(canvas, day, team, category_colours):
@@ -5047,7 +5175,7 @@ def tool_print_calendar(args):
     # colleague who has not shared their calendar costs only their column.
     team = None
     if _CALENDAR_TEAM and args.get("include_team", True) is not False:
-        team = _team_columns(day, current_user_identity(get_namespace()))
+        team = _team_columns_bounded(day, current_user_identity(get_namespace()))
 
     try:
         pdf = render_day_planner(
@@ -5150,8 +5278,8 @@ def tool_print_calendar(args):
                 detail = ("NOT FOUND in the directory - check the entry in "
                           "OUTLOOK_CALENDAR_TEAM; the column prints empty")
             elif column["source"] == "unavailable":
-                detail = ("neither the calendar nor free/busy could be read - "
-                          "the column prints 'Calendar not available'")
+                detail = ("not read (see the note) - the column prints "
+                          "'Calendar not available'")
             elif column["source"] == "free/busy":
                 detail = ("Outlook free/busy only - busy times, no titles: "
                           "{0} busy block(s), {1} all-day".format(
@@ -8477,6 +8605,7 @@ def handle_request(req):
         func = TOOL_DISPATCH.get(name)
         if func is None:
             return rpc_result(req_id, text_content("Unknown tool: {0}".format(name), is_error=True))
+        ensure_outlook_alive()
         try:
             output = func(arguments)
             return rpc_result(req_id, text_content(output, is_error=False))
@@ -8737,14 +8866,14 @@ def report_team_health():
             "(Outlook: Ctrl+right-click the tray icon -> Test E-mail "
             "AutoConfiguration -> 'Availability Service URL').".format(where))
     for column, (_label, spec) in zip(
-            _team_columns(today, current_user_identity(get_namespace())),
+            _team_columns_bounded(today, current_user_identity(get_namespace())),
             _CALENDAR_TEAM):
         timed = sum(1 for event in column["events"] if not event["all_day"])
         all_day = len(column["events"]) - timed
         if column["source"] == "unresolved":
             state = "NOT FOUND in the directory - fix this entry"
         elif column["source"] == "unavailable":
-            state = "NO ACCESS - neither the calendar nor free/busy could be read"
+            state = "NOT READ - Exchange, the calendar and free/busy all failed (see below)"
         elif column["source"] == "free/busy":
             state = ("Outlook free/busy only (busy times, no titles): {0} busy "
                      "block(s), {1} all-day today".format(timed, all_day))

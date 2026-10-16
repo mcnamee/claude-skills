@@ -8,7 +8,7 @@ printable sheet of your team's open tasks.
 
 | | |
 |---|---|
-| **Server** | `outlook.py` v11.5.0 |
+| **Server** | `outlook.py` v11.5.1 |
 | **pip install** | `pywin32` |
 | **Platform** | **Windows only** — requires classic Win32 Outlook (not "New Outlook") installed, running, and logged into a profile |
 | **Sends** | **never.** Not an email, not a reply, not a meeting invitation. It cannot accept, move or delete anything either |
@@ -329,16 +329,28 @@ of the back, where the folded strip can't cover it. With
 45% of the sheet, and at a page fill that small the reply says to unfold the
 strip to read the bottom of it.
 
-**Each column falls back on its own:**
+**Each column falls back on its own.** Exchange is asked first, in one
+request for everyone; Outlook is only used for someone Exchange can't answer
+for:
 
 | What you can see of their calendar | What the column shows |
 |---|---|
-| "Can view all details", or you're a delegate | Their calendar is opened directly: subjects, locations and colours, exactly like the front. Recurring meetings are included, and so is something still running from an earlier day (a fortnight's leave booked as one item). Anything running past either end of the day is an all-day chip. A **private** appointment prints as "Private appointment", with no location |
-| "Can view titles and locations" | Exchange won't let anything open the calendar itself ("You do not have sufficient permission"), so the server asks **Exchange's availability service** - the same place Outlook gets those titles from - in one request for everyone, signed in with your Windows login. You get each meeting's real times, subject and location |
-| "Can view when I'm busy" (free/busy) | Also from the availability service: real times, with blocks saying **Busy**, **Tentative** (hollow), **Out of office** (purple) or **Working elsewhere**. The heading says "free/busy only" |
-| Exchange can't be reached | Outlook's own free/busy, busy times only. The reply says why Exchange wasn't used. Treat it as a fallback: on at least one endpoint these blocks didn't match the person's day, which is why the availability service is now asked first |
+| "Can view titles and locations" (or more) | From **Exchange's availability service** - the same place Outlook gets those titles from - signed in with your Windows login: each meeting's real times, subject and location. Recurring meetings and multi-day leave are included; anything running past either end of the day is an all-day chip. A **private** appointment prints as "Private appointment", with no location |
+| "Can view when I'm busy" (free/busy) | Also from Exchange: real times, with blocks saying **Busy**, **Tentative** (hollow), **Out of office** (purple) or **Working elsewhere**. The heading says "free/busy only" |
+| Exchange can't answer, but you have "Can view all details" or are a delegate | Their calendar is opened through Outlook: subjects, locations and category colours, exactly like the front |
+| Exchange can't answer, and the calendar won't open | Outlook's own free/busy, busy times only. The reply says why Exchange wasn't used. Treat it as a fallback: on at least one endpoint these blocks didn't match the person's day |
 | Nothing readable | "Calendar not available" |
 | The name doesn't resolve | "Not found in the directory" |
+
+**It can't hold the server up any more (11.5.1).** The Outlook routes can
+block for minutes (opening someone's mailbox, or Outlook's free/busy, waiting
+on a slow server or a hidden dialog). The back page now has **90 seconds**;
+if it runs out, the planner prints without it and the reply says so, instead
+of the request hanging until the client gives up. And if Outlook is closed or
+restarted while the server is running, the server reconnects on the next
+request - "The RPC server is unavailable" no longer needs a server restart.
+Writing each person as an email address (`Name=address`) is fastest: Exchange
+is then asked directly, with no Outlook lookup at all.
 
 One person failing never stops the rest of the sheet printing. The tool's
 reply lists the team view as **counts per person, never subjects** - these
