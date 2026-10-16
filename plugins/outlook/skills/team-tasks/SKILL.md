@@ -1,6 +1,6 @@
 ---
 name: team-tasks
-description: Print the user's team's open tasks as a double-sided A4 landscape PDF (eight columns, four a side - unassigned and whole-team tasks first, then one column per direct report), gathered from the Confluence page that collates their task lists and the emails the user sent them and flagged with a due date in their Inbox. Use when the user asks for a printable/printed team task list, "print my team's tasks", "what's everyone working on - print it", a task sheet for their direct reports, or to refresh last week's task sheet.
+description: Print the user's team's open tasks as a double-sided A4 landscape PDF (eight columns, four a side - unassigned and whole-team tasks first, then one column per direct report), gathered from the Confluence page that collates their task lists and the emails the user sent them that have a due date in their Inbox. Use when the user asks for a printable/printed team task list, "print my team's tasks", "what's everyone working on - print it", a task sheet for their direct reports, or to refresh last week's task sheet.
 ---
 
 # Team task sheet (via the `outlook` MCP server, with `confluence`)
@@ -41,27 +41,25 @@ printing is off, stop and tell the user before gathering anything.
   struck-through rows. Keep the assignee, the due date and any status.
 - Do **not** pass `save_to_kb`.
 
-## 3. Read the flagged emails
+## 3. Read the emailed tasks
 
 How the user works: an Outlook rule copies every email they send back into
 their **Inbox**. There they either **delete** it (no reminder needed) or
-**flag it with a due date** (a task they want chased). So the emailed tasks
-are exactly the flagged ones - the user has already decided.
+**give it a due date** (a task they want chased). So the emailed tasks are
+exactly the ones with a due date - the user has already decided.
 
 - Call `outlook_list_task_emails`. It returns the emails the user sent that are
-  in the Inbox, flagged, not complete and with a due date, soonest first, with
+  in the Inbox with a due date and not marked complete, soonest first, with
   To / Cc, subject, a short preview and EntryID.
-- **Every one is a task.** Do not second-guess which flagged emails count, and
-  do not add tasks from unflagged mail.
+- **Every one is a task.** Do not second-guess which ones count, and do not
+  add tasks from mail without a due date.
 - **Never use `outlook_list_sent_emails` or `outlook_search_recent`** for this:
-  Sent Items is not the list, and an unflagged email in the Inbox is one the
+  Sent Items is not the list, and an Inbox email with no due date is one the
   user has not chosen to track.
-- The **due date is the flag's**. Use it as given.
+- The **due date is the email's**. Use it as given.
 - Word the task as a short action ("Send revised costing to Finance"), not the
   subject line. Open the email with `outlook_get_email` only when the subject
   and preview do not make the ask clear.
-- If the reply counts flagged emails with **no due date**, mention the number
-  in one line: they are not on the sheet until the user gives them a date.
 - Withheld messages stay withheld: never guess what they asked for.
 
 ## 4. Build one list
@@ -69,16 +67,16 @@ are exactly the flagged ones - the user has already decided.
 - **Owner**: one direct report → their name exactly as the column list shows
   it. The whole team, two or more people, or nobody → `person: ""` (column 1).
   An email to one person with others cc'd belongs to the person in To.
-- **Merge** a task that is on Confluence and in a flagged email into one
-  entry: Confluence's wording, `source: "Confluence"`, and the flag's due date
-  if the page has none.
-- **Due** as `YYYY-MM-DD`: the flag's date for an email, the page's date for
+- **Merge** a task that is on Confluence and in an emailed task into one
+  entry: Confluence's wording, `source: "Confluence"`, and the email's due
+  date if the page has none.
+- **Due** as `YYYY-MM-DD`: the email's due date, the page's date for
   Confluence. Leave it out when there is none - never invent one.
 - **source**: `"Confluence"` or `"Email 9 Oct"` (the sent date). **status**
   only when the page or email gives one. **detail** only for a few words that
   change what the task means.
 - **sources** (footer): one line on what you read, e.g.
-  `"Confluence: Team Task List · flagged emails"`.
+  `"Confluence: Team Task List · emails with a due date"`.
 
 ## 5. Print
 
@@ -105,6 +103,6 @@ Re-printing the same day overwrites that day's sheet; say "updated".
   column prints "Nothing open", which is a true answer.
 - If you are unsure who owns an emailed task, put it in column 1 rather than
   guessing a person.
-- Nothing here sends, changes Confluence, or clears a flag. When the user says
-  a task is done, the fix is theirs: mark the flag complete in Outlook (or the
-  row done in Confluence) and it drops off the next sheet.
+- Nothing here sends, changes Confluence, or marks anything complete. When the
+  user says a task is done, the fix is theirs: mark the email complete in
+  Outlook (or the row done in Confluence) and it drops off the next sheet.

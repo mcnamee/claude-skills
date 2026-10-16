@@ -46,7 +46,7 @@
       "name": "outlook",
       "source": "./plugins/outlook",
       "description": "Read local classic Outlook mail and calendar via COM, schedule a meeting (fuzzy directory search, free/busy, and an unsent draft you send yourself), open an agreed email or reply in Outlook as an unsent draft, and print a day as a PDF planner in your own category colours. Windows only; requires pywin32.",
-      "version": "11.4.2",
+      "version": "11.5.0",
       "keywords": [
         "outlook",
         "email",

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-outlook.py (v11.4.2)
+outlook.py (v11.5.0)
 ======================
 
 A single-file MCP (Model Context Protocol) server giving an LLM near-read-only
@@ -64,8 +64,9 @@ TOOLS EXPOSED (read-only on the mailbox, apart from the two draft tools)
                                the back (v11.2.0) - see below
 - outlook_get_task_team      : the team task sheet's columns and Confluence
                                page (v11.3.0) - see below
-- outlook_list_task_emails   : emails you sent, flagged in your Inbox with a due
-                               date - the emailed tasks (v11.3.0)
+- outlook_list_task_emails   : emails you sent that sit in your Inbox with a due
+                               date - the emailed tasks (v11.3.0; v11.5.0
+                               stopped requiring the follow-up flag)
 - outlook_print_team_tasks   : a PRINTABLE PDF of the team's open tasks, eight
                                columns over two sides of A4 (v11.3.0)
 - outlook_list_sent_emails   : messages you SENT, in a date range (e.g. "what did I do last week")
@@ -448,20 +449,20 @@ its type, and the reply says which. The whole sheet is used - there is no
 strip to fold, since a task list is pinned up or filed, not kept in a diary.
 
 The tasks come from the Confluence page that collates them (which this server
-cannot read) and from emails you flagged, so the work is split between three
+cannot read) and from emails you gave a due date, so the work is split between three
 tools and the model in the middle:
 
 1. outlook_get_task_team returns the columns and the Confluence page that
    collates the tasks (OUTLOOK_TASKS_PAGE). It reads configuration only.
 2. outlook_list_task_emails returns the emailed tasks. An Outlook rule copies
    every email you send back into your Inbox, where you either delete it or
-   FLAG it with a due date to be reminded. So an emailed task is an Inbox item
-   that you sent, flagged (not complete) with a real due date - nothing else.
-   Sent Items is never read, there is no date window, and marking the flag
-   complete in Outlook takes the task off the next sheet. The flag is found
-   with a DASL filter on PR_FLAG_STATUS (an integer, so no locale fault); if
-   Outlook rejects it the Inbox is walked instead, up to 5000 items. The
-   content blacklist applies as usual.
+   give it a DUE DATE to be reminded. So an emailed task is an Inbox item that
+   you sent with a real due date - nothing else (v11.5.0: the follow-up flag
+   itself is no longer read, because on at least one endpoint it never read
+   as flagged). Sent Items is never read, there is no date window, and an
+   email marked complete in Outlook (it then carries a completion date) is
+   left off the next sheet. The Inbox is walked newest first, up to 5000
+   items. The content blacklist applies as usual.
 3. The model reads the Confluence page through the confluence plugin, opens
    an email with outlook_get_email where the subject and preview are not
    enough, de-duplicates the two sources, and decides who owns each task.
@@ -770,7 +771,7 @@ IMPORTANT (stdio-on-Windows pitfalls)
 
 # Semantic version of this server. Bump on EVERY change (see CLAUDE.md):
 # MAJOR = breaking config/tool change, MINOR = new feature, PATCH = fix.
-__version__ = "11.4.2"
+__version__ = "11.5.0"
 
 import os
 import re
@@ -945,8 +946,8 @@ TASKS_TEAM = [
 #        URL). This server cannot read Confluence; it only hands the value to
 #        the model, which reads the page through the confluence plugin.
 #        Override with OUTLOOK_TASKS_PAGE. The emailed tasks need no setting:
-#        they are the emails you sent that sit flagged, with a due date, in
-#        your Inbox (see outlook_list_task_emails).
+#        they are the emails you sent that sit in your Inbox with a due date
+#        (see outlook_list_task_emails).
 TASKS_CONFLUENCE_PAGE = ""
 
 # --- 6. KB_AUTOSAVE. Whether reading an email saves it WITHOUT being asked.
@@ -5227,8 +5228,8 @@ def tool_print_calendar(args):
 # This server cannot read Confluence, and should not try to word a task from
 # email prose with regular expressions. So the work is split.
 # outlook_get_task_team hands the model the roster and the Confluence page;
-# outlook_list_task_emails finds the emailed tasks by their follow-up flag
-# (the user's own decision, so no guessing there); the model reads the page
+# outlook_list_task_emails finds the emailed tasks by their due date (the
+# user's own decision, so no guessing there); the model reads the page
 # (through the confluence plugin), turns both into one list of
 # {person, task, due, ...}; and
 # outlook_print_team_tasks lays that list out. Everything about the PAGE - the
@@ -5688,8 +5689,8 @@ def tool_get_task_team(args):
                      "the user which page collates the team's tasks.")
     lines.append("Emailed tasks: outlook_list_task_emails - emails YOU sent "
                  "that are in your Inbox (your rule copies them back) and that "
-                 "you flagged with a due date. Unflagged, completed and "
-                 "undated ones are not tasks. Do not read Sent Items.")
+                 "have a due date. Undated and completed ones are not tasks. "
+                 "Do not read Sent Items.")
     lines.append("Today on this endpoint: {0}.".format(_fmt_day_long(today)))
     if not PDF_DIR:
         lines.append("")
@@ -5701,24 +5702,56 @@ def tool_get_task_team(args):
 
 # The emailed half of the task sheet. The user's Outlook rule copies every email
 # they send back into the Inbox; there they either DELETE it (no reminder
-# needed) or FLAG it with a due date (a task they want chased). So the emailed
-# tasks are exactly the Inbox items that the user sent, that are flagged and
-# not complete, and that carry a real due date - no date window, no guessing
-# from the wording, and marking the flag complete in Outlook takes the task off
-# the next sheet.
+# needed) or give it a DUE DATE (a task they want chased). So the emailed tasks
+# are exactly the Inbox items that the user sent and that carry a real due
+# date - no date window, and no guessing from the wording.
 #
-# MAPI PR_FLAG_STATUS (0x1090, a long): 2 = flagged, 1 = complete. A DASL
-# filter on an integer formats no date, so it is safe from the regional-
-# settings fault that keeps Restrict() off dates elsewhere in this file. If
-# Outlook rejects it anyway, the Inbox is walked and FlagStatus checked in
-# Python instead, up to TASK_EMAIL_SCAN_CAP items.
-TASK_EMAIL_FLAG_FILTER = (
-    '@SQL="http://schemas.microsoft.com/mapi/proptag/0x10900003" = 2')
-OL_FLAG_MARKED = 2
+# Until v11.5.0 the follow-up FLAG had to read as "flagged" too, through a DASL
+# filter on PR_FLAG_STATUS and then MailItem.FlagStatus. On at least one
+# endpoint that came back empty for emails plainly flagged in Outlook, so the
+# sheet listed no emails at all. The flag is no longer consulted: the due date
+# is the test. One thing is still honoured so a done task leaves the sheet:
+# an email Outlook has stamped with a completion date (what "Mark Complete"
+# does) is left off.
+#
+# The Inbox is walked newest first, reading the cheapest property (the due
+# date) before the sender, up to TASK_EMAIL_SCAN_CAP items.
 TASK_EMAIL_SCAN_CAP = 5000
 TASK_EMAIL_PREVIEW_CHARS = 400
 # Outlook stores "no date" as 1 January 4501; anything from 4500 on is none.
 OUTLOOK_NO_DATE_YEAR = 4500
+# PidLidTaskDueDate / PidLidTaskDateCompleted, read through the
+# PropertyAccessor when the object model's TaskDueDate / TaskCompletedDate
+# cannot be read. Both are stored in UTC, so they are converted back to local
+# time before the date is taken.
+PROP_TASK_DUE_DATE = ("http://schemas.microsoft.com/mapi/id/"
+                      "{00062003-0000-0000-C000-000000000046}/81050040")
+PROP_TASK_DATE_COMPLETED = ("http://schemas.microsoft.com/mapi/id/"
+                            "{00062003-0000-0000-C000-000000000046}/810F0040")
+
+
+def _task_date(item, attribute, prop):
+    """
+    A task date on a mail item (due or completed), or None for "no date".
+
+    The object model's own property first; when that cannot be read, the
+    MAPI property through the PropertyAccessor, converted from UTC to local
+    time. Outlook's "no date" (the year 4501) is None.
+    """
+    value = None
+    try:
+        value = _com_to_naive(getattr(item, attribute))
+    except Exception:
+        value = None
+    if value is None:
+        try:
+            accessor = item.PropertyAccessor
+            value = _com_to_naive(accessor.UTCToLocalTime(accessor.GetProperty(prop)))
+        except Exception:
+            value = None
+    if value is None or value.year >= OUTLOOK_NO_DATE_YEAR:
+        return None
+    return value
 
 
 def _sent_by_me(item, identity):
@@ -5748,22 +5781,21 @@ def tool_list_task_emails(args):
                 "so emails you sent cannot be told apart from the rest of the "
                 "Inbox. Run python outlook.py --check on the endpoint.")
 
-    inbox = ns.GetDefaultFolder(OL_FOLDER_INBOX)
-    filtered = True
+    # The Inbox ONLY - never Sent Items - newest first, so a scan that hits the
+    # cap drops the oldest mail rather than the newest.
+    items = ns.GetDefaultFolder(OL_FOLDER_INBOX).Items
     try:
-        candidates = inbox.Items.Restrict(TASK_EMAIL_FLAG_FILTER)
-    except Exception as exc:
-        log("Flag filter rejected ({0}); walking the Inbox instead.".format(exc))
-        candidates = inbox.Items
-        filtered = False
+        items.Sort("[ReceivedTime]", True)
+    except Exception:
+        pass
 
     found = []
-    no_date = 0
     not_mine = 0
+    completed = 0
     withheld = 0
     scanned = 0
     capped = False
-    for item in candidates:
+    for item in items:
         if scanned >= TASK_EMAIL_SCAN_CAP:
             capped = True
             break
@@ -5771,24 +5803,23 @@ def tool_list_task_emails(args):
         try:
             if item.Class != OL_CLASS_MAIL:
                 continue
-            if int(item.FlagStatus) != OL_FLAG_MARKED:
-                continue                     # unflagged, or flag completed
         except Exception:
+            continue
+        # The due date first: it is one property read, and it rules out
+        # almost the whole Inbox before the (dearer) sender is resolved.
+        due = _task_date(item, "TaskDueDate", PROP_TASK_DUE_DATE)
+        if due is None:
             continue
         if not _sent_by_me(item, identity):
-            not_mine += 1                    # someone else's email you flagged
+            not_mine += 1                    # someone else's email with a due date
             continue
-        try:
-            due = _com_to_naive(item.TaskDueDate)
-        except Exception:
-            due = None
-        if due is None or due.year >= OUTLOOK_NO_DATE_YEAR:
-            no_date += 1
+        if _task_date(item, "TaskCompletedDate", PROP_TASK_DATE_COMPLETED):
+            completed += 1                   # marked complete in Outlook
             continue
         reason = email_block_reason(item)
         if reason:
             withheld += 1
-            log("Withheld a flagged email (blacklist match: {0}).".format(reason))
+            log("Withheld a task email (blacklist match: {0}).".format(reason))
             continue
         try:
             preview = _one_line(item.Body or "")[:TASK_EMAIL_PREVIEW_CHARS]
@@ -5810,7 +5841,7 @@ def tool_list_task_emails(args):
     found.sort(key=lambda entry: (entry["due"], entry["sent"]
                                   or datetime.datetime.min))
     today = datetime.date.today()
-    lines = ["Flagged emails you sent, in your Inbox, with a due date: {0} "
+    lines = ["Emails you sent, in your Inbox, with a due date: {0} "
              "(soonest due first; today is {1}).".format(
                  len(found), today.isoformat())]
     for entry in found:
@@ -5824,21 +5855,18 @@ def tool_list_task_emails(args):
         if entry["preview"]:
             lines.append("    Preview : {0}".format(entry["preview"]))
         lines.append("    EntryID : {0}".format(entry["entry_id"]))
-    notes = []
-    if no_date:
-        notes.append("{0} flagged email(s) you sent have no due date and are "
-                     "not tasks for the sheet".format(no_date))
+    notes = ["{0} Inbox item(s) checked".format(scanned)]
     if not_mine:
-        notes.append("{0} flagged email(s) were sent by someone else and are "
-                     "left out".format(not_mine))
+        notes.append("{0} email(s) with a due date were sent by someone else "
+                     "and are left out".format(not_mine))
+    if completed:
+        notes.append("{0} of yours are marked complete and are left out".format(
+            completed))
     if withheld:
         notes.append("{0} withheld by the content blacklist".format(withheld))
     if capped:
-        notes.append("the scan stopped after {0} items{1}, so older flagged "
-                     "emails may be missing".format(
-                         TASK_EMAIL_SCAN_CAP,
-                         "" if filtered else " (Outlook rejected the flag "
-                         "filter, so the whole Inbox was walked)"))
+        notes.append("the scan stopped at the newest {0} items, so older "
+                     "emails may be missing".format(TASK_EMAIL_SCAN_CAP))
     if notes:
         lines.append("")
         lines.append("[" + "; ".join(notes) + ".]")
@@ -7922,12 +7950,12 @@ TOOLS = [
         "description": (
             "The EMAILED half of the team task sheet: emails the user SENT that "
             "sit in their Inbox (an Outlook rule copies sent mail back there) "
-            "FLAGGED for follow-up with a due date - the user flags the ones "
-            "they want chased and deletes the rest. Returns each one's due "
-            "date (the flag's), sent time, To, Cc, subject, a short body "
-            "preview and EntryID, soonest due first. Unflagged, completed, "
-            "undated and other people's emails are left out and counted. Use "
-            "this, not outlook_list_sent_emails, for team tasks."
+            "with a DUE DATE - the user gives the ones they want chased a due "
+            "date and deletes the rest. Returns each one's due date, sent "
+            "time, To, Cc, subject, a short body preview and EntryID, soonest "
+            "due first. Undated, completed and other people's emails are left "
+            "out (the last two counted). Use this, not "
+            "outlook_list_sent_emails, for team tasks."
         ),
         "inputSchema": {"type": "object", "properties": {}},
     },
@@ -8006,7 +8034,7 @@ TOOLS = [
                     "type": "string",
                     "description": (
                         "Optional one-line note for the footer saying what was "
-                        "read, e.g. 'Confluence: Team Tasks · flagged emails'."
+                        "read, e.g. 'Confluence: Team Tasks · emails with a due date'."
                     ),
                 },
                 "filename": {
@@ -8786,8 +8814,8 @@ def run_check():
             ", ".join(_tasks_column_label(label, spec)
                       for label, spec in _TASKS_TEAM)
             or "not set (OUTLOOK_TASKS_TEAM) - columns come from the task names"))
-        log("Task sheet sources  : Confluence page {0}; flagged emails you "
-            "sent, in the Inbox, with a due date".format(
+        log("Task sheet sources  : Confluence page {0}; emails you sent, in "
+            "the Inbox, with a due date".format(
                 _TASKS_PAGE or "not set (OUTLOOK_TASKS_PAGE)"))
         if KB_DIR:
             log("KB save folder      : {0} ({1})".format(

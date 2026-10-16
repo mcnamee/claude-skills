@@ -8,7 +8,7 @@ printable sheet of your team's open tasks.
 
 | | |
 |---|---|
-| **Server** | `outlook.py` v11.4.2 |
+| **Server** | `outlook.py` v11.5.0 |
 | **pip install** | `pywin32` |
 | **Platform** | **Windows only** — requires classic Win32 Outlook (not "New Outlook") installed, running, and logged into a profile |
 | **Sends** | **never.** Not an email, not a reply, not a meeting invitation. It cannot accept, move or delete anything either |
@@ -430,7 +430,7 @@ Personal appointment gets.
 
 An A4 landscape PDF of your direct reports' open tasks, in **eight columns,
 four a side**, gathered from the Confluence page that collates them and the
-emails you sent them and flagged with a due date:
+emails you sent them that have a due date in your Inbox:
 
 | Front | Back |
 |---|---|
@@ -464,19 +464,24 @@ honours; check the setting in any other viewer.
 
 ### How the tasks are gathered
 
-**Emailed tasks are the ones you flagged.** An Outlook rule copies every email
-you send back into your Inbox, where you either delete it (no reminder needed)
-or **flag it with a due date** (a task you want chased). So an emailed task is
-an Inbox item that you sent, flagged for follow-up and not marked complete,
-with a real due date - and the flag's date is the task's due date. Sent Items
-is never read, there is no date window, and an unflagged, undated or
-completed one is left off. **Mark the flag complete** in Outlook and the task
-drops off the next sheet.
+**Emailed tasks are the ones you gave a due date.** An Outlook rule copies
+every email you send back into your Inbox, where you either delete it (no
+reminder needed) or **give it a due date** (a task you want chased). So an
+emailed task is an email that is:
+
+- in your **Inbox** (Sent Items is never read),
+- **sent by you**, and
+- has a **due date** - which becomes the task's due date.
+
+The follow-up flag itself isn't checked (since 11.5.0): on some endpoints
+Outlook never reported it as flagged, so the sheet came out with no emails at
+all. There is no date window. **Mark it complete** in Outlook and Outlook
+stamps a completion date on it, which takes the task off the next sheet.
 
 The `/outlook:team-tasks` skill runs it:
 
 1. `outlook_get_task_team` returns the columns and the Confluence page.
-2. `outlook_list_task_emails` returns the flagged emails you sent, soonest due
+2. `outlook_list_task_emails` returns the emails you sent with a due date, soonest due
    first, with To / Cc, subject and a short preview (the content blacklist
    applies as usual).
 3. Claude reads the Confluence page with the **confluence** plugin, opens an
@@ -585,7 +590,7 @@ This plugin ships three, and installing it installs all of them:
 |---|---|
 | `/outlook:outlook` | Mail, reading the calendar, printing a day planner, saving an email to the knowledge base |
 | `/outlook:meeting-scheduler` | Arranging a meeting: finding the person and the room, finding a time, saving the draft |
-| `/outlook:team-tasks` | Printing your team's open tasks from Confluence and the emails you flagged as a double-sided sheet |
+| `/outlook:team-tasks` | Printing your team's open tasks from Confluence and the emails you sent with a due date as a double-sided sheet |
 
 ## Configuration
 
